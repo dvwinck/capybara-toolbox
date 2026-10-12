@@ -1,13 +1,11 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "capybara-toolbox",
   "owner": {
     "name": "Diogo Winck",
     "email": "diogo.winck@gmail.com"
   },
   "metadata": {
-    "description": "Capybara Toolbox: calm, capable skills and plugins for Claude Code.",
-    "version": "1.1.0"
+    "description": "Capybara Toolbox: calm, capable skills and plugins for Claude Code."
   },
   "plugins": [
     {
@@ -27,7 +25,9 @@
         "human-in-the-loop",
         "skill"
       ],
-      "category": "productivity"
+      "category": "productivity",
+      "homepage": "https://github.com/dvwinck/capybara-toolbox",
+      "repository": "https://github.com/dvwinck/capybara-toolbox"
     }
   ]
 }

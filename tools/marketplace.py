@@ -2,9 +2,9 @@
 """Keeps .claude-plugin/marketplace.json consistent with the plugins on disk.
 
 For every catalog entry with a local source it checks that the plugin directory and its
-.claude-plugin/plugin.json exist and agree on the name, and it syncs `version` and
-`description` from plugin.json (the plugin is the source of truth). It also reports plugin
-directories that are missing from the catalog.
+.claude-plugin/plugin.json exist and agree on the name, and it syncs `version`,
+`description`, `homepage` and `repository` from plugin.json (the plugin is the source of
+truth). It also reports plugin directories that are missing from the catalog.
 
 Usage:
   python3 tools/marketplace.py           # write whatever is out of sync
@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MARKET = ".claude-plugin/marketplace.json"
+SYNCED = ("version", "description", "homepage", "repository")  # copied from plugin.json when present
 
 
 def read_json(path):
@@ -45,7 +46,7 @@ def build(root):
         manifest = read_json(manifest_path)
         if manifest.get("name") != entry["name"]:
             problems.append(f"{entry['name']}: plugin.json name is '{manifest.get('name')}'")
-        for key in ("version", "description"):
+        for key in SYNCED:
             if key in manifest:
                 entry[key] = manifest[key]
     plugins_dir = root / "plugins"

@@ -1,12 +1,12 @@
 import re
 import unittest
 
-from helpers import ab
+from helpers import REPO, ab
 
 
 class PageGuardsTest(unittest.TestCase):
-    """Guardas de regressao sobre o JS embutido. O comportamento real e verificado
-    manualmente no navegador (ver Task 4, Step 5 do plano)."""
+    """Guardas de regressao sobre o JS embutido. O comportamento real foi verificado
+    manualmente em um navegador (a suite nao executa JavaScript)."""
 
     def test_decision_keys_ignore_autorepeat(self):
         self.assertIn("ev.repeat && (k === 'a' || k === 'r' || k === 'm')", ab.PAGE)
@@ -61,7 +61,24 @@ class PageThemeTest(unittest.TestCase):
                 with self.subTest(theme=name, pair=f"{fg}/{bg}"):
                     self.assertGreaterEqual(contrast(theme[fg], theme[bg]), 4.5)
 
+    def test_each_theme_declares_its_color_scheme(self):
+        blocks = re.findall(r":root\{([^}]*)\}", ab.PAGE)
+        self.assertIn("color-scheme:dark", blocks[0])
+        self.assertIn("color-scheme:light", blocks[1])
+        self.assertIn("accent-color:var(--acc)", ab.PAGE)
+
+    def test_empty_hint_takes_no_space(self):
+        self.assertIn("#hint:empty{display:none}", ab.PAGE)
+
     def test_user_text_that_looks_like_a_template_token_is_left_alone(self):
         batch = {"batch_id": "t", "title": "__BOOT__ __MASCOT__", "items": [{"id": "A01", "title": "x"}]}
         page = ab.render_page(batch, {"items": {}}, "tok", True).decode("utf-8")
         self.assertIn("<title>__BOOT__ __MASCOT__</title>", page)
+
+
+class MascotTest(unittest.TestCase):
+    def test_mascot_matches_the_repository_logo(self):
+        svg = (REPO / "assets" / "logo.svg").read_text(encoding="utf-8")
+        body = svg.split("</title>", 1)[1].rsplit("</svg>", 1)[0]
+        compact = " ".join(line.strip() for line in body.splitlines() if line.strip())
+        self.assertEqual(ab.MASCOT_BODY, compact)

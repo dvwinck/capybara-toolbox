@@ -41,6 +41,39 @@ class RepositoryStateTest(unittest.TestCase):
         manifest = json.loads((ROOT / sync.PLUGIN).read_text(encoding="utf-8"))
         self.assertEqual(manifest["version"], sync.script_version(script))
 
+    def test_script_carries_its_license(self):
+        head = (ROOT / sync.SCRIPT).read_text(encoding="utf-8").splitlines()[:6]
+        self.assertTrue(head[1].startswith("# ar-board "), head[1])
+        self.assertIn("# SPDX-License-Identifier: MIT", head)
+        self.assertIn("# Copyright (c) 2026 Diogo Winck", head)
+
+    def test_manifest_points_to_the_repository(self):
+        manifest = json.loads((ROOT / sync.PLUGIN).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["homepage"], "https://github.com/dvwinck/capybara-toolbox")
+        self.assertEqual(manifest["repository"], "https://github.com/dvwinck/capybara-toolbox")
+
+
+class SkillCommandsTest(unittest.TestCase):
+    BUNDLED = '"${CLAUDE_SKILL_DIR}/scripts/ar_board.py"'
+    INSTALLED = '"$HOME/.claude/ar-board/ar_board.py"'
+
+    def test_lean_skill_runs_the_bundled_script(self):
+        skill = (ROOT / sync.SKILL).read_text(encoding="utf-8")
+        for cmd in ("check", "serve", "wait", "summary"):
+            with self.subTest(cmd=cmd):
+                self.assertIn("python3 -I %s %s " % (self.BUNDLED, cmd), skill)
+        self.assertNotIn('"$S"', skill)
+        self.assertIn("Base directory for this skill", skill)  # fallback when the variable is not expanded
+
+    def test_single_file_variant_uses_the_installed_path_everywhere(self):
+        skill = (ROOT / sync.SKILL).read_text(encoding="utf-8")
+        single = sync.build(ROOT)[sync.SINGLE]
+        body = single.split("\n## Script\n", 1)[0]
+        self.assertNotIn("CLAUDE_SKILL_DIR", body)
+        self.assertNotIn('"$S"', body)
+        self.assertEqual(body.count("python3 -I " + self.INSTALLED), skill.count("python3 -I " + self.BUNDLED))
+        self.assertIn('test -f %s' % self.INSTALLED, body)
+
 
 class SyncToolTest(unittest.TestCase):
     def setUp(self):
@@ -88,6 +121,12 @@ class SyncToolTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_sync(["--check"], self.tmp)
 
+    def test_sync_fails_loudly_when_the_skill_stops_naming_the_bundled_script(self):
+        skill = self.tmp / sync.SKILL
+        skill.write_text(skill.read_text(encoding="utf-8").replace(sync.BUNDLED, "<script>"), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            run_sync(["--check"], self.tmp)
+
 
 class ManualInstallTest(unittest.TestCase):
     def run_install(self, home, *args):
@@ -103,6 +142,26 @@ class ManualInstallTest(unittest.TestCase):
             r = self.run_install(home, "ar-board", "--uninstall")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertFalse(dest.exists())
+
+    def test_install_does_not_copy_bytecode_caches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp, "repo")
+            shutil.copytree(ROOT / "skills", repo / "plugins" / "ar-board" / "skills",
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.copy2(REPO / "install.sh", repo / "install.sh")
+            cache = repo / "plugins" / "ar-board" / "skills" / "ar-board" / "scripts" / "__pycache__"
+            cache.mkdir()
+            (cache / "ar_board.cpython-39.pyc").write_bytes(b"stale")
+            (repo / "plugins" / "ar-board" / "skills" / "ar-board" / "stray.pyc").write_bytes(b"stale")
+            home = Path(tmp, "home")
+            home.mkdir()
+            r = subprocess.run(["bash", str(repo / "install.sh"), "ar-board"], env={**os.environ, "HOME": str(home)},
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            dest = home / ".claude" / "skills" / "ar-board"
+            self.assertTrue((dest / "scripts" / "ar_board.py").is_file())
+            leftovers = [p.name for p in dest.rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc"]
+            self.assertEqual(leftovers, [])
 
     def test_unknown_plugin_is_rejected_and_installs_nothing(self):
         with tempfile.TemporaryDirectory() as home:

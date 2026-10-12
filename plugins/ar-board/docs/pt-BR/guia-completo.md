@@ -2,10 +2,11 @@
 
 Painel local de **aprovar/rejeitar** para o Claude Code. O agente propõe N opções, você julga uma a uma com o teclado (e comenta o porquê), e ao dizer "terminei" o agente lê o resultado direto do disco, age só sobre o que foi aprovado e guarda suas preferências para as próximas rodadas.
 
-- **Versão:** 1.1.0 (histórico no [CHANGELOG](../../CHANGELOG.md)).
-- **Dependências:** `python3` (somente biblioteca padrão; o código usa apenas recursos de 3.7+). Sem `pip`, sem Node, sem rede externa.
+- **Versão:** veja o [CHANGELOG](../../CHANGELOG.md).
+- **Dependências:** `python3` 3.9+ (CI: 3.9, 3.11 e 3.13 em Ubuntu e macOS), somente biblioteca padrão. Sem `pip`, sem Node, sem rede externa.
 - **Formato:** plugin do marketplace Capybara Toolbox, com uma skill (`SKILL.md`) que traz o servidor junto (`scripts/ar_board.py`).
 - **Outros documentos:** a referência técnica em inglês está em [reference.md](../reference.md).
+- **Textos citados:** mensagens da interface e da linha de comando aparecem aqui exatamente como o programa as escreve, ou seja, sem acentos (convenção do projeto; a página é UTF-8).
 
 ## Índice
 
@@ -80,11 +81,11 @@ Peças:
 O ar-board faz parte do marketplace **Capybara Toolbox**. No Claude Code:
 
 ```
-/plugin marketplace add <caminho-ou-repositório>
+/plugin marketplace add dvwinck/capybara-toolbox
 /plugin install ar-board@capybara-toolbox
 ```
 
-Reinicie o Claude Code. A skill fica com namespace do plugin: ela pode ser acionada por linguagem natural, e a forma explícita é `/ar-board:ar-board`.
+A partir de um clone local, use `/plugin marketplace add ./capybara-toolbox` no primeiro comando. Reinicie o Claude Code. A skill fica com namespace do plugin: ela pode ser acionada por linguagem natural, e a forma explícita é `/ar-board:ar-board`.
 
 ### Alternativa sem marketplace
 
@@ -95,9 +96,11 @@ A partir de um clone do repositório:
 ./install.sh ar-board --uninstall  # remove
 ```
 
-### Alternativa para o claude.ai (*Customize → Skills*)
+Use uma forma só: marketplace e `install.sh` juntos deixam duas cópias da mesma skill (`/ar-board:ar-board` e `/ar-board`).
 
-Cole o conteúdo de `plugins/ar-board/dist/ar-board-single-file.SKILL.md`. É a mesma skill com o script embutido (arquivo gerado por `tools/sync.py`); no primeiro uso, ela grava o servidor em `~/.claude/ar-board/ar_board.py`. Esse é o único caso em que o script vive em `~/.claude/ar-board/`.
+### Variante de arquivo único
+
+`plugins/ar-board/dist/ar-board-single-file.SKILL.md` é a mesma skill com o script embutido (arquivo gerado por `tools/sync.py`), para ambientes que aceitam um `SKILL.md` avulso; no primeiro uso, ela grava o servidor em `~/.claude/ar-board/ar_board.py` e os comandos dela usam esse caminho. Esse é o único caso em que o script vive em `~/.claude/ar-board/`. A forma suportada é a instalação pelo plugin.
 
 ### Depois de instalar
 
@@ -112,15 +115,15 @@ De cima para baixo:
 
 | Região | O que mostra | Detalhes |
 |---|---|---|
-| **Cabeçalho** | Título do lote, subtítulo, e linha de contexto | A linha de contexto é `<subtitle> · Lote: <batch_id> · <N> itens · rodada <R>`. O `<title>` da aba do navegador é o título do lote. |
-| **Badge de conexão** | `● ao vivo` (verde), `sem conexão — use Copiar` (âmbar) ou `arquivo local — use Copiar` (âmbar) | Muda sozinho conforme cada gravação no servidor dá certo ou falha (ver §11). |
-| **Barra de atalhos** | Legenda das teclas, caixa "avançar ao decidir" e a linha de aviso | A linha de aviso (`#hint`) aparece por 4,5 s após cada avanço automático. |
+| **Cabeçalho** | Título do lote, linha de contexto e badge de conexão | A linha de contexto é `<subtitle> · Lote: <batch_id> · <N> itens · rodada <R>`; o subtítulo faz parte dela (e é omitido quando o lote não tem). O `<title>` da aba do navegador é o título do lote. |
+| **Badge de conexão** | `● ao vivo` (verde), `sem conexao — use Copiar` (âmbar) ou `arquivo local — use Copiar` (âmbar) | Muda sozinho conforme cada gravação no servidor dá certo ou falha (ver §11). |
+| **Barra de atalhos** | Legenda das teclas, caixa `avancar ao decidir` e a linha de aviso | A linha de aviso (`#hint`) aparece por 4,5 s após cada avanço automático e não ocupa espaço enquanto está vazia. |
 | **Barra de progresso** | Fração de itens com decisão | Largura = (total − sem decisão) ÷ total. `Talvez` conta como decidido. |
 | **Card** (esquerda) | Posição `n/N · id · tag`, selo da decisão atual, título, imagem opcional, campos, risco | Ver §5. |
-| **Painel lateral** (direita) | Metadados, campo de comentário, botões Aprovar/Rejeitar/Talvez/Pular/Anterior/Próximo, chips numerados | O botão da decisão atual fica com contorno destacado. |
+| **Painel lateral** (direita) | Metadados, campo de comentário, botões `Aprovar`/`Rejeitar`/`Talvez`/`Pular`/`Anterior`/`Proximo`, chips numerados | O botão da decisão atual fica com contorno destacado. |
 | **Chips** | Um botão numerado por item | Colorido pela decisão (verde/vermelho/âmbar; neutro sem decisão); o item atual tem anel de destaque; passar o mouse mostra o título; clicar salta para o item. |
-| **Resultado** | Contadores, nota geral do lote, botões Concluir/Baixar JSON/Copiar/Limpar | Contadores: `✓ aprovados · ✗ rejeitados · ≈ talvez · sem decisão`. |
-| **Banner de conclusão** | "Concluído. Volte ao Claude Code e diga "terminei"…" | Só aparece enquanto o lote está concluído (ver §9). |
+| **Resultado** | Contadores, nota geral do lote, botões Concluir/Baixar JSON/Copiar/Limpar | Contadores: `✓ N aprovados`, `✗ N rejeitados`, `≈ N talvez`, `N sem decisao`. |
+| **Banner de conclusão** | `Concluido. Volte ao Claude Code e diga "terminei" — o agente le as decisoes sozinho.` | Só aparece enquanto o lote está concluído (ver §9). |
 
 Em telas estreitas (≤ 860 px) o painel lateral passa para baixo do card.
 
@@ -138,13 +141,13 @@ Cada item do `batch.json` vira um card com esta ordem de renderização:
 Detalhes de cada elemento:
 
 - **`fields`**: lista livre de `{label, text}`. Convenção recomendada: `O que`, `Por quê`, e `Conceito` quando houver jargão. O rótulo é exibido em maiúsculas pequenas. Um item sem `fields` é válido (mostra só título e risco).
-- **Texto**: tudo é escapado antes de ir para o HTML. Só duas coisas são interpretadas: `` `código` `` vira `<code>` e quebra de linha (`\n`) vira `<br>`. Não há negrito, links nem outras marcações; HTML digitado aparece como texto literal (testado com `<script>`, `<b>` e `<i>`).
+- **Texto**: tudo é escapado antes de ir para o HTML. Só duas coisas são interpretadas: `` `código` `` vira `<code>` e quebra de linha (`\n`) vira `<br>`. Não há negrito, links nem outras marcações; HTML digitado aparece como texto literal (conferido à mão nas baterias manuais das versões 1.0.x; a suíte automatizada verifica o escape do título e dos dados embutidos, mas não executa o JavaScript que monta o card).
 - **`risk`**: `{level, text}`. O nível é normalizado (minúsculas, sem acento) e escolhe a cor: `baixo` verde, `médio`/`medio` âmbar, `alto` vermelho. Qualquer outro valor usa o estilo âmbar, mas o texto exibido é o original. A pílula mostra `nível — texto`.
 - **`meta`**: objeto simples; cada par vira uma linha no painel lateral (ex.: `Área`, `Escala atual`, `Esforço`). Valores não-string são convertidos para texto.
 - **`image`**: caminho **relativo à pasta do lote**, com extensão `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` ou `.svg`. No modo ao vivo é servida pelo próprio servidor (ver §14); no `build` é embutida como `data:` URI (ver §11). Também aceita um `data:` URI diretamente.
 - **`id`**: string única por lote (ex.: `A01`). É a chave em `decisions.json` e aparece na pílula e nos avisos.
 
-Quantidade de itens: sem limite técnico; testado com 50. A recomendação da skill é 10 por padrão.
+Quantidade de itens: sem limite técnico (a barra de chips cresce com a quantidade; ver §20). Um lote de 50 itens foi conferido à mão nas versões 1.0.x. A recomendação da skill é 10 por padrão.
 
 ## 6. Decisões e estados
 
@@ -179,9 +182,9 @@ Regras de comportamento:
 
 Regras que evitam acidentes:
 
-- **Campo de texto protege os atalhos:** dentro de um `<textarea>` (comentário ou nota do lote) nenhuma tecla é atalho, exceto `Esc`. Setas movem o cursor, não os itens. (Testado: digitar "arma" no campo não aprovou nada.)
+- **Campo de texto protege os atalhos:** dentro de um `<textarea>` (comentário ou nota do lote) nenhuma tecla é atalho, exceto `Esc`. Setas movem o cursor, não os itens.
 - **Modificadores são ignorados:** qualquer combinação com `Ctrl`, `Cmd` ou `Alt` passa direto, então `Ctrl+R` (recarregar), `Ctrl+C` etc. continuam funcionando.
-- **Foco em botões/checkbox não bloqueia os atalhos:** depois de clicar na caixa "avançar ao decidir", `A/R/M` continuam valendo. `Espaço`/`Enter` no botão focado o aciona normalmente.
+- **Foco em botões/checkbox não bloqueia os atalhos:** depois de clicar na caixa `avancar ao decidir`, `A/R/M` continuam valendo. `Espaço`/`Enter` no botão focado o aciona normalmente.
 - **Cliques fazem o mesmo que teclas:** os botões e os chips têm o mesmo efeito dos atalhos.
 - **Tecla segurada não decide em rajada:** o auto-repeat de `A`, `R` e `M` é ignorado (uma pressão = uma decisão). Segurar `Enter` num botão focado também é ignorado (só a primeira pressão aciona o botão), o que evita repetir, por exemplo, **Concluir** ou **Limpar**. Setas e `S` continuam repetindo.
 
@@ -190,7 +193,7 @@ Regras que evitam acidentes:
 Por padrão, depois de uma decisão (`A`, `R` ou `M` que **defina** um estado) o painel passa sozinho ao próximo item e mostra o aviso `<Estado>: <id> — use ← para voltar e comentar` por 4,5 s. Detalhes:
 
 - Não avança no último item, nem quando a tecla apenas **desfez** a decisão.
-- A caixa **"avançar ao decidir"** desliga o comportamento; a preferência fica no `localStorage` do navegador (chave `ar-board:auto`) e vale para todos os lotes naquele navegador.
+- A caixa **`avancar ao decidir`** desliga o comportamento; a preferência fica no `localStorage` do navegador (chave `ar-board:auto`) e vale para todos os lotes naquele navegador.
 - Fluxo rápido com avanço ligado: `A`, `R`, `A`… e, quando quiser justificar, `←` `C` (digita) `Esc` `→`.
 - Fluxo de comentar antes de decidir: `C` (digita) `Esc` `R`.
 
@@ -201,12 +204,12 @@ Por padrão, depois de uma decisão (`A`, `R` ou `M` que **defina** um estado) o
 - **Autosave com debounce de 350 ms:** cada digitação reinicia um temporizador por campo; o envio ocorre 350 ms após a última tecla. Existe um temporizador independente por item, então trocar de item no meio da digitação não perde nada.
 - **Descarga imediata (flush)** dos envios pendentes quando: a aba fica oculta (`visibilitychange`), a página é fechada ou recarregada (`pagehide`, com `fetch keepalive`), ou você clica em **Concluir**. Isso elimina a perda de texto digitado nos últimos 350 ms.
 - **Ordem garantida no Concluir:** primeiro todos os envios pendentes, depois a gravação de "concluído".
-- **Se o servidor cair:** o badge vira `sem conexão — use Copiar`, o estado continua no navegador (e é guardado em `localStorage` como segurança) e você pode usar **Copiar** para entregar o resultado no chat. Decisões e comentários feitos nesse intervalo **não** chegam ao `decisions.json`.
+- **Se o servidor cair:** o badge vira `sem conexao — use Copiar`, o estado continua na aba aberta e você pode usar **Copiar** para entregar o resultado no chat. Decisões e comentários feitos nesse intervalo **não** chegam ao `decisions.json`. A gravação que falhou também guarda o estado no `localStorage`, mas o modo ao vivo nunca o lê de volta: recarregar a aba mostra o estado do servidor, então copie antes de recarregar.
 - **Comentário vazio** (só espaços) remove o comentário do item.
 
 ## 9. Concluir: o ciclo de vida do `finished`
 
-`finished` é o sinal "terminei de julgar este lote". Quem o lê: `wait` (que só retorna quando for `true`) e `summary` (que mostra `Concluído: sim` ou `NÃO (parcial)`).
+`finished` é o sinal "terminei de julgar este lote". Quem o lê: `wait` (que só retorna quando for `true`) e `summary` (que mostra `Concluido pelo usuario: sim` ou `Concluido pelo usuario: NAO (parcial)`).
 
 | Evento | Efeito em `finished` |
 |---|---|
@@ -219,7 +222,7 @@ Por padrão, depois de uma decisão (`A`, `R` ou `M` que **defina** um estado) o
 
 Comportamento do botão **Concluir**:
 
-1. Se houver itens sem decisão, pede confirmação: "N itens sem decisão. Concluir mesmo assim?".
+1. Se houver itens sem decisão, pede confirmação: `N itens sem decisao. Concluir mesmo assim?`.
 2. Descarrega os envios pendentes (§8).
 3. Grava a conclusão. O banner verde **só aparece depois da confirmação do servidor**; se a gravação falhar, aparece um alerta orientando a usar **Copiar**.
 4. Com `--exit-on-finish`, o servidor encerra 0,6 s depois.
@@ -230,7 +233,7 @@ Comportamento do botão **Limpar** (pede confirmação):
 2. O servidor zera decisões, comentários e nota do lote, volta `finished` a `false` e remove `finished_at`.
 3. O painel volta ao primeiro item.
 
-Concluir é opcional: se você apenas disser "terminei" no chat, o agente roda `summary`, que acusa `NÃO (parcial)` e trata itens sem decisão como não aprovados.
+Concluir é opcional: se você apenas disser "terminei" no chat, o agente roda `summary`, que acusa `NAO (parcial)` e trata itens sem decisão como não aprovados.
 
 ## 10. Persistência, retomada e rodadas
 
@@ -262,7 +265,7 @@ Ao iniciar, o servidor lê `decisions.json` da pasta:
 
 - mesmo `batch_id` **e** mesma `round` → **retoma** (decisões, comentários e nota voltam como estavam; `finished` volta a `false` e `finished_at` é descartado, então é preciso clicar **Concluir** de novo). Recarregar a página ou reiniciar o servidor não perde nenhum julgamento;
 - `batch_id` ou `round` diferentes → o arquivo antigo é **arquivado** e começa um estado novo;
-- arquivo ilegível/corrompido, JSON que não é um objeto, ou JSON válido com formato interno errado (`items` que não é objeto, entrada de item que não é objeto, `decision` desconhecida, `comment` ou `batch_note` que não são texto) → é tratado como ilegível e começa um estado novo (sobrescreve);
+- arquivo ilegível/corrompido, JSON que não é um objeto, ou JSON válido com formato interno errado (`round` que não é inteiro, `items` que não é objeto, entrada de item que não é objeto, `decision` desconhecida, `comment` ou `batch_note` que não são texto) → é tratado como ilegível e começa um estado novo (sobrescreve);
 - `wait` e `summary` só consideram um `decisions.json` do mesmo `batch_id` e da mesma `round` do `batch.json`; se for de outro lote/rodada, ilegível, com formato interno inválido ou não for um objeto JSON, é ignorado e tudo conta como sem decisão. Isso impede agir sobre aprovações antigas enquanto o servidor da nova rodada ainda não subiu.
 
 ### Rodadas
@@ -286,7 +289,7 @@ Para refinar, o agente cria um novo `batch.json` com o **mesmo** `batch_id` e `"
 |---|---|---|
 | Como abre | URL `http://127.0.0.1:PORTA/?t=TOKEN` | Arquivo `board.html` (autocontido) |
 | Gravação | Cada ação vai ao servidor e para `decisions.json` | Só no navegador (`localStorage`) |
-| Badge | `● ao vivo` / `sem conexão — use Copiar` | `arquivo local — use Copiar` |
+| Badge | `● ao vivo` / `sem conexao — use Copiar` | `arquivo local — use Copiar` |
 | Botão Concluir | Visível | Oculto |
 | Entrega ao agente | O agente lê `decisions.json` | Você clica em **Copiar** e cola `AR-BOARD-RESULT…` no chat |
 | Imagens | Servidas por `/files/…` | Embutidas como `data:` URI se tiverem **menos de 2 MB**; maiores ou inválidas são omitidas sem aviso |
@@ -297,6 +300,8 @@ Detalhes do offline:
 - O progresso é guardado em `localStorage` sob a chave `ar-board:<batch_id>:r<round>` e restaurado ao reabrir o arquivo no mesmo navegador (itens e nota do lote).
 - Se o `localStorage` estiver indisponível (janela privada, bloqueio), tudo continua funcionando em memória; só não há restauração ao recarregar. Todo acesso a `localStorage` é protegido por `try/catch`.
 - O agente trata o JSON colado como se fosse o `decisions.json` (ver formato em §12).
+
+No modo ao vivo, o `localStorage` é gravado (depois de uma requisição que falhou e no Limpar), mas nunca lido de volta: ao recarregar, vale o estado do servidor.
 
 ## 12. Exportação: Copiar e Baixar JSON
 
@@ -325,13 +330,13 @@ AR-BOARD-RESULT
 
 ## 13. Referência da linha de comando
 
-Todos os comandos recebem a pasta do lote (`.ar-board/<batch_id>`). Rode com `python3 -I` (modo isolado: ignora variáveis de ambiente e o diretório atual no `sys.path`).
+Todos os comandos recebem a pasta do lote (`.ar-board/<batch_id>`). Rode com `python3 -I` (modo isolado: ignora as variáveis de ambiente `PYTHON*` e o diretório atual no `sys.path`). `python3 ar_board.py --help` lista os comandos.
 
 ```bash
-S=<pasta base da skill>/scripts/ar_board.py
+python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" check .ar-board/<batch_id>
 ```
 
-O script acompanha a skill: é o `skills/ar-board/scripts/ar_board.py` do plugin, chamado a partir da pasta base da skill (o caminho aparece como "Base directory for this skill" quando a skill é carregada). Só a variante de arquivo único usa `~/.claude/ar-board/ar_board.py`.
+O script acompanha a skill: é o `skills/ar-board/scripts/ar_board.py` do plugin, usado no lugar onde está. Dentro da skill, o Claude Code troca `${CLAUDE_SKILL_DIR}` pela pasta da skill; se a variável aparecer sem ser substituída, a skill manda usar o caminho mostrado como "Base directory for this skill". Num terminal seu, escreva o caminho completo (no cache de plugins do Claude Code, se instalou pelo marketplace; em `~/.claude/skills/ar-board/`, se usou o `install.sh`). Só a variante de arquivo único usa `~/.claude/ar-board/ar_board.py`.
 
 | Comando | Opções | Saída | Código de saída |
 |---|---|---|---|
@@ -394,6 +399,8 @@ Usada pela própria página; documentada para depuração. Toda requisição pas
 | `POST /api/finish` | cabeçalho | `{finished?: bool}` (padrão `true` se omitido) | `{"ok":true}` |
 | `POST /api/reset` | cabeçalho | `{}` | `{"ok":true}` |
 
+Em `GET`, o token vale como `?t=` ou como cabeçalho `X-AR-Token`; `POST` só aceita o cabeçalho (um `?t=` em `POST` recebe `403`).
+
 Detalhes:
 
 - `decision` aceita `"approved"`, `"rejected"`, `"maybe"` ou `null` (limpa). Qualquer outro valor, de qualquer tipo → `400 {"error":"decisao invalida"}`.
@@ -401,11 +408,11 @@ Detalhes:
 - `/api/finish`: `finished` precisa ser booleano; qualquer outro tipo → `400 {"error":"finished deve ser booleano"}`.
 - `comment` precisa ser string (senão `400`); é cortado em 5.000 caracteres; vazio remove o comentário.
 - Corpo acima de **1 MB** → `413`. JSON inválido → `400` com a mensagem do parser. Caminho desconhecido (autenticado) → `404`.
-- Métodos não implementados (`HEAD`, `PUT`…) recebem o erro padrão do `http.server` (`501`).
+- Métodos não implementados (`HEAD`, `PUT`, `OPTIONS`…) recebem o erro padrão do `http.server` (`501`).
 - Uma requisição rejeitada (400) **não altera o estado**: a validação roda inteira antes de qualquer gravação.
 - `Content-Length` negativo ou inválido → `400`. Token com caracteres não-ASCII → `403`.
-- Respostas levam `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer`. A página leva ainda uma CSP restritiva (§16).
-- O servidor é multithread; escritas e leituras do estado são serializadas por lock. Em teste, 2.400 requisições concorrentes (16 threads, mistura de gravações e leituras) terminaram sem erro e com o JSON íntegro.
+- Respostas levam `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer`. A página leva ainda uma CSP restritiva (§16). O cabeçalho `Server` é só `ar-board` (sem a versão do Python).
+- O servidor é multithread; escritas e leituras do estado são serializadas por lock. Na bateria manual das versões 1.0.x, 2.400 requisições concorrentes (16 threads, mistura de gravações e leituras) terminaram sem erro e com o JSON íntegro; esse ensaio não faz parte da suíte automatizada.
 
 ## 15. Validação do `batch.json`
 
@@ -417,15 +424,15 @@ Detalhes:
 | `batch_id` e `title`: strings não vazias | `campo '<k>' e obrigatorio (string)` |
 | `items`: lista não vazia | `'items' deve ser uma lista nao vazia` |
 | Cada item é um objeto | `item <i>: deve ser objeto` |
-| `id`: string não vazia e única | `item <i>: 'id' obrigatorio` / `id duplicado '<id>'` |
+| `id`: string não vazia e única | `item <i>: 'id' obrigatorio` / `item <i>: id duplicado '<id>'` |
 | `title` do item: string não vazia | `item <i>: 'title' obrigatorio` |
-| `fields`: lista de `{label, text}` com texto | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
+| `fields` (se presente): lista de `{label, text}` com texto | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
 | `round` (se presente): inteiro >= 1 | `campo 'round' deve ser inteiro >= 1` |
 | `tag` / `image` (se presentes): string | `item <i>: '<k>' deve ser string` |
 | `meta` (se presente): objeto | `item <i>: 'meta' deve ser objeto` |
-| `risk` (se presente): objeto com `level`/`text` em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
+| `risk` (se presente): objeto; `level` e `text`, quando presentes, em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
 
-JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e deve ser inteiro >= 1 (texto como `"2"` é rejeitado). `null` em `tag`, `image`, `meta` e `risk` conta como campo omitido (não é erro). Campos extras são ignorados.
+JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e deve ser inteiro >= 1 (texto como `"2"` é rejeitado). `null` em `tag`, `image`, `meta`, `risk` e `fields` conta como campo omitido (não é erro; `"fields": null` equivale a não ter campos). Outros valores que não são lista em `fields` (`{}`, `""`, `0`) são rejeitados, assim como números dentro de `fields` (escreva `"42"`). Em `risk`, os tipos só são conferidos para as chaves presentes: `{"risk": {}}` passa. Campos extras são ignorados.
 
 ## 16. Segurança
 
@@ -437,11 +444,13 @@ Modelo: um painel de uso individual, na própria máquina, que precisa ser inofe
 | Outra página no seu navegador tentando ler/gravar (CSRF) | Token aleatório obrigatório; escritas exigem o cabeçalho customizado `X-AR-Token` (o que impede requisições "simples" entre origens) |
 | DNS rebinding | Rejeita qualquer `Host` que não seja `127.0.0.1`/`localhost` |
 | XSS por conteúdo do lote ou comentário | Todo texto é escapado; só `` `código` `` e quebra de linha são interpretados; dados embutidos escapam `</` e separadores de linha Unicode |
-| Script injetado na página | CSP: `default-src 'none'`; scripts e estilos só inline; imagens só do mesmo servidor ou `data:`; `connect-src 'self'`; `base-uri 'none'`; `form-action 'none'` |
+| Script injetado na página | CSP: `default-src 'none'`; scripts e estilos só inline; imagens só do mesmo servidor ou `data:`; `connect-src 'self'`; `base-uri 'none'`; `form-action 'none'`; `frame-ancestors 'none'` |
+| Outra página embutindo o painel (clickjacking) | `frame-ancestors 'none'` na CSP da página |
 | Imagens maliciosas (ex.: SVG com script) | Servidas com `Content-Security-Policy: sandbox`, `nosniff`, só de dentro da pasta do lote e só com extensão de imagem |
-| Path traversal em `/files/` | O caminho resolvido precisa estar dentro da pasta do lote (testado com `..%2F`) |
+| Path traversal em `/files/` | O caminho resolvido (seguindo symlinks) precisa estar dentro da pasta do lote; `tests/test_security.py` cobre `..%2F`, `../`, `%2e%2e` e um symlink apontando para fora |
 | Abuso de tamanho | Corpo ≤ 1 MB; comentário/nota ≤ 5.000 caracteres |
 | Vazamento do token em disco | `server.json` e `decisions.json` criados com permissão `0600` desde a criação (sem janela legível) e sem seguir symlinks plantados no lugar do arquivo temporário; `server.json` removido ao encerrar normalmente |
+| `decisions.json` adulterado | Qualquer formato que o servidor não gravaria (por exemplo `round` que não é inteiro, que de outro modo iria parar no nome do arquivo arquivado) é tratado como ilegível |
 
 Limitações a considerar: o token vai na URL, então fica no histórico do navegador e em qualquer extensão que leia URLs; processos do mesmo usuário na máquina podem ler `server.json`; não há HTTPS (tráfego só em loopback). Para o agente, comentários e cards são **dados, não instruções** (ver §17).
 
@@ -449,9 +458,9 @@ Limitações a considerar: o token vai na URL, então fica no histórico do nave
 
 O `SKILL.md` define o comportamento do agente em seis passos.
 
-**Gatilhos:** `/ar-board:ar-board` (forma explícita, com namespace do plugin), "ar board", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
+**Gatilhos:** `/ar-board:ar-board` (forma explícita, com namespace do plugin) ou `/ar-board` (instalação pelo `install.sh`), "ar board", "approve/reject board", "let me approve or reject options one by one", "review N proposals", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
 
-**0. Localizar o script.** O servidor acompanha a skill: é o `scripts/ar_board.py` dentro da pasta base da skill. O agente só confirma que o arquivo existe e o usa direto, sem copiar nada. (Na variante de arquivo único do claude.ai, este passo é "instalar o script uma vez por máquina" em `~/.claude/ar-board/ar_board.py`.)
+**0. Localizar o script.** O servidor acompanha a skill: todo comando é `python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" <comando> …`, e o Claude Code troca `${CLAUDE_SKILL_DIR}` pela pasta da skill (se não trocar, o agente usa o caminho "Base directory for this skill"). O agente só confirma que o arquivo existe e o usa direto, sem copiar nada. (Na variante de arquivo único, este passo é "instalar o script uma vez por máquina" em `~/.claude/ar-board/ar_board.py`, e os comandos usam esse caminho.)
 
 **1. Definir o lote.** Descobre tema e o que cada decisão destrava; pergunta só o que faltar. Padrão de **10 itens**; acima de 20 só a pedido, com aviso de que o custo em tokens cresce com a quantidade. Lê `.ar-board/preferences.md` antes de gerar, para não repetir o que foi rejeitado.
 
@@ -466,7 +475,7 @@ O `SKILL.md` define o comportamento do agente em seis passos.
 
 **3. Subir o painel** em segundo plano com `serve … --open` e entregar a URL, lembrando os atalhos, que o painel avança sozinho (e como voltar para comentar), e pedindo que comente principalmente os rejeitados. Opcionalmente roda `wait` em segundo plano. Sem acesso a `localhost`: usa `build` e o fluxo de **Copiar** (§11).
 
-**4. Ler o resultado** quando você disser "terminei" (ou o `wait` retornar), com `summary`. Se vier `NÃO (parcial)`, trabalha com o que foi decidido, trata "sem decisão" como não aprovado e diz isso explicitamente.
+**4. Ler o resultado** quando você disser "terminei" (ou o `wait` retornar), com `summary`. Se vier `NAO (parcial)`, trabalha com o que foi decidido, trata "sem decisão" como não aprovado e diz isso explicitamente.
 
 **5. Agir e aprender**, na ordem:
 
@@ -505,12 +514,13 @@ Princípios:
 
 ## 19. Visual, responsividade e acessibilidade
 
-- **Tema:** acompanha o do sistema (`prefers-color-scheme`): escuro por padrão e uma variante clara. Cores: verde = aprovado, vermelho = rejeitado, âmbar = talvez/risco médio, laranja = destaque e progresso.
-- **Responsivo:** grade de duas colunas acima de 860 px, coluna única abaixo. Texto longo e sem espaços (URLs, caminhos) quebra em vez de estourar a largura; verificado em 390 px sem rolagem horizontal.
+- **Tema:** acompanha o do sistema (`prefers-color-scheme`): escuro por padrão e uma variante clara. Cada tema declara seu `color-scheme` (controles nativos e barras de rolagem acompanham) e a caixa de seleção usa a cor de destaque (`accent-color`). Cores: verde = aprovado, vermelho = rejeitado, âmbar = talvez/risco médio, laranja = destaque e progresso.
+- **Responsivo:** grade de duas colunas acima de 860 px, coluna única abaixo. Texto longo e sem espaços (URLs, caminhos) quebra em vez de estourar a largura; conferido à mão em 390 px, sem rolagem horizontal, nas baterias manuais das versões 1.0.x.
 - **Tipografia:** fonte do sistema; `code` e teclas em monoespaçada.
 - **Acessibilidade existente:** campos de texto com `<label for>`, textos de ajuda e `placeholder`, foco visível nos campos, navegação por Tab na ordem natural e ativação de botões por Enter/Espaço (Enter segurado não repete; ver §7), rótulo textual em todos os botões, informação de estado nunca só por cor (o selo e os contadores têm texto).
-- **Ainda não coberto:** regiões `aria-live` para os avisos (o aviso de avanço e o banner não são anunciados por leitores de tela) e verificação formal de contraste (auditoria WCAG completa).
-- Mensagens e rótulos estão em português sem acentos dentro da página (por simplicidade de codificação); o conteúdo dos cards aceita qualquer Unicode (testado com acentos e caracteres CJK).
+- **Contraste:** a suíte verifica todos os pares texto/fundo das duas paletas contra o WCAG AA (4,5:1) em `tests/test_page.py`.
+- **Ainda não coberto:** regiões `aria-live` para os avisos (o aviso de avanço e o banner não são anunciados por leitores de tela) e uma auditoria WCAG completa, além da verificação da paleta.
+- Mensagens e rótulos estão em português sem acentos dentro da página, por convenção do projeto (a página é servida e gravada em UTF-8); o conteúdo dos cards aceita qualquer Unicode (acentos e caracteres CJK foram conferidos à mão nas versões 1.0.x).
 
 ## 20. Limites e comportamentos conhecidos
 
@@ -521,7 +531,7 @@ Princípios:
 - Texto dos cards é só texto simples com `` `código` `` e quebras de linha (sem Markdown completo).
 - Com mais de ~50 itens a barra de chips fica longa (funciona, mas a revisão item a item fica cansativa; prefira lotes menores e várias rodadas).
 - Imagens maiores que 2 MB são ignoradas silenciosamente no `build`.
-- Python: a suíte automatizada (`python3 -m unittest discover -s plugins/ar-board/tests`) roda em 3.15 no ambiente do autor; o código usa apenas recursos de 3.7+ e não depende de pacotes externos.
+- Python: 3.9+ (a CI roda a suíte em 3.9, 3.11 e 3.13, em Ubuntu e macOS); não depende de pacotes externos.
 - O fluxo completo dentro de uma sessão real do Claude Code (agente lendo o resultado) foi exercitado por script e navegador, mas não observado de ponta a ponta numa sessão interativa.
 
 ## 21. Testes e histórico de versões
@@ -532,9 +542,9 @@ Princípios:
 python3 -m unittest discover -s plugins/ar-board/tests -v
 ```
 
-Cobre estado, retomada e rodadas (incluindo `wait`/`summary` × rodada antiga e `decisions.json` com formato interno inválido), atomicidade e tipos inválidos nos endpoints, validação do `batch.json`, permissões de arquivo, porta ocupada, as guardas do JavaScript embutido na página e a coerência do plugin (`tools/sync.py --check` e o `install.sh`). A suíte não executa JavaScript: o comportamento da interface no navegador (tecla segurada, Limpar, abertura no primeiro item pendente) é conferido à mão.
+Cobre estado, retomada e rodadas (incluindo `wait`/`summary` × rodada antiga e `decisions.json` com formato interno inválido), atomicidade e tipos inválidos nos endpoints, validação do `batch.json`, permissões de arquivo, porta ocupada, as proteções de segurança (`tests/test_security.py`: token, `Host`, path traversal e symlinks em `/files/`, SVG em sandbox, CSP, token de `POST` só no cabeçalho, método não suportado, escape da página, cabeçalho `Server`), o contraste da paleta, as guardas do JavaScript embutido na página e a coerência do plugin (`tools/sync.py --check` e o `install.sh`). A suíte não executa JavaScript: o comportamento da interface no navegador (tecla segurada, Limpar, abertura no primeiro item pendente) é conferido à mão.
 
-Historicamente (versões 1.0.x) a validação era uma bateria manual, feita em Chromium headless: fluxo completo com teclado, concorrência, limites, segurança, layout em 390 px e um ensaio de "agente novo". Ela foi substituída pela suíte acima e não é mais mantida.
+Historicamente (versões 1.0.x) a validação era uma bateria manual, feita em Chromium headless: fluxo completo com teclado, concorrência (2.400 requisições), lote de 50 itens com HTML, acentos e CJK, atalhos que não disparam dentro de campos de texto, segurança, layout em 390 px e um ensaio de "agente novo". Ela foi substituída pela suíte acima e não é mais mantida; as menções a "conferido à mão nas versões 1.0.x" neste guia se referem a ela.
 
 **Histórico de versões:** veja o [CHANGELOG](../../CHANGELOG.md).
 
@@ -543,11 +553,11 @@ Historicamente (versões 1.0.x) a validação era uma bateria manual, feita em C
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
 | Página retorna `403` | URL sem `?t=TOKEN` ou token de uma execução anterior | Use a URL impressa pelo `serve` na execução atual |
-| Badge "sem conexão — use Copiar" | O servidor foi encerrado | Reinicie o `serve` (o estado é retomado) ou use **Copiar** |
+| Badge `sem conexao — use Copiar` | O servidor foi encerrado | Reinicie o `serve` (o estado é retomado) ou use **Copiar** |
 | `batch.json invalido` | Campo obrigatório ausente ou `id` duplicado | Rode `check` e corrija os itens listados |
 | Navegador não abre sozinho | Ambiente sem navegador padrão | Abra manualmente a URL impressa |
-| Comentário caiu no item seguinte | Avanço automático após A/R/M | Volte com `←` antes de `C`, ou desligue "avançar ao decidir" |
-| `summary` diz "NÃO (parcial)" | Saiu sem clicar em Concluir | Itens sem decisão contam como não aprovados |
+| Comentário caiu no item seguinte | Avanço automático após A/R/M | Volte com `←` antes de `C`, ou desligue `avancar ao decidir` |
+| `summary` diz `NAO (parcial)` | Saiu sem clicar em Concluir | Itens sem decisão contam como não aprovados |
 | `wait` não retorna | O lote não foi concluído, foi reaberto por uma edição ou o servidor foi reiniciado | Clique em **Concluir** de novo (editar decisão/comentário ou reiniciar o servidor zera o `finished`) |
 | Rodada nova não aparece | `batch.json` alterado com o servidor no ar | Reinicie o `serve` |
 | Existem `decisions.rN.json` | Arquivamento automático de rodadas anteriores | Esperado; guarde ou apague |
@@ -571,7 +581,7 @@ plugins/ar-board/
     ├── batch.json                    # escrito pelo agente
     ├── decisions.json                # escrito pelo painel (rodada atual)
     ├── decisions.r1.json             # rodadas arquivadas (sufixos .1, .2… se houver colisão)
-    ├── server.json                   # url/pid/token do servidor em execução (0600)
+    ├── server.json                   # url (com o token), pid e started_at do servidor em execução (0600)
     ├── board.html                    # só no modo offline (build)
     └── *.png                         # imagens opcionais dos cards
 ```

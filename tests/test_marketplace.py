@@ -33,6 +33,11 @@ class RealCatalogTest(unittest.TestCase):
         self.assertIn("ar-board", [p["name"] for p in market["plugins"]])
         self.assertTrue((REPO / "LICENSE").exists())
 
+    def test_catalog_has_no_unverifiable_fields(self):
+        market = json.loads((REPO / tool.MARKET).read_text(encoding="utf-8"))
+        self.assertNotIn("$schema", market)
+        self.assertNotIn("version", market.get("metadata", {}))  # per-plugin versions live in the entries
+
 
 class CatalogToolTest(unittest.TestCase):
     def setUp(self):
@@ -55,6 +60,17 @@ class CatalogToolTest(unittest.TestCase):
         self.assertEqual(run(["--check"], self.root)[0], 0)
         market = json.loads((self.root / tool.MARKET).read_text(encoding="utf-8"))
         self.assertEqual(market["plugins"][0]["version"], "9.9.9")
+
+    def test_homepage_and_repository_are_synced_from_the_manifest(self):
+        data = json.loads(self.manifest().read_text(encoding="utf-8"))
+        data["homepage"] = "https://example.invalid/home"
+        data["repository"] = "https://example.invalid/repo"
+        self.manifest().write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        self.assertEqual(run(["--check"], self.root)[0], 1)
+        self.assertEqual(run([], self.root)[0], 0)
+        entry = json.loads((self.root / tool.MARKET).read_text(encoding="utf-8"))["plugins"][0]
+        self.assertEqual(entry["homepage"], "https://example.invalid/home")
+        self.assertEqual(entry["repository"], "https://example.invalid/repo")
 
     def test_plugin_directory_missing_from_catalog_is_reported(self):
         (self.root / "plugins" / "orphan").mkdir()

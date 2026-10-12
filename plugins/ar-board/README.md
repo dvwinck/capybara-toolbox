@@ -16,7 +16,7 @@ A local **approve/reject board** for [Claude Code](https://claude.com/claude-cod
 /plugin install ar-board@capybara-toolbox
 ```
 
-Other routes (manual copy, claude.ai single-file skill): see the [repository README](../../README.md#install).
+Other routes (manual copy with `install.sh`, self-contained single-file variant): see the [repository README](../../README.md#install). Use one route only: the marketplace and `install.sh` together leave two copies of the skill.
 
 ## Use
 

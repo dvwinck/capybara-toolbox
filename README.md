@@ -15,9 +15,9 @@ A small, carefully built collection of skills and plugins for [Claude Code](http
 
 ## What's inside
 
-| Plugin | What it does | Version |
+| Plugin | What it does | Changes |
 | --- | --- | --- |
-| [**ar-board**](plugins/ar-board) | A local approve/reject board. The agent proposes N options, you judge them one by one with the keyboard (`A` approve, `R` reject, `M` maybe) and leave comments; the agent then acts only on what you approved and remembers your preferences for the next rounds. | 1.1.0 |
+| [**ar-board**](plugins/ar-board) | A local approve/reject board. The agent proposes N options, you judge them one by one with the keyboard (`A` approve, `R` reject, `M` maybe) and leave comments; the agent then acts only on what you approved and remembers your preferences for the next rounds. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
 
 ## Install
 
@@ -52,7 +52,9 @@ git clone https://github.com/dvwinck/capybara-toolbox.git
 ./install.sh ar-board --uninstall
 ```
 
-**claude.ai (Customize → Skills)** — paste the single-file variant [`plugins/ar-board/dist/ar-board-single-file.SKILL.md`](plugins/ar-board/dist/ar-board-single-file.SKILL.md); it embeds the server script and installs it on first use.
+**Single-file variant** — [`plugins/ar-board/dist/ar-board-single-file.SKILL.md`](plugins/ar-board/dist/ar-board-single-file.SKILL.md) is a self-contained `SKILL.md` with the server script embedded (it installs the script into `~/.claude/ar-board/` on first use), for surfaces that accept a lone `SKILL.md`. The plugin install above is the supported route.
+
+> **Pick one route.** Installing through the marketplace *and* with `install.sh` leaves two copies of the same skill (`/ar-board:ar-board` and `/ar-board`). Uninstall one of them (`claude plugin uninstall ar-board@capybara-toolbox` or `./install.sh ar-board --uninstall`).
 
 </details>
 

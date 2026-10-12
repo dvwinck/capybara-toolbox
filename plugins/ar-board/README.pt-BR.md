@@ -15,7 +15,7 @@
 /plugin install ar-board@capybara-toolbox
 ```
 
-Outras formas (cópia manual, skill de arquivo único no claude.ai): veja o [README do repositório](../../README.pt-BR.md).
+Outras formas (cópia manual com `install.sh`, variante autocontida de arquivo único): veja o [README do repositório](../../README.pt-BR.md). Use uma forma só: marketplace e `install.sh` juntos deixam duas cópias da skill.
 
 ## Uso
 

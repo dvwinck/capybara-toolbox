@@ -28,7 +28,7 @@ python3 -I $S check|serve|wait|summary|build DIR          # DIR must contain bat
 - **Round/resume logic lives in `Store.__init__`**: same `batch_id` + `round` resumes (and resets `finished`); different → the old file is archived as `decisions.r<N>[.k].json`, never overwritten. `cmd_serve` binds the port first so a busy port archives nothing.
 - **Live vs offline**: `serve` talks to `/api/*` (token in the URL for GET, `X-AR-Token` for POST, `Host` must be 127.0.0.1/localhost, strict CSP); `build` makes `live=false` HTML that only uses `localStorage` and exports through Copiar (`AR-BOARD-RESULT` + JSON, a different shape from `decisions.json`).
 - `Store.set_item` validates everything before touching state, so a 400 leaves no trace. `finished` resets to `false` on any item edit, but not on note edits.
-- `skills/ar-board/SKILL.md` is the agent-facing contract (flow, card-quality rules, `preferences.md` format). It is lean: it tells the agent to run the script bundled next to it (`<skill base dir>/scripts/ar_board.py`) with `python3 -I`.
+- `skills/ar-board/SKILL.md` is the agent-facing contract (flow, card-quality rules, `preferences.md` format). It is lean: every command is `python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" <cmd> …` (Claude Code expands the variable to the skill's folder; the skill tells the agent to fall back to the "Base directory for this skill" path if it is not expanded). `tools/sync.py` rewrites that path to `$HOME/.claude/ar-board/ar_board.py` in the single-file variant.
 
 ## Keeping things consistent (non-obvious)
 
@@ -36,4 +36,6 @@ python3 -I $S check|serve|wait|summary|build DIR          # DIR must contain bat
 - To release: bump `VERSION` and the `# ar-board X.Y.Z -` header comment, add a `## [X.Y.Z]` entry to `plugins/ar-board/CHANGELOG.md`, then run both sync tools. `--check` (run by the tests and CI) fails on drift, on a stale header comment and on a missing changelog entry.
 - The `<!-- ar-board:locate-script -->` markers in `SKILL.md` are what the single-file generator swaps for the "install the script" step; don't remove them.
 - The JS in `PAGE` is not executed by the suite (only string guards + WCAG checks on the palette); check UI changes in a browser.
-- In-page UI strings are deliberately accent-free Portuguese; card content may be any Unicode.
+- In-page UI strings are accent-free Portuguese by project convention (the page itself is UTF-8); card content may be any Unicode.
+- `tests/helpers.py` sets `sys.dont_write_bytecode` and CI sets `PYTHONDONTWRITEBYTECODE=1`, so no `__pycache__` lands inside the plugin; `install.sh` strips caches anyway.
+- `MASCOT_BODY` in the script must equal the body of `assets/logo.svg` (a test enforces it); edit the logo, then paste the compact body into the script.

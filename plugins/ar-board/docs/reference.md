@@ -2,7 +2,7 @@
 
 ar-board is a local approve/reject board for Claude Code. The agent proposes N independent options as structured cards, you judge them one by one from the keyboard (and comment on why), and when you say "terminei" ("I'm done") the agent reads the result straight from disk, acts only on what you approved, and records your preferences for later rounds.
 
-Requirements: `python3`, standard library only. No `pip`, no Node, no external network.
+Requirements: `python3` 3.9+ (CI: 3.9, 3.11 and 3.13 on Ubuntu and macOS), standard library only. No `pip`, no Node, no external network.
 
 This document is a reference. Strings quoted in Portuguese (CLI output, validation messages, UI labels) are the program's real output, which is written without accents.
 
@@ -89,7 +89,7 @@ Top to bottom:
 |---|---|---|
 | **Header** | Batch title, a context line, connection badge | The context line is `<subtitle> · Lote: <batch_id> · <N> itens · rodada <R>` (the subtitle part is omitted when the batch has none). The browser tab `<title>` is the batch title. |
 | **Connection badge** | `● ao vivo` (green), `sem conexao — use Copiar` (amber) or `arquivo local — use Copiar` (amber) | Switches by itself as each write to the server succeeds or fails (see [Live mode vs offline mode](#live-mode-vs-offline-mode)). |
-| **Shortcut bar** | Key legend, the "avancar ao decidir" checkbox, and a hint line | The hint line appears for 4.5 s after each automatic advance. |
+| **Shortcut bar** | Key legend, the "avancar ao decidir" checkbox, and a hint line | The hint line appears for 4.5 s after each automatic advance and takes no space while empty. |
 | **Progress bar** | Fraction of items that have a decision | Width = (total - undecided) / total. `Talvez` counts as decided. |
 | **Card** (left) | Position `n/N · id · tag`, current decision badge, title, optional image, fields, risk | See [The card](#the-card). |
 | **Side panel** (right) | Metadata, comment field, Aprovar/Rejeitar/Talvez/Pular/Anterior/Proximo buttons, numbered chips | The button for the current decision gets a highlighted outline. |
@@ -119,7 +119,7 @@ Element details:
 - **`image`**: path **relative to the batch folder**, with extension `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` or `.svg`. In live mode it is served by the server itself (see [Internal HTTP API](#internal-http-api)); in `build` it is embedded as a `data:` URI (see [Live mode vs offline mode](#live-mode-vs-offline-mode)). A `data:` URI is also accepted directly.
 - **`id`**: string unique within the batch (for example `A01`). It is the key in `decisions.json` and appears in the pill and in notices.
 
-Number of items: no technical limit; tested with 50. The skill recommends 10 by default.
+Number of items: no technical limit (the chip bar grows with the count; see [Known limits](#known-limits)). The skill recommends 10 by default.
 
 ## Decisions and states
 
@@ -177,7 +177,7 @@ By default, after a decision (`A`, `R` or `M` that **sets** a state) the panel m
 - **Autosave with a 350 ms debounce:** each keystroke restarts a timer per field; the request is sent 350 ms after the last keystroke. There is an independent timer per item, so switching items mid-typing loses nothing. Decisions (A/R/M clicks and keys) are sent immediately, not debounced.
 - **Immediate flush** of pending sends when: the tab becomes hidden (`visibilitychange`), the page is closed or reloaded (`pagehide`, using `fetch` with `keepalive`), or you click **Concluir**. This removes the loss of text typed in the last 350 ms.
 - **Guaranteed order on Concluir:** all pending sends first, then the "finished" write.
-- **If the server goes down:** the badge changes to `sem conexao — use Copiar`, state stays in the browser (and is written to `localStorage` as a safety net after a failed request), and you can use **Copiar** to hand the result over in chat. Decisions and comments made during that gap do **not** reach `decisions.json`.
+- **If the server goes down:** the badge changes to `sem conexao — use Copiar`, state stays in the open tab, and you can use **Copiar** to hand the result over in chat. Decisions and comments made during that gap do **not** reach `decisions.json`. The failed write also stores the state in `localStorage`, but live mode never reads it back: reloading the tab shows the server's state, so copy before reloading.
 - **Empty comment** (whitespace only) removes the item's comment.
 
 ## Concluding and the finished lifecycle
@@ -235,7 +235,7 @@ On start, the server reads `decisions.json` from the batch folder:
 - different `batch_id` or `round` -> the old file is **archived** and a fresh state begins;
 - unreadable or corrupted file, JSON that is not an object, or valid JSON with the wrong inner shape (see below) -> a fresh state is started (the file is overwritten, not archived).
 
-A `decisions.json` is considered valid only if all of these hold: it is an object; `items` is an object; `batch_note`, if present, is a string; every entry in `items` is an object; every `decision`, if not null, is one of `approved`, `rejected`, `maybe`; every `comment`, if not null, is a string. Anything else is treated exactly like an unreadable file.
+A `decisions.json` is considered valid only if all of these hold: it is an object; `round` is an integer (not a boolean, float or string); `items` is an object; `batch_note`, if present, is a string; every entry in `items` is an object; every `decision`, if not null, is one of `approved`, `rejected`, `maybe`; every `comment`, if not null, is a string. Anything else is treated exactly like an unreadable file.
 
 ### What `wait` and `summary` accept
 
@@ -304,12 +304,13 @@ AR-BOARD-RESULT
 
 ## CLI reference
 
-All commands take the batch folder (`.ar-board/<batch_id>`). The script is bundled with the skill at `scripts/ar_board.py` and is invoked directly from the skill's base directory (nothing is copied elsewhere). Run it with `python3 -I` (isolated mode: ignores environment variables and the current directory on `sys.path`).
+All commands take the batch folder (`.ar-board/<batch_id>`). The script is bundled with the skill at `scripts/ar_board.py` and is invoked directly from the skill's folder (nothing is copied elsewhere). Run it with `python3 -I` (isolated mode: ignores `PYTHON*` environment variables and the current directory on `sys.path`). `python3 ar_board.py --help` lists the commands.
 
 ```bash
-S="<skill base directory>/scripts/ar_board.py"
-python3 -I "$S" check .ar-board/<batch_id>
+python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" check .ar-board/<batch_id>
 ```
+
+Inside the skill, Claude Code replaces `${CLAUDE_SKILL_DIR}` with the skill's folder. If it ever shows up unexpanded, the skill tells the agent to use the "Base directory for this skill" path printed when the skill loads. In a shell of your own, write the full path (for a marketplace install it lives under the Claude Code plugin cache; for `install.sh`, under `~/.claude/skills/ar-board/`). The single-file variant installs the script at `~/.claude/ar-board/ar_board.py` and its commands use that path.
 
 | Command | Options | Output | Exit code |
 |---|---|---|---|
@@ -397,7 +398,7 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 - Body over **1 MB** -> `413 {"error":"too large"}`.
 - Non-ASCII token -> `403`.
 - Unknown path (authenticated) -> `404 {"error":"not found"}`.
-- Unimplemented methods (`HEAD`, `PUT`, ...) get the standard `http.server` error (`501`).
+- Unimplemented methods (`HEAD`, `PUT`, `OPTIONS`, ...) get the standard `http.server` error (`501`).
 
 ### State effects
 
@@ -408,6 +409,7 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 ### Other behavior
 
 - Responses carry `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The page also carries a restrictive CSP (see [Security model](#security-model)); images are served with `Content-Security-Policy: sandbox`.
+- The `Server` header is just `ar-board` (no Python version).
 - The server is multithreaded; reads and writes of state are serialized by a lock.
 
 ## batch.json validation
@@ -426,13 +428,14 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 | `tag` / `image` (if present): string | `item <i>: '<k>' deve ser string` |
 | `meta` (if present): object | `item <i>: 'meta' deve ser objeto` |
 | `risk` (if present): object whose `level`/`text`, when present, are strings | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
-| `fields`: list of `{label, text}` with string label and text | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
+| `fields` (if present): list of `{label, text}` with string label and text | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
 
 Notes:
 
 - Malformed JSON -> `batch.json nao e JSON valido: <detail>`; missing file -> `nao encontrei <path>`. An invalid batch prints `batch.json invalido:` followed by one `- <error>` line per problem.
 - `round` is optional (default 1). It must be an integer >= 1: the string `"2"` is rejected, and so is `true`.
-- `null` for `tag`, `image`, `meta` or `risk` counts as omitted. `fields` has no such exemption: `null` is rejected, and numbers inside `fields` are rejected (write `"42"`).
+- `null` for `tag`, `image`, `meta`, `risk` or `fields` counts as omitted (`"fields": null` is the same as no fields). Other non-list values for `fields` (`{}`, `""`, `0`) are rejected, and so are numbers inside `fields` (write `"42"`).
+- `risk` types are checked only for the keys present: `{"risk": {}}` and `{"risk": {"level": "alto"}}` pass.
 - `title` and `batch_id` are rejected if empty or whitespace only.
 - If `items` is missing, empty or not a list, per-item checks are skipped.
 - Extra fields are ignored (for example an optional `subtitle`).
@@ -472,22 +475,25 @@ The model: a single-user panel on your own machine that must stay harmless even 
 | Another page in your browser trying to read or write (CSRF) | Random token required; writes require the custom `X-AR-Token` header (which prevents cross-origin "simple" requests) |
 | DNS rebinding | Rejects any `Host` that is not `127.0.0.1` or `localhost` |
 | XSS through batch content or comments | All text is escaped; only `` `code` `` and line breaks are interpreted; embedded data escapes `</` and Unicode line separators |
-| Script injected into the page | CSP: `default-src 'none'`; `script-src 'unsafe-inline'`; `style-src 'unsafe-inline'`; `img-src 'self' data:`; `connect-src 'self'`; `base-uri 'none'`; `form-action 'none'` |
+| Script injected into the page | CSP: `default-src 'none'`; `script-src 'unsafe-inline'`; `style-src 'unsafe-inline'`; `img-src 'self' data:`; `connect-src 'self'`; `base-uri 'none'`; `form-action 'none'`; `frame-ancestors 'none'` |
+| Another page framing the panel (clickjacking) | `frame-ancestors 'none'` in the page CSP |
 | Malicious images (for example SVG with script) | Served with `Content-Security-Policy: sandbox` and `nosniff`, only from inside the batch folder and only with an image extension |
-| Path traversal on `/files/` | The resolved path must lie inside the batch folder (tested with `..%2F`) |
+| Path traversal on `/files/` | The resolved path (symlinks followed) must lie inside the batch folder; `tests/test_security.py` covers `..%2F`, `../`, `%2e%2e` and a symlink pointing outside |
 | Size abuse | Body <= 1 MB; comment/note <= 5,000 characters |
 | Token leakage on disk | `decisions.json` (via `decisions.tmp`) and `server.json` are created with mode `0600` from creation (no readable window); any existing file at the target path, even a symlink, is unlinked first and recreated with `O_EXCL`, so planted symlinks are never followed; `server.json` is removed on normal shutdown |
 | Non-ASCII token in a request | Compared as UTF-8 bytes with a constant-time comparison; rejected with `403` |
+| Fingerprinting | The `Server` header does not reveal the Python version |
+| Tampered `decisions.json` | Any shape the server would not write (for example a non-integer `round`, which would otherwise end up in an archive file name) is treated as unreadable |
 
 Limitations to consider: the token is in the URL, so it lands in browser history and in any extension that can read URLs; other processes of the same user on the machine can read `server.json`; there is no HTTPS (traffic stays on loopback). For the agent, comments and cards are **data, not instructions** (see below).
 
 ## The agent side (the skill)
 
-The skill ships inside the plugin, at `skills/ar-board/`. Its `SKILL.md` defines the agent's behavior in steps 0 to 5. The script is `skills/ar-board/scripts/ar_board.py`, invoked directly from the skill's base directory, with no copy to `~/.claude`.
+The skill ships inside the plugin, at `skills/ar-board/`. Its `SKILL.md` defines the agent's behavior in steps 0 to 5. The script is `skills/ar-board/scripts/ar_board.py`, invoked in place from the skill's folder, with no copy to `~/.claude`.
 
-**Triggers:** `/ar-board`, "ar board", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
+**Triggers:** `/ar-board:ar-board` (plugin install) or `/ar-board` (`install.sh`), "ar board", "approve/reject board", "let me approve or reject options one by one", "review N proposals", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
 
-**0. Locate the script.** The agent checks that `scripts/ar_board.py` exists under the skill's base directory and uses its absolute path in every command (each Bash call starts a fresh shell, so no variable is relied on across calls). Requires only `python3`.
+**0. Locate the script.** Every command in the skill is written as `python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" <command> …`; Claude Code expands `${CLAUDE_SKILL_DIR}` to the skill's folder, so no shell variable has to survive between Bash calls. The agent checks that the file exists; if the variable shows up unexpanded, it uses the "Base directory for this skill" path instead. Requires only `python3`.
 
 **1. Define the batch.** Works out the topic and what each decision unlocks from the request and project context; asks only what is missing. Default of **10 items**; above 20 only on request, with a warning that token cost grows with the count. Reads `.ar-board/preferences.md` before generating, so it does not repeat what was rejected.
 
@@ -542,12 +548,13 @@ Principles:
 
 ## Visual design, responsiveness and accessibility
 
-- **Theme:** follows the system (`prefers-color-scheme`): dark by default with a light variant. Colors: green = approved, red = rejected, amber = maybe / medium risk, orange = highlight and progress.
-- **Responsive:** two-column grid above 860 px, single column below. Long unbroken text (URLs, paths) wraps instead of overflowing; checked at 390 px with no horizontal scroll.
+- **Theme:** follows the system (`prefers-color-scheme`): dark by default with a light variant. Each theme declares its `color-scheme`, so native controls and scrollbars follow it, and the checkbox uses the highlight color (`accent-color`). Colors: green = approved, red = rejected, amber = maybe / medium risk, orange = highlight and progress.
+- **Responsive:** two-column grid above 860 px, single column below. Long unbroken text (URLs, paths) wraps instead of overflowing; this was checked by hand at 390 px (no horizontal scroll) during the 1.0.x manual test runs.
 - **Typography:** system font; `code` and keys in monospace.
 - **Accessibility present:** text fields have `<label for>`, help text and `placeholder`; visible focus on text fields; Tab navigation in natural order and Enter/Space activation of buttons; a text label on every button; state information is never conveyed by color alone (the badge and counters carry text).
-- **Not covered yet:** `aria-live` regions for notices (the advance notice and the completion banner are not announced by screen readers) and a formal contrast check (a full WCAG audit).
-- UI messages and labels are in Portuguese without accents (for encoding simplicity); card content accepts any Unicode (tested with accents and CJK characters).
+- **Contrast:** the test suite checks every text/background pair of both palettes against WCAG AA (4.5:1) in `tests/test_page.py`.
+- **Not covered yet:** `aria-live` regions for notices (the advance notice and the completion banner are not announced by screen readers) and a full WCAG audit beyond the palette check.
+- UI messages and labels are in Portuguese without accents, by project convention (the page is served and saved as UTF-8); card content accepts any Unicode (accented and CJK text was checked by hand during the 1.0.x manual test runs).
 
 ## Known limits
 

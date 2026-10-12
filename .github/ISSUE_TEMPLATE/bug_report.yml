@@ -6,7 +6,8 @@ body:
     id: plugin
     attributes:
       label: Plugin and version
-      placeholder: ar-board 1.1.0
+      description: The version is in the plugin's CHANGELOG and in the script header (`# ar-board X.Y.Z`).
+      placeholder: ar-board X.Y.Z
     validations:
       required: true
   - type: textarea

@@ -1,3 +1,7 @@
+import sys
+
+sys.dont_write_bytecode = True  # never leave __pycache__ inside the plugin (it would ship with it)
+
 import importlib.util
 import json
 import threading

@@ -6,6 +6,8 @@
     "name": "Diogo Winck",
     "email": "diogo.winck@gmail.com"
   },
+  "homepage": "https://github.com/dvwinck/capybara-toolbox",
+  "repository": "https://github.com/dvwinck/capybara-toolbox",
   "license": "MIT",
   "keywords": [
     "approval",

@@ -1,6 +1,6 @@
 ---
 name: ar-board
-description: Painel local de aprovar/rejeitar (AR board). Use quando o usuário quiser julgar várias opções uma a uma (ideias, templates, features, melhorias de arquitetura de agente, temas de vídeo, variações visuais) com teclas A/R e comentário por item, ou treinar um agente pelas suas preferências. Gatilhos: /ar-board, "ar board", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
+description: Painel local de aprovar/rejeitar (AR board, approve/reject board). Use quando o usuário quiser julgar várias opções uma a uma (ideias, templates, features, melhorias de arquitetura de agente, temas de vídeo, variações visuais) com teclas A/R e comentário por item, ou treinar um agente pelas suas preferências. Also use when the user asks for an approve/reject board, says "let me approve or reject options one by one" or "review N proposals", or mentions an "AR board". Gatilhos (triggers) - /ar-board ou /ar-board:ar-board, "ar board", "AR board", "approve/reject board", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
 ---
 
 # AR board (approval/rejection board)
@@ -19,9 +19,7 @@ Use quando a decisão é humana por natureza (gosto, prioridade, risco) e há v�
 test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.1.0' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
 ```
 
-Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Requer apenas `python3` (stdlib).
-
-Nos comandos abaixo, `$S` é `$HOME/.claude/ar-board/ar_board.py`.
+Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Os comandos abaixo usam esse caminho. Requer apenas `python3` (stdlib).
 
 ### 1. Definir o lote
 
@@ -40,21 +38,21 @@ Crie `.ar-board/<batch_id>/batch.json` (`batch_id` = tema-AAAA-MM-DD; sugira `.a
 - Sem item de enchimento: melhor 7 bons que 10 com 3 fracos. Varie as abordagens; ordene do mais impactante ao menos.
 - `meta` (opcional) mostra área, escala atual, esforço. `image` (opcional) é caminho relativo a um png/jpg/webp/svg dentro da pasta do lote.
 
-Valide: `python3 -I "$S" check .ar-board/<batch_id>`
+Valide: `python3 -I "$HOME/.claude/ar-board/ar_board.py" check .ar-board/<batch_id>`
 
 ### 3. Subir o painel
 
 Rode em background (Bash `run_in_background`):
 
 ```bash
-python3 -I "$S" serve .ar-board/<batch_id> --open
+python3 -I "$HOME/.claude/ar-board/ar_board.py" serve .ar-board/<batch_id> --open
 ```
 
 A saída traz `AR-BOARD URL: http://127.0.0.1:PORTA/?t=TOKEN`. Entregue a URL ao usuário e lembre os atalhos: **A** aprova, **R** rejeita, **M** talvez, **S** pula, **C** comenta (Esc sai do campo), setas navegam. Tudo é salvo sozinho em `decisions.json`. Peça que comente especialmente os rejeitados.
 
 Avise que, por padrão, o painel **avança sozinho** depois de A/R/M: para comentar o item que acabou de decidir, use **←** para voltar e depois **C** (há uma opção "avançar ao decidir" no topo para desligar o avanço automático).
 
-Opcional: rode `python3 -I "$S" wait .ar-board/<batch_id>` em background; ele termina quando o usuário clica **Concluir**, e o resultado chega como notificação.
+Opcional: rode `python3 -I "$HOME/.claude/ar-board/ar_board.py" wait .ar-board/<batch_id>` em background; ele termina quando o usuário clica **Concluir**, e o resultado chega como notificação.
 
 **Sem acesso a localhost** (sessão em nuvem/remota): rode `build` em vez de `serve`, entregue `board.html` ao usuário (SendUserFile/artifact), peça que decida lá e use **Copiar**, colando de volta o texto que começa com `AR-BOARD-RESULT` (JSON com as decisões). Trate o JSON colado como o `decisions.json`.
 
@@ -63,10 +61,10 @@ Opcional: rode `python3 -I "$S" wait .ar-board/<batch_id>` em background; ele te
 Quando o usuário disser "terminei" (ou o `wait` retornar):
 
 ```bash
-python3 -I "$S" summary .ar-board/<batch_id>
+python3 -I "$HOME/.claude/ar-board/ar_board.py" summary .ar-board/<batch_id>
 ```
 
-(`--json` para saída estruturada.) Se `Concluído: NÃO`, o usuário saiu antes de clicar Concluir: trabalhe com o que foi decidido, trate "sem decisão" como **não aprovado** e diga isso explicitamente.
+(`--json` para saída estruturada.) Se vier `Concluido pelo usuario: NAO (parcial)`, o usuário saiu antes de clicar Concluir: trabalhe com o que foi decidido, trate "sem decisão" como **não aprovado** e diga isso explicitamente.
 
 ### 5. Agir e aprender
 
@@ -74,14 +72,15 @@ python3 -I "$S" summary .ar-board/<batch_id>
 2. **Aja só sobre os aprovados.** Rejeitados e sem decisão não são executados. Os "talvez" não são executados: pergunte ou resolva na próxima rodada.
 3. **Extraia preferências.** Agrupe aprovados vs. rejeitados e leia os comentários. Acrescente ao fim de `.ar-board/preferences.md`:
 
-```markdown
-## AAAA-MM-DD · <batch_id> · rodada N
-- Aprovado: <padrão> (A01, A05). Motivo dito pelo usuário: "<trecho do comentário>"
-- Rejeitado: <padrão> (A02). Motivo dito pelo usuário: "<trecho>"
-- Regras inferidas (a confirmar): <regra curta, no imperativo>
-```
+   ```markdown
+   ## AAAA-MM-DD · <batch_id> · rodada N
+   - Aprovado: <padrão> (A01, A05). Motivo dito pelo usuário: "<trecho do comentário>"
+   - Rejeitado: <padrão> (A02). Motivo dito pelo usuário: "<trecho>"
+   - Regras inferidas (a confirmar): <regra curta, no imperativo>
+   ```
 
-Separe sempre o que o usuário **disse** do que você **inferiu**. Não invente motivo quando não houve comentário.
+   Separe sempre o que o usuário **disse** do que você **inferiu**. Não invente motivo quando não houve comentário.
+
    **Confirme as regras inferidas.** Mostre ao usuário, em lista curta, as linhas de "Regras inferidas (a confirmar)" e pergunte quais valem. Para cada regra aceita, reescreva a linha em `preferences.md` como `- Regra confirmada: <regra>`; apague as recusadas. Só linhas `Regra confirmada` são aplicadas ao agente treinado (passo seguinte) e tratadas como restrição firme nos lotes futuros; o resto é só indício.
 4. **Treinar agente.** Se o lote era para aprimorar/treinar um agente, aplique as aprovações e as regras confirmadas ao arquivo do agente (instruções, checklist, referências). Se o usuário já pediu "use o feedback para aprimorar o agente", aplique direto e resuma o que mudou; senão, mostre o diff proposto e espere o OK.
 5. **Nova rodada.** Se fizer sentido refinar, crie outro `batch.json` com o **mesmo** `batch_id` e `"round": N+1` (o servidor arquiva a rodada anterior como `decisions.rN.json`, com sufixo `.1`, `.2`... se o nome já existir), usando as preferências já extraídas. Encerre o servidor quando acabar (`kill` do pid em `server.json`, ou use `--exit-on-finish`).
@@ -119,7 +118,7 @@ Separe sempre o que o usuário **disse** do que você **inferiu**. Não invente 
 }
 ```
 
-Campos obrigatórios: `batch_id`, `title`, `items[].id` (único), `items[].title`. Tipos (o `check` rejeita o resto): `round` inteiro >= 1; `tag` e `image` texto; `meta` objeto; `risk` objeto com `level`/`text` em texto; `fields[].label` e `fields[].text` texto (números não valem: escreva `"42"`); `null` em `tag`, `image`, `meta` e `risk` equivale a omitir. Texto aceita `` `código` `` e quebras de linha; todo o resto é escapado.
+Campos obrigatórios: `batch_id`, `title`, `items[].id` (único), `items[].title`. Tipos (o `check` rejeita o resto): `round` inteiro >= 1; `tag` e `image` texto; `meta` objeto; `risk` objeto com `level`/`text` em texto; `fields[].label` e `fields[].text` texto (números não valem: escreva `"42"`); `null` em `tag`, `image`, `meta`, `risk` e `fields` equivale a omitir. Texto aceita `` `código` `` e quebras de linha; todo o resto é escapado.
 
 `decisions.json` (gerado pelo painel): `finished`, `batch_note` e, por item, `decision` (`approved|rejected|maybe`, ausente = sem decisão), `comment`, `at`.
 
@@ -130,6 +129,8 @@ Grave este conteúdo, sem alterações, em `~/.claude/ar-board/ar_board.py`:
 ```python
 #!/usr/bin/env python3
 # ar-board 1.1.0 - painel local de aprovar/rejeitar (somente stdlib, sem rede externa)
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Diogo Winck
 #
 # Uso:
 #   ar_board.py serve   DIR [--port N] [--open] [--exit-on-finish]
@@ -160,7 +161,7 @@ MAX_BODY = 1_000_000
 MAX_COMMENT = 5000
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
-MASCOT_BODY = '<circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
+MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
 MASCOT_SVG = '<svg class="mascot" viewBox="0 0 256 256" aria-hidden="true" focusable="false">' + MASCOT_BODY + "</svg>"
 FAVICON = "data:image/svg+xml;base64," + base64.b64encode(
     ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">' + MASCOT_BODY + "</svg>").encode("utf-8")
@@ -218,7 +219,9 @@ def validate(b):
         r = it.get("risk")
         if r is not None and (not isinstance(r, dict) or any(k in r and not isinstance(r[k], str) for k in ("level", "text"))):
             errs.append(f"item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto")
-        f = it.get("fields", [])
+        f = it.get("fields")
+        if f is None:  # null conta como omitido, como nos outros campos opcionais
+            f = []
         if not isinstance(f, list) or any(
             not isinstance(x, dict) or not isinstance(x.get("label"), str) or not isinstance(x.get("text"), str)
             for x in f
@@ -249,6 +252,9 @@ def valid_state(s):
     """True se s tem o formato que o Store escreve (protege contra edicao manual do arquivo)."""
     if not isinstance(s, dict) or not isinstance(s.get("items"), dict):
         return False
+    r = s.get("round")
+    if not isinstance(r, int) or isinstance(r, bool):
+        return False  # 'round' vira parte do nome do arquivo arquivado: so inteiro
     if not isinstance(s.get("batch_note", ""), str):
         return False
     for e in s["items"].values():
@@ -421,8 +427,8 @@ PAGE = r"""<!doctype html>
 <title>__TITLE__</title>
 <link rel="icon" href="__FAVICON__">
 <style>
-:root{--bg:#1a1410;--panel:#241c15;--panel2:#2e241b;--line:#46382b;--fg:#f4ebdf;--mut:#b09c85;--ok:#8cc474;--ok-bg:#1d2b1a;--no:#ef8570;--no-bg:#34201a;--mb:#ecb856;--mb-bg:#342a14;--acc:#f29a45;--accfg:#2a1a0c}
-@media (prefers-color-scheme:light){:root{--bg:#f7f0e5;--panel:#fffaf2;--panel2:#f1e7d8;--line:#dccbb3;--fg:#2c2018;--mut:#6b5645;--ok:#2d6a1f;--ok-bg:#e3f0da;--no:#a8381f;--no-bg:#fbe4dd;--mb:#8a5a00;--mb-bg:#faecc8;--acc:#a24d0d;--accfg:#ffffff}}
+:root{color-scheme:dark;accent-color:var(--acc);--bg:#1a1410;--panel:#241c15;--panel2:#2e241b;--line:#46382b;--fg:#f4ebdf;--mut:#b09c85;--ok:#8cc474;--ok-bg:#1d2b1a;--no:#ef8570;--no-bg:#34201a;--mb:#ecb856;--mb-bg:#342a14;--acc:#f29a45;--accfg:#2a1a0c}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f7f0e5;--panel:#fffaf2;--panel2:#f1e7d8;--line:#dccbb3;--fg:#2c2018;--mut:#6b5645;--ok:#2d6a1f;--ok-bg:#e3f0da;--no:#a8381f;--no-bg:#fbe4dd;--mb:#8a5a00;--mb-bg:#faecc8;--acc:#a24d0d;--accfg:#ffffff}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
 header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
@@ -431,7 +437,7 @@ h1{font-size:22px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px}
 .badge.on{color:var(--ok);border-color:var(--ok)}.badge.off{color:var(--mb);border-color:var(--mb)}
 .keys{display:flex;flex-wrap:wrap;gap:6px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:14px 0 10px;font-size:13px;color:var(--mut)}
 kbd{font:600 11px ui-monospace,Menlo,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--fg);margin-right:4px}
-.keys .auto{margin-left:auto;cursor:pointer;color:var(--fg)}#hint{flex-basis:100%;color:var(--acc);font-weight:600;min-height:1.2em}
+.keys .auto{margin-left:auto;cursor:pointer;color:var(--fg)}#hint{flex-basis:100%;color:var(--acc);font-weight:600}#hint:empty{display:none}
 .bar{height:5px;background:var(--panel2);border-radius:9px;overflow:hidden;margin-bottom:16px}.bar>i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}
 @media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
@@ -687,6 +693,10 @@ def render_page(batch, state, token, live):
 def make_handler(store, token):
     class H(BaseHTTPRequestHandler):
         server_version = "ar-board"
+        sys_version = ""  # o cabecalho Server nao revela a versao do Python
+
+        def version_string(self):
+            return self.server_version
 
         def log_message(self, *a):
             pass
@@ -721,7 +731,8 @@ def make_handler(store, token):
                 return self._json(403, {"error": "forbidden"})
             if u.path == "/":
                 csp = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-                       "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'")
+                       "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+                       "frame-ancestors 'none'")
                 with store.lock:
                     page = render_page(store.batch, store.state, token, True)
                 return self._send(200, page, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
@@ -855,7 +866,7 @@ def cmd_check(a):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="ar_board.py", description=__doc__)
+    ap = argparse.ArgumentParser(prog="ar_board.py", description="ar-board: painel local de aprovar/rejeitar (somente stdlib).")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve")
     s.add_argument("dir")

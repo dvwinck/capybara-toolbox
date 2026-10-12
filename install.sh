@@ -39,6 +39,8 @@ for src in "$PLUGINS/$PLUGIN"/skills/*/; do
   mkdir -p "$SKILLS_HOME"
   rm -rf "$SKILLS_HOME/$name"
   cp -R "${src%/}" "$SKILLS_HOME/$name"
+  # bytecode caches from a local test run are not part of the skill
+  find "$SKILLS_HOME/$name" \( -name __pycache__ -type d -prune -exec rm -rf {} + \) -o \( -name '*.pyc' -type f -exec rm -f {} + \)
   echo "installed $name -> $SKILLS_HOME/$name"
   installed=$((installed + 1))
 done

@@ -2,9 +2,11 @@
 """Keeps the ar-board plugin consistent from one source of truth: the script's VERSION.
 
 It propagates the version into .claude-plugin/plugin.json, and generates
-dist/ar-board-single-file.SKILL.md (the skill with the script embedded, for pasting
-into claude.ai "Customize -> Skills"). It also reports problems it cannot fix by itself
-(missing CHANGELOG entry, stale header comment, missing markers).
+dist/ar-board-single-file.SKILL.md: a self-contained variant of the skill with the script
+embedded, for surfaces that accept a lone SKILL.md (the plugin install is the supported
+route). In that variant the bundled-script path is replaced by ~/.claude/ar-board/ar_board.py,
+where the variant's step 0 installs the script. It also reports problems it cannot fix by
+itself (missing CHANGELOG entry, stale header comment, missing markers).
 
 Usage (from the plugin directory or anywhere):
   python3 tools/sync.py           # write whatever is out of sync
@@ -27,15 +29,15 @@ INPUTS = [SCRIPT, SKILL, PLUGIN, CHANGELOG]
 GENERATED = [PLUGIN, SINGLE]
 
 LOCATE = r"(?s)<!-- ar-board:locate-script -->.*?<!-- /ar-board:locate-script -->\n"
+BUNDLED = "${CLAUDE_SKILL_DIR}/scripts/ar_board.py"  # how the lean SKILL.md names the script
+INSTALLED = "$HOME/.claude/ar-board/ar_board.py"  # where the single-file variant installs it
 SINGLE_STEP0 = """### 0. Instalar o script (uma vez por máquina)
 
 ```bash
-test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board {version}' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
+test -f "{installed}" && grep -q 'ar-board {version}' "{installed}" && echo OK || echo FALTA
 ```
 
-Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Requer apenas `python3` (stdlib).
-
-Nos comandos abaixo, `$S` é `$HOME/.claude/ar-board/ar_board.py`.
+Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Os comandos abaixo usam esse caminho. Requer apenas `python3` (stdlib).
 """
 
 
@@ -68,7 +70,11 @@ def build(root):
     plugin["version"] = version
 
     skill = read(root, SKILL)
-    single = sub_once(LOCATE, lambda m: SINGLE_STEP0.format(version=version), skill, "SKILL.md locate-script markers")
+    single = sub_once(LOCATE, lambda m: SINGLE_STEP0.format(version=version, installed=INSTALLED), skill,
+                      "SKILL.md locate-script markers")
+    if BUNDLED not in single:
+        raise SystemExit(f"sync: {SKILL} no longer runs the script as {BUNDLED}")
+    single = single.replace(BUNDLED, INSTALLED)
     single = single.rstrip("\n") + "\n\n## Script\n\nGrave este conteúdo, sem alterações, em `~/.claude/ar-board/ar_board.py`:\n\n```python\n" + script.rstrip("\n") + "\n```\n"
 
     return {PLUGIN: dump_json(plugin), SINGLE: single}

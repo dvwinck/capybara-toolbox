@@ -119,12 +119,17 @@ class MalformedShapeTest(unittest.TestCase):
         '{"batch_id":"t","round":1,"items":{"A01":{"decision":[]}}}',
         '{"batch_id":"t","round":1,"items":{"A01":{"comment":5}}}',
         '{"batch_id":"t","round":1,"items":{},"batch_note":5}',
+        '{"batch_id":"t","round":true,"items":{"A01":{"decision":"approved"}}}',
+        '{"batch_id":"t","round":1.0,"items":{"A01":{"decision":"approved"}}}',
+        '{"batch_id":"t","items":{"A01":{"decision":"approved"}}}',
+        '{"batch_id":"x","round":"/../../escaped","items":{}}',
     ]
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        self.d = make_batch(tmp.name)
+        (Path(tmp.name) / "batch").mkdir()
+        self.d = make_batch(Path(tmp.name) / "batch")
 
     def test_summary_treats_wrong_shape_as_unreadable(self):
         for raw in self.BAD:
@@ -142,6 +147,21 @@ class MalformedShapeTest(unittest.TestCase):
                 store = ab.Store(self.d)
                 self.assertEqual(store.state["items"], {})
                 store.set_item("A01", {"decision": "approved"})
+
+    def test_read_state_rejects_wrong_shape(self):
+        batch = ab.load_batch(self.d)
+        for raw in self.BAD:
+            with self.subTest(raw=raw):
+                (self.d / "decisions.json").write_text(raw, encoding="utf-8")
+                self.assertIsNone(ab.read_state(self.d, batch))
+
+    def test_round_from_the_file_never_becomes_an_archive_path(self):
+        (self.d / "decisions.json").write_text('{"batch_id":"x","round":"/../../escaped","items":{}}', encoding="utf-8")
+        before = sorted(p.name for p in self.d.parent.iterdir())
+        store = ab.Store(self.d)
+        self.assertEqual(store.state["items"], {})
+        self.assertEqual(sorted(p.name for p in self.d.parent.iterdir()), before)
+        self.assertEqual(sorted(p.name for p in self.d.iterdir()), ["batch.json", "decisions.json"])
 
 
 class ReopenTest(unittest.TestCase):

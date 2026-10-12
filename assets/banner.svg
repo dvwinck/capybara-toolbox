@@ -6,13 +6,17 @@
       <stop offset="0" stop-color="#F6EFE4"/>
       <stop offset="1" stop-color="#E4F2EE"/>
     </linearGradient>
+    <clipPath id="frame"><rect width="1280" height="320" rx="24"/></clipPath>
   </defs>
   <rect width="1280" height="320" rx="24" fill="url(#bg)"/>
-  <path d="M0 268c80-18 160 18 240 0s160 18 240 0 160 18 240 0 160 18 240 0 160 18 240 0 80-8 80-8V320H0z" fill="#CDEBE8" opacity=".7"/>
-  <path d="M0 292c80-14 160 14 240 0s160 14 240 0 160 14 240 0 160 14 240 0 160 14 240 0 80-6 80-6V320H0z" fill="#7CC6C4" opacity=".45"/>
+  <g clip-path="url(#frame)">
+    <path d="M0 268c80-18 160 18 240 0s160 18 240 0 160 18 240 0 160 18 240 0 160 18 240 0 80-8 80-8V320H0z" fill="#CDEBE8" opacity=".7"/>
+    <path d="M0 292c80-14 160 14 240 0s160 14 240 0 160 14 240 0 160 14 240 0 160 14 240 0 80-6 80-6V320H0z" fill="#7CC6C4" opacity=".45"/>
+  </g>
   <svg x="48" y="30" width="260" height="260" viewBox="0 0 256 256">
+  <defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs>
   <circle cx="128" cy="128" r="124" fill="#CDEBE8"/>
-  <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75"/>
+  <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/>
   <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/>
   <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/>
   <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/>
@@ -35,8 +39,8 @@
   <text x="344" y="150" font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="76" font-weight="800" fill="#3A2A20" letter-spacing="-1.5">Capybara Toolbox</text>
   <text x="346" y="200" font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="30" font-weight="500" fill="#6B5240">Calm, capable skills and plugins for Claude Code.</text>
   <g font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="20" font-weight="600">
-    <rect x="346" y="226" width="168" height="40" rx="20" fill="#C8553D"/><text x="430" y="253" text-anchor="middle" fill="#fff">skills</text>
-    <rect x="530" y="226" width="168" height="40" rx="20" fill="#6E9E5B"/><text x="614" y="253" text-anchor="middle" fill="#fff">plugins</text>
+    <rect x="346" y="226" width="168" height="40" rx="20" fill="#B5452F"/><text x="430" y="253" text-anchor="middle" fill="#fff">skills</text>
+    <rect x="530" y="226" width="168" height="40" rx="20" fill="#527D40"/><text x="614" y="253" text-anchor="middle" fill="#fff">plugins</text>
     <rect x="714" y="226" width="168" height="40" rx="20" fill="#E8A33D"/><text x="798" y="253" text-anchor="middle" fill="#3A2A20">marketplace</text>
   </g>
 </svg>
