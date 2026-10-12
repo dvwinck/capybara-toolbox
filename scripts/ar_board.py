@@ -73,14 +73,13 @@ def validate(b):
         if not isinstance(it.get("title"), str) or not it["title"].strip():
             errs.append(f"item {i}: 'title' obrigatorio")
         for k in ("tag", "image"):
-            if k in it and not isinstance(it[k], str):
+            if it.get(k) is not None and not isinstance(it[k], str):
                 errs.append(f"item {i}: '{k}' deve ser string")
-        if "meta" in it and not isinstance(it["meta"], dict):
+        if it.get("meta") is not None and not isinstance(it["meta"], dict):
             errs.append(f"item {i}: 'meta' deve ser objeto")
-        if "risk" in it:
-            r = it["risk"]
-            if not isinstance(r, dict) or any(k in r and not isinstance(r[k], str) for k in ("level", "text")):
-                errs.append(f"item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto")
+        r = it.get("risk")
+        if r is not None and (not isinstance(r, dict) or any(k in r and not isinstance(r[k], str) for k in ("level", "text"))):
+            errs.append(f"item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto")
         f = it.get("fields", [])
         if not isinstance(f, list) or any(
             not isinstance(x, dict) or not isinstance(x.get("label"), str) or not isinstance(x.get("text"), str)

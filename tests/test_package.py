@@ -74,3 +74,21 @@ class SyncToolTest(unittest.TestCase):
             readme = Path(tmp, "README.md").read_text(encoding="utf-8")
             self.assertIn("**Versão:** 9.9.9", readme)
             self.assertIn("| 1.0.2 |", readme)  # historico preservado
+
+    def test_sync_fails_loudly_when_an_anchor_stops_matching(self):
+        sync = load_sync()
+        edits = [
+            ("SKILL.md", "## Script\n", "## Scripts\n"),
+            ("README.md", "**Versão:**", "**Version:**"),
+            ("README.md", "**SHA-256 do script v", "**SHA-256 of script v"),
+        ]
+        for rel, old, new in edits:
+            with self.subTest(file=rel, anchor=old):
+                with tempfile.TemporaryDirectory() as tmp:
+                    copy_package(tmp)
+                    f = Path(tmp, rel)
+                    text = f.read_text(encoding="utf-8")
+                    self.assertIn(old, text)
+                    f.write_text(text.replace(old, new, 1), encoding="utf-8")
+                    with self.assertRaises(SystemExit):
+                        run_sync(sync, ["--check"], tmp)

@@ -5,7 +5,7 @@ Painel local de **aprovar/rejeitar** para o Claude Code. O agente propõe N opç
 - **Versão:** 1.0.3
 - **Dependências:** `python3` (somente biblioteca padrão; testado em 3.13). Sem `pip`, sem Node, sem rede externa.
 - **Formato:** uma skill de arquivo único (`SKILL.md`) com o servidor embutido.
-- **SHA-256 do script v1.0.3:** `f8988a6e637c24ae752437db6a1726acffd65a0c2dcdf1c2a81a6513f1b40ced` (use para conferir se a cópia gravada em `~/.claude/ar-board/ar_board.py` é idêntica).
+- **SHA-256 do script v1.0.3:** `2445b1ed0c31f885f49da21ee30e774cf8ce63435b3faa29f2509341499f6db7` (use para conferir se a cópia gravada em `~/.claude/ar-board/ar_board.py` é idêntica).
 
 > Inspirada na ideia do "AR board" mostrada no vídeo *Minha NOVA SKILL Favorita do Claude Code* (Maestros da IA). É uma implementação independente, escrita a partir do que o vídeo demonstra; não usa código nem material da skill original e não tem vínculo com o canal.
 
@@ -418,7 +418,7 @@ Detalhes:
 | `meta` (se presente): objeto | `item <i>: 'meta' deve ser objeto` |
 | `risk` (se presente): objeto com `level`/`text` em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
 
-JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e deve ser inteiro >= 1 (texto como `"2"` é rejeitado). Campos extras são ignorados.
+JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e deve ser inteiro >= 1 (texto como `"2"` é rejeitado). `null` em `tag`, `image`, `meta` e `risk` equivale a omitir o campo. Campos extras são ignorados.
 
 ## 16. Segurança
 

@@ -21,6 +21,14 @@ def read(root, rel):
     return (root / rel).read_text(encoding="utf-8")
 
 
+def sub_once(pattern, repl, text, what):
+    """re.sub que exige exatamente uma ocorrencia: ancora sumida nao pode passar em silencio."""
+    out, n = re.subn(pattern, repl, text)
+    if n != 1:
+        raise SystemExit(f"sync: ancora nao encontrada ({n} ocorrencias, esperado 1): {what}")
+    return out
+
+
 def build(root):
     """Devolve {caminho relativo: conteudo esperado} dos arquivos gerenciados."""
     script = read(root, "scripts/ar_board.py")
@@ -32,17 +40,19 @@ def build(root):
         return re.sub(r"ar-board-\d+\.\d+\.\d+\.zip", f"ar-board-{version}.zip", text)
 
     readme = bump(read(root, "README.md"))
-    readme = re.sub(r"(\*\*Versão:\*\* )\d+\.\d+\.\d+", rf"\g<1>{version}", readme)
-    readme = re.sub(
+    readme = sub_once(r"(\*\*Versão:\*\* )\d+\.\d+\.\d+", rf"\g<1>{version}", readme, "README '**Versão:**'")
+    readme = sub_once(
         r"(\*\*SHA-256 do script v)\d+\.\d+\.\d+(:\*\* `)[0-9a-f]{64}`",
         rf"\g<1>{version}\g<2>{digest}`",
         readme,
+        "README '**SHA-256 do script v...**'",
     )
     skill = bump(read(root, "SKILL.md"))
-    skill = re.sub(
+    skill = sub_once(
         r"(?s)(## Script\n.*?```python\n).*?(\n```\n)",
         lambda m: m.group(1) + script.rstrip("\n") + m.group(2),
         skill,
+        "SKILL.md '## Script' + bloco python",
     )
     install = bump(read(root, "install.sh"))
 

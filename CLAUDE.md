@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`ar-board` is a Claude Code **skill** (v1.0.3, docs in Portuguese): the agent writes a `batch.json` of N options, a local web panel lets the user approve/reject/maybe each one with keyboard shortcuts and comments, and the agent reads the result from `decisions.json`. Python 3 stdlib only — no build, no package manager, no test suite, no linter, no git repo.
+`ar-board` is a Claude Code **skill** (v1.0.3, docs in Portuguese): the agent writes a `batch.json` of N options, a local web panel lets the user approve/reject/maybe each one with keyboard shortcuts and comments, and the agent reads the result from `decisions.json`. Python 3 stdlib only — no build step, no package manager, no linter. Tests are `unittest` under `tests/`; the package is kept consistent by `tools/sync.py`; git repo with `base` as the main branch.
 
 ## Commands
 

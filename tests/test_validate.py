@@ -1,6 +1,9 @@
+import contextlib
+import io
 import json
 import tempfile
 import unittest
+from argparse import Namespace
 
 from helpers import ROOT, ab, make_batch
 
@@ -42,6 +45,17 @@ class ValidateTest(unittest.TestCase):
             with self.subTest(**{key: value}):
                 errs = ab.validate(batch(**{key: value}))
                 self.assertTrue(any("'%s'" % key in e for e in errs), errs)
+
+    def test_null_optional_fields_count_as_absent(self):
+        for key in ("tag", "image", "meta", "risk"):
+            with self.subTest(key=key):
+                self.assertEqual(ab.validate(batch(**{key: None})), [])
+
+    def test_build_works_with_null_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = make_batch(tmp, items=[{"id": "A01", "title": "x", "image": None}])
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ab.cmd_build(Namespace(dir=str(d))), 0)
 
     def test_load_batch_rejects_bad_round(self):
         with tempfile.TemporaryDirectory() as tmp:
