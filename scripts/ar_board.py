@@ -452,6 +452,7 @@ document.addEventListener('keydown', ev => {
   if(ev.key === 'Escape'){ if(typing) ev.target.blur(); return; }
   if(typing) return;
   const k = ev.key.toLowerCase();
+  if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;
   if(k === 'a') decide('approved');
   else if(k === 'r') decide('rejected');
   else if(k === 'm') decide('maybe');
@@ -474,6 +475,7 @@ $('#bD').onclick = () => {
 };
 $('#bX').onclick = () => {
   if(!confirm('Limpar todas as decisoes e comentarios deste lote?')) return;
+  Object.keys(timers).forEach(k => clearTimeout(timers[k])); pend = {};
   S.items = {}; S.batch_note = ''; S.finished = false; post('/api/reset', {}); persistLocal(); idx = 0; render();
 };
 $('#bF').onclick = () => {
@@ -486,6 +488,8 @@ $('#bF').onclick = () => {
 };
 
 setLive(BOOT.live);
+const first = items.findIndex(it => !(S.items[it.id] || {}).decision);
+idx = first < 0 ? 0 : first;
 render();
 })();
 </script></body></html>
