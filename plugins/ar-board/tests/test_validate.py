@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from argparse import Namespace
 
-from helpers import ROOT, ab, make_batch
+from helpers import EXAMPLE, ab, make_batch
 
 
 def batch(**item):
@@ -14,7 +14,7 @@ def batch(**item):
 
 class ValidateTest(unittest.TestCase):
     def test_shipped_example_is_valid(self):
-        data = json.loads((ROOT / "examples" / "batch.example.json").read_text(encoding="utf-8"))
+        data = json.loads(EXAMPLE.read_text(encoding="utf-8"))
         self.assertEqual(ab.validate(data), [])
 
     def test_minimal_item_is_valid(self):
@@ -47,9 +47,25 @@ class ValidateTest(unittest.TestCase):
                 self.assertTrue(any("'%s'" % key in e for e in errs), errs)
 
     def test_null_optional_fields_count_as_absent(self):
-        for key in ("tag", "image", "meta", "risk"):
+        for key in ("tag", "image", "meta", "risk", "fields"):
             with self.subTest(key=key):
                 self.assertEqual(ab.validate(batch(**{key: None})), [])
+
+    def test_fields_that_are_falsy_but_not_null_are_still_rejected(self):
+        for bad in ({}, "", 0, False):
+            with self.subTest(fields=bad):
+                self.assertTrue(any("'fields'" in e for e in ab.validate(batch(fields=bad))))
+
+    def test_risk_keys_are_typed_only_when_present(self):
+        self.assertEqual(ab.validate(batch(risk={})), [])
+        self.assertEqual(ab.validate(batch(risk={"level": "alto"})), [])
+
+    def test_build_and_page_work_with_null_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = make_batch(tmp, items=[{"id": "A01", "title": "x", "fields": None}])
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ab.cmd_build(Namespace(dir=str(d))), 0)
+            self.assertIn("(it.fields || [])", ab.PAGE)  # the page treats null fields as none
 
     def test_build_works_with_null_image(self):
         with tempfile.TemporaryDirectory() as tmp:

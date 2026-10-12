@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">Capybara Toolbox</title>
+  <defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs>
+  <circle cx="128" cy="128" r="124" fill="#CDEBE8"/>
+  <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/>
+  <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/>
+  <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/>
+  <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/>
+  <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/>
+  <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/>
+  <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/>
+  <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/>
+  <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/>
+  <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/>
+  <circle cx="112" cy="70" r="19" fill="#F2A93B"/>
+  <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/>
+  <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/>
+  <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/>
+  <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/>
+  <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/>
+  <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/>
+  <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/>
+  <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>
+</svg>

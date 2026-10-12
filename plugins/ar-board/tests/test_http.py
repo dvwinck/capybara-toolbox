@@ -52,3 +52,15 @@ class MalformedInputTest(HttpBase):
             conn.endheaders()
             self.assertEqual(conn.getresponse().status, 400)
             conn.close()
+
+
+class FinishEndpointTest(HttpBase):
+    def test_finish_requires_a_boolean(self):
+        with LiveServer(self.d) as s:
+            for bad in ("no", "false", 1, [], None):
+                with self.subTest(finished=bad):
+                    self.assertEqual(s.post("/api/finish", {"finished": bad})[0], 400)
+            self.assertFalse(s.store.state["finished"])
+            self.assertEqual(s.post("/api/finish", {"finished": True})[0], 200)
+            self.assertTrue(s.store.state["finished"])
+            self.assertEqual(s.post("/api/finish", {})[0], 200)  # padrao: true

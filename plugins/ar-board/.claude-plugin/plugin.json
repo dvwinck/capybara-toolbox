@@ -1,0 +1,19 @@
+{
+  "name": "ar-board",
+  "description": "Local approve/reject (AR) board: the agent proposes N options, you judge them with A/R/M keys and comments, and the agent acts only on what you approved and keeps your preferences for the next rounds.",
+  "version": "1.1.0",
+  "author": {
+    "name": "Diogo Winck",
+    "email": "diogo.winck@gmail.com"
+  },
+  "homepage": "https://github.com/dvwinck/capybara-toolbox",
+  "repository": "https://github.com/dvwinck/capybara-toolbox",
+  "license": "MIT",
+  "keywords": [
+    "approval",
+    "review",
+    "decision",
+    "human-in-the-loop",
+    "skill"
+  ]
+}

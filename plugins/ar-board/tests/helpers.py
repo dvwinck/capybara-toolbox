@@ -1,3 +1,7 @@
+import sys
+
+sys.dont_write_bytecode = True  # never leave __pycache__ inside the plugin (it would ship with it)
+
 import importlib.util
 import json
 import threading
@@ -6,8 +10,11 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "ar_board.py"
+ROOT = Path(__file__).resolve().parent.parent  # the plugin directory (plugins/ar-board)
+REPO = ROOT.parent.parent  # the marketplace repository root
+SKILL_DIR = ROOT / "skills" / "ar-board"
+SCRIPT = SKILL_DIR / "scripts" / "ar_board.py"
+EXAMPLE = SKILL_DIR / "examples" / "batch.example.json"
 
 
 def load_module(path, name):

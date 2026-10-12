@@ -1,25 +1,51 @@
 #!/usr/bin/env bash
-# Instala o ar-board: script em ~/.claude/ar-board e skill em ~/.claude/skills/ar-board
+# Manual (non-marketplace) install of a Capybara Toolbox plugin's skills into ~/.claude/skills.
+# Preferred route: the Claude Code marketplace (see README.md). Use this if you can't.
+#
+#   ./install.sh --list                 list available plugins
+#   ./install.sh <plugin>               install or upgrade every skill of the plugin
+#   ./install.sh <plugin> --uninstall   remove them
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-command -v python3 >/dev/null || { echo "python3 nao encontrado"; exit 1; }
 
-if command -v shasum >/dev/null; then SUM=(shasum -a 256 -c)
-elif command -v sha256sum >/dev/null; then SUM=(sha256sum -c)
-else SUM=(); echo "aviso: sem shasum/sha256sum, integridade do pacote nao conferida"; fi
-if [ "${#SUM[@]}" -gt 0 ]; then
-  (cd "$HERE" && "${SUM[@]}" CHECKSUMS.sha256 >/dev/null) \
-    || { echo "CHECKSUMS.sha256 nao confere: pacote alterado ou corrompido"; exit 1; }
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGINS="$HERE/plugins"
+SKILLS_HOME="$HOME/.claude/skills"
+
+usage() { echo "usage: $0 --list | <plugin> [--uninstall]" >&2; exit 2; }
+[ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
+
+if [ "$1" = "--list" ]; then
+  for d in "$PLUGINS"/*/; do [ -d "${d}skills" ] && basename "$d"; done
+  exit 0
 fi
 
-mkdir -p "$HOME/.claude/ar-board" "$HOME/.claude/skills/ar-board"
-cp "$HERE/scripts/ar_board.py" "$HOME/.claude/ar-board/ar_board.py"
-cp "$HERE/SKILL.md" "$HOME/.claude/skills/ar-board/SKILL.md"
-grep -q 'ar-board 1.0.3' "$HOME/.claude/ar-board/ar_board.py" || { echo "versao inesperada do script"; exit 1; }
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
-cp "$HERE/examples/batch.example.json" "$T/batch.json"
-python3 -I "$HOME/.claude/ar-board/ar_board.py" check "$T"
-echo "ar-board 1.0.3 instalado:"
-echo "  script: $HOME/.claude/ar-board/ar_board.py"
-echo "  skill : $HOME/.claude/skills/ar-board/SKILL.md"
-echo "Use: /ar-board <tema>   (reinicie a sessao do Claude Code para a skill aparecer)"
+PLUGIN="$1"
+[ -d "$PLUGINS/$PLUGIN/skills" ] || { echo "unknown plugin '$PLUGIN' (try --list)" >&2; exit 1; }
+
+case "${2:-}" in
+  "" | --uninstall) ;;
+  *) usage ;;
+esac
+
+installed=0
+for src in "$PLUGINS/$PLUGIN"/skills/*/; do
+  name="$(basename "$src")"
+  if [ "${2:-}" = "--uninstall" ]; then
+    rm -rf "$SKILLS_HOME/$name"
+    echo "removed $SKILLS_HOME/$name"
+    continue
+  fi
+  [ -f "${src}SKILL.md" ] || { echo "skipping $name: no SKILL.md" >&2; continue; }
+  mkdir -p "$SKILLS_HOME"
+  rm -rf "$SKILLS_HOME/$name"
+  cp -R "${src%/}" "$SKILLS_HOME/$name"
+  # bytecode caches from a local test run are not part of the skill
+  find "$SKILLS_HOME/$name" \( -name __pycache__ -type d -prune -exec rm -rf {} + \) -o \( -name '*.pyc' -type f -exec rm -f {} + \)
+  echo "installed $name -> $SKILLS_HOME/$name"
+  installed=$((installed + 1))
+done
+
+if [ "${2:-}" != "--uninstall" ]; then
+  [ "$installed" -gt 0 ] || { echo "nothing installed" >&2; exit 1; }
+  echo "Restart Claude Code to load the skill(s)."
+fi
