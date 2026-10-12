@@ -5,7 +5,7 @@ Painel local de **aprovar/rejeitar** para o Claude Code. O agente propõe N opç
 - **Versão:** 1.0.3
 - **Dependências:** `python3` (somente biblioteca padrão; testado em 3.13). Sem `pip`, sem Node, sem rede externa.
 - **Formato:** uma skill de arquivo único (`SKILL.md`) com o servidor embutido.
-- **SHA-256 do script v1.0.3:** `2445b1ed0c31f885f49da21ee30e774cf8ce63435b3faa29f2509341499f6db7` (use para conferir se a cópia gravada em `~/.claude/ar-board/ar_board.py` é idêntica).
+- **SHA-256 do script v1.0.3:** `83fcd550dc1a9d739a3312122a10aea998b9dd5551b574adbef459029fe3d574` (use para conferir se a cópia gravada em `~/.claude/ar-board/ar_board.py` é idêntica).
 
 > Inspirada na ideia do "AR board" mostrada no vídeo *Minha NOVA SKILL Favorita do Claude Code* (Maestros da IA). É uma implementação independente, escrita a partir do que o vídeo demonstra; não usa código nem material da skill original e não tem vínculo com o canal.
 

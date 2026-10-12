@@ -106,3 +106,52 @@ class ResetTest(unittest.TestCase):
             store.reset()
             self.assertNotIn("finished_at", store.state)
             self.assertFalse(store.state["finished"])
+
+
+class MalformedShapeTest(unittest.TestCase):
+    """JSON valido, mas com formato interno que o Store nunca escreveria (edicao manual)."""
+
+    BAD = [
+        '{"batch_id":"t","round":1}',
+        '{"batch_id":"t","round":1,"items":[]}',
+        '{"batch_id":"t","round":1,"items":{"A01":"x"}}',
+        '{"batch_id":"t","round":1,"items":{"A01":{"decision":"bogus"}}}',
+        '{"batch_id":"t","round":1,"items":{"A01":{"decision":[]}}}',
+        '{"batch_id":"t","round":1,"items":{"A01":{"comment":5}}}',
+        '{"batch_id":"t","round":1,"items":{},"batch_note":5}',
+    ]
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = make_batch(tmp.name)
+
+    def test_summary_treats_wrong_shape_as_unreadable(self):
+        for raw in self.BAD:
+            with self.subTest(raw=raw):
+                (self.d / "decisions.json").write_text(raw, encoding="utf-8")
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    ab.cmd_summary(Namespace(dir=str(self.d), json=True))
+                self.assertEqual(len(json.loads(out.getvalue())["pending"]), 2)
+
+    def test_store_starts_fresh_on_wrong_shape(self):
+        for raw in self.BAD:
+            with self.subTest(raw=raw):
+                (self.d / "decisions.json").write_text(raw, encoding="utf-8")
+                store = ab.Store(self.d)
+                self.assertEqual(store.state["items"], {})
+                store.set_item("A01", {"decision": "approved"})
+
+
+class ReopenTest(unittest.TestCase):
+    def test_reopening_a_finished_round_requires_concluding_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = make_batch(tmp)
+            first = ab.Store(d)
+            first.set_item("A01", {"decision": "approved"})
+            first.set_finished(True)
+            again = ab.Store(d)
+            self.assertFalse(again.state["finished"])
+            self.assertNotIn("finished_at", again.state)
+            self.assertEqual(again.state["items"]["A01"]["decision"], "approved")

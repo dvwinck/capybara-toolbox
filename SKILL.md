@@ -235,13 +235,30 @@ def round_of(b):
     return int(b.get("round", 1))
 
 
+def valid_state(s):
+    """True se s tem o formato que o Store escreve (protege contra edicao manual do arquivo)."""
+    if not isinstance(s, dict) or not isinstance(s.get("items"), dict):
+        return False
+    if not isinstance(s.get("batch_note", ""), str):
+        return False
+    for e in s["items"].values():
+        if not isinstance(e, dict):
+            return False
+        d, c = e.get("decision"), e.get("comment")
+        if d is not None and (not isinstance(d, str) or d not in DECISIONS):
+            return False
+        if c is not None and not isinstance(c, str):
+            return False
+    return True
+
+
 def read_state(d, batch):
     """Le decisions.json da pasta; None se ausente, ilegivel ou de outro lote/rodada."""
     try:
         s = json.loads((Path(d) / "decisions.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if not isinstance(s, dict):
+    if not valid_state(s):
         return None
     if s.get("batch_id") != batch["batch_id"] or s.get("round") != round_of(batch):
         return None
@@ -265,7 +282,7 @@ class Store:
                 state = json.loads(self.path.read_text(encoding="utf-8"))
             except Exception:
                 state = None
-            if not isinstance(state, dict):
+            if not valid_state(state):
                 state = None
         if state and (state.get("batch_id") != self.batch["batch_id"] or state.get("round") != self.round):
             n, old = 0, self.dir / f"decisions.r{state.get('round', 'x')}.json"
@@ -274,6 +291,9 @@ class Store:
                 old = self.dir / f"decisions.r{state.get('round', 'x')}.{n}.json"
             os.replace(self.path, old)
             state = None
+        if state and state.get("finished"):
+            state["finished"] = False  # painel reaberto: o usuario pode rejulgar; precisa concluir de novo
+            state.pop("finished_at", None)
         if not state:
             state = {
                 "batch_id": self.batch["batch_id"],
@@ -488,11 +508,14 @@ function setLive(ok){
   b.className = 'badge ' + (ok ? 'on' : 'off');
   b.textContent = ok ? '\u25CF ao vivo' : 'sem conexao \u2014 use Copiar';
 }
+const inflight = new Set();
 function post(path, body){
   if(!BOOT.live){persistLocal();return Promise.resolve(true);}
-  return fetch(path,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-AR-Token':BOOT.token},body:JSON.stringify(body)})
+  const pr = fetch(path,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-AR-Token':BOOT.token},body:JSON.stringify(body)})
     .then(r=>{if(!r.ok)throw new Error(r.status);setLive(true);return true;})
     .catch(()=>{setLive(false);persistLocal();return false;});
+  inflight.add(pr); pr.then(() => inflight.delete(pr));
+  return pr;
 }
 let pend = {};
 function queue(key, path, body){
@@ -587,6 +610,7 @@ $('#bS').onclick = () => go(idx+1); $('#bN').onclick = () => go(idx+1); $('#bP')
 
 document.addEventListener('keydown', ev => {
   if(ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  if(ev.repeat && ev.key === 'Enter' && ev.target.tagName === 'BUTTON'){ev.preventDefault(); return;}
   const typing = (ev.target.tagName || '').toLowerCase() === 'textarea';
   if(ev.key === 'Escape'){ if(typing) ev.target.blur(); return; }
   if(typing) return;
@@ -615,7 +639,7 @@ $('#bD').onclick = () => {
 $('#bX').onclick = () => {
   if(!confirm('Limpar todas as decisoes e comentarios deste lote?')) return;
   Object.keys(timers).forEach(k => clearTimeout(timers[k])); pend = {};
-  S.items = {}; S.batch_note = ''; S.finished = false; post('/api/reset', {}); persistLocal(); idx = 0; render();
+  S.items = {}; S.batch_note = ''; S.finished = false; Promise.all(Array.from(inflight)).then(() => post('/api/reset', {})); persistLocal(); idx = 0; render();
 };
 $('#bF').onclick = () => {
   const c = counts();
@@ -716,8 +740,11 @@ def make_handler(store, token):
                 elif u.path == "/api/note":
                     store.set_note(body.get("text", ""))
                 elif u.path == "/api/finish":
-                    store.set_finished(body.get("finished", True))
-                    if body.get("finished", True) and store.exit_cb:
+                    flag = body.get("finished", True)
+                    if not isinstance(flag, bool):
+                        raise ValueError("finished deve ser booleano")
+                    store.set_finished(flag)
+                    if flag and store.exit_cb:
                         threading.Thread(target=store.exit_cb, daemon=True).start()
                 elif u.path == "/api/reset":
                     store.reset()
@@ -750,10 +777,6 @@ def cmd_serve(a):
     url = f"http://127.0.0.1:{srv.server_address[1]}/?t={token}"
     info = store.dir / "server.json"
     write_private(info, json.dumps({"url": url, "pid": os.getpid(), "started_at": now()}))
-    try:
-        os.chmod(info, 0o600)
-    except OSError:
-        pass
     print(f"AR-BOARD URL: {url}", flush=True)
     print(f"AR-BOARD DECISOES: {store.path}", flush=True)
     if a.open:
