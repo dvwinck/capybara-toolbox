@@ -1,0 +1,40 @@
+{
+  "batch_id": "exemplo-2026-10-12",
+  "title": "Exemplo: 3 melhorias de arquitetura",
+  "subtitle": "Cada card: o que muda, por quê e o risco.",
+  "round": 1,
+  "items": [
+    {
+      "id": "A01",
+      "tag": "mudança",
+      "title": "Estado da produção como JSON validável",
+      "fields": [
+        {"label": "O que", "text": "Trocar `X-STATUS.md` por `state.json` com etapas nomeadas."},
+        {"label": "Por quê", "text": "Hoje a continuidade entre sessões depende de prosa livre."},
+        {"label": "Conceito", "text": "JSON validável: arquivo estruturado que um script consegue checar."}
+      ],
+      "risk": {"level": "médio", "text": "migrar 16 arquivos sem perder histórico"},
+      "meta": {"Área": "productions/", "Escala atual": "37 pastas"}
+    },
+    {
+      "id": "A02",
+      "tag": "mudança",
+      "title": "Checklist de render automatizado antes da entrega",
+      "fields": [
+        {"label": "O que", "text": "Rodar `ffprobe` e comparar resolução, fps e duração com o briefing."},
+        {"label": "Por quê", "text": "A conferência visual falha em vídeos longos."}
+      ],
+      "risk": {"level": "baixo", "text": "só leitura de metadados"}
+    },
+    {
+      "id": "A03",
+      "tag": "mudança",
+      "title": "Limpar cache de proxies a cada 7 dias",
+      "fields": [
+        {"label": "O que", "text": "Job semanal que remove proxies não usados."},
+        {"label": "Por quê", "text": "Economiza disco."}
+      ],
+      "risk": {"level": "alto", "text": "pode apagar material ainda em edição"}
+    }
+  ]
+}
