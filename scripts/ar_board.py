@@ -33,6 +33,17 @@ def now():
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
+def write_private(path, text):
+    """Grava texto com permissao 0600 desde a criacao e sem seguir symlinks plantados."""
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 # ---------------------------------------------------------------- batch
 
 def validate(b):
@@ -152,7 +163,7 @@ class Store:
     def save(self):
         self.state["updated_at"] = now()
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_private(tmp, json.dumps(self.state, ensure_ascii=False, indent=2))
         os.replace(tmp, self.path)
 
     def set_item(self, iid, body):
@@ -207,6 +218,7 @@ class Store:
             self.state["items"] = {}
             self.state["batch_note"] = ""
             self.state["finished"] = False
+            self.state.pop("finished_at", None)
             self.save()
 
 
@@ -594,15 +606,23 @@ def make_handler(store, token):
 # ---------------------------------------------------------------- comandos
 
 def cmd_serve(a):
-    store = Store(a.dir)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", a.port), BaseHTTPRequestHandler)
+    except OSError as e:
+        raise SystemExit(f"nao consegui abrir a porta {a.port}: {e}")
+    try:
+        store = Store(a.dir)
+    except BaseException:
+        srv.server_close()
+        raise
     token = secrets.token_urlsafe(16)
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(store, token))
+    srv.RequestHandlerClass = make_handler(store, token)
     if a.exit_on_finish:
         store.exit_cb = lambda: (time.sleep(0.6), srv.shutdown())
     signal.signal(signal.SIGTERM, lambda s, f: threading.Thread(target=srv.shutdown, daemon=True).start())
     url = f"http://127.0.0.1:{srv.server_address[1]}/?t={token}"
     info = store.dir / "server.json"
-    info.write_text(json.dumps({"url": url, "pid": os.getpid(), "started_at": now()}), encoding="utf-8")
+    write_private(info, json.dumps({"url": url, "pid": os.getpid(), "started_at": now()}))
     try:
         os.chmod(info, 0o600)
     except OSError:
