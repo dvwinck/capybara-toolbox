@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main, base]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Catalog tests
+        run: python -m unittest discover -s tests
+      - name: ar-board tests
+        run: python -m unittest discover -s plugins/ar-board/tests
+      - name: Catalog is in sync with the plugins
+        run: python tools/marketplace.py --check
+      - name: ar-board is in sync (version, manifest, single-file variant)
+        run: python plugins/ar-board/tools/sync.py --check

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from argparse import Namespace
 
-from helpers import ROOT, ab, make_batch
+from helpers import EXAMPLE, ab, make_batch
 
 
 def batch(**item):
@@ -14,7 +14,7 @@ def batch(**item):
 
 class ValidateTest(unittest.TestCase):
     def test_shipped_example_is_valid(self):
-        data = json.loads((ROOT / "examples" / "batch.example.json").read_text(encoding="utf-8"))
+        data = json.loads(EXAMPLE.read_text(encoding="utf-8"))
         self.assertEqual(ab.validate(data), [])
 
     def test_minimal_item_is_valid(self):

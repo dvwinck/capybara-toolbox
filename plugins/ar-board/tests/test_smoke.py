@@ -2,7 +2,7 @@ import shutil
 import tempfile
 import unittest
 
-from helpers import ROOT, LiveServer, ab, make_batch
+from helpers import EXAMPLE, LiveServer, ab, make_batch
 
 
 class SmokeTest(unittest.TestCase):
@@ -12,7 +12,7 @@ class SmokeTest(unittest.TestCase):
         self.d = make_batch(tmp.name)
 
     def test_example_batch_loads(self):
-        shutil.copy(ROOT / "examples" / "batch.example.json", self.d / "batch.json")
+        shutil.copy(EXAMPLE, self.d / "batch.json")
         self.assertEqual(ab.load_batch(self.d)["batch_id"], "exemplo-2026-10-12")
 
     def test_page_requires_token(self):

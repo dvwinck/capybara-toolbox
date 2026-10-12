@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">ar-board</title>
+  <circle cx="128" cy="128" r="124" fill="#CDEBE8"/>
+  <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75"/>
+  <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/>
+  <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/>
+  <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/>
+  <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/>
+  <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/>
+  <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/>
+  <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/>
+  <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/>
+  <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/>
+  <circle cx="112" cy="70" r="19" fill="#F2A93B"/>
+  <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/>
+  <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/>
+    <rect x="40" y="168" width="176" height="70" rx="14" fill="#FFFAF2" stroke="#D3AE82" stroke-width="4"/>
+  <circle cx="92" cy="203" r="19" fill="#6E9E5B"/>
+  <path d="M82 203l8 8 14-16" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="164" cy="203" r="19" fill="#C8553D"/>
+  <path d="M155 194l18 18M173 194l-18 18" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="128" cy="203" r="6" fill="#E8A33D"/>
+</svg>

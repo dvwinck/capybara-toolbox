@@ -4,41 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`ar-board` is a Claude Code **skill** (v1.0.3, docs in Portuguese): the agent writes a `batch.json` of N options, a local web panel lets the user approve/reject/maybe each one with keyboard shortcuts and comments, and the agent reads the result from `decisions.json`. Python 3 stdlib only — no build step, no package manager, no linter. Tests are `unittest` under `tests/`; the package is kept consistent by `tools/sync.py`; git repo with `base` as the main branch.
+**Capybara Toolbox** is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`, name `capybara-toolbox`). Each plugin lives in `plugins/<name>/` and is self-contained. The first (and currently only) plugin is **ar-board**: a local approve/reject web panel (Python stdlib only, no build step, no package manager, no linter). Docs are English with Portuguese counterparts; the skill and the panel UI are Portuguese. `base` is the main branch.
 
 ## Commands
 
 ```bash
-S=scripts/ar_board.py
-python3 -I $S check   DIR                 # validate DIR/batch.json (examples/ holds batch.example.json, which must be copied to <tmp>/batch.json first)
-python3 -I $S serve   DIR --open          # live panel on 127.0.0.1:<random port>, prints AR-BOARD URL
-python3 -I $S wait    DIR --timeout 60    # block until user clicks Concluir (exit 2 on timeout)
-python3 -I $S summary DIR [--json]
-python3 -I $S build   DIR                 # offline board.html (no server)
-./install.sh                              # copies script -> ~/.claude/ar-board/, SKILL.md -> ~/.claude/skills/ar-board/
-shasum -a 256 -c CHECKSUMS.sha256         # integrity of the package
-python3 -m unittest discover -s tests -v            # whole suite
-python3 -m unittest discover -s tests -v -k stale   # one test by name fragment
-python3 tools/sync.py [--check]                     # keep SKILL.md/README/CHECKSUMS in sync
+python3 -m unittest discover -s tests                     # catalog tests (repo root)
+python3 -m unittest discover -s plugins/ar-board/tests    # ar-board suite
+python3 -m unittest discover -s plugins/ar-board/tests -v -k stale   # one test by name fragment
+python3 tools/marketplace.py [--check]                    # sync/verify the catalog from the plugins
+python3 plugins/ar-board/tools/sync.py [--check]          # sync/verify ar-board version, manifest, single-file variant
+claude plugin validate .                                  # validate manifests with the real CLI
+./install.sh ar-board [--uninstall]                       # manual (non-marketplace) install into ~/.claude/skills
+
+S=plugins/ar-board/skills/ar-board/scripts/ar_board.py    # the product itself
+python3 -I $S check|serve|wait|summary|build DIR          # DIR must contain batch.json (copy skills/ar-board/examples/batch.example.json)
 ```
 
-To try it manually: copy `examples/batch.example.json` to `<tmp>/batch.json`, then `check`/`serve` that dir.
+## Architecture (ar-board)
 
-## Architecture
+- **`skills/ar-board/scripts/ar_board.py` is the whole product**: validation (`validate`/`load_batch`), persistence (`Store`), HTTP server (`make_handler`), CLI (`cmd_*`) and the HTML/CSS/JS front end as the `PAGE` string (themed with the capybara mascot; `render_page` substitutes `__TITLE__`/`__BOOT__`/`__MASCOT__`/`__FAVICON__` in a single pass).
+- **Agent ↔ panel channel is a file**: the server atomically writes `decisions.json` (private tmp file + `os.replace`, under `Store.lock`); `wait`/`summary` read it through `read_state`, which ignores a file from another batch/round or with a wrong shape (`valid_state`) — the agent must never act on a previous round's approvals. `batch.json` is read once at startup.
+- **Round/resume logic lives in `Store.__init__`**: same `batch_id` + `round` resumes (and resets `finished`); different → the old file is archived as `decisions.r<N>[.k].json`, never overwritten. `cmd_serve` binds the port first so a busy port archives nothing.
+- **Live vs offline**: `serve` talks to `/api/*` (token in the URL for GET, `X-AR-Token` for POST, `Host` must be 127.0.0.1/localhost, strict CSP); `build` makes `live=false` HTML that only uses `localStorage` and exports through Copiar (`AR-BOARD-RESULT` + JSON, a different shape from `decisions.json`).
+- `Store.set_item` validates everything before touching state, so a 400 leaves no trace. `finished` resets to `false` on any item edit, but not on note edits.
+- `skills/ar-board/SKILL.md` is the agent-facing contract (flow, card-quality rules, `preferences.md` format). It is lean: it tells the agent to run the script bundled next to it (`<skill base dir>/scripts/ar_board.py`) with `python3 -I`.
 
-- **`scripts/ar_board.py` is the whole product**: validation (`validate`/`load_batch`), persistence (`Store`), HTTP server (`make_handler`), CLI (`cmd_*`), and the entire HTML/CSS/JS front end as the `PAGE` string. `__TITLE__` and `__BOOT__` are substituted by `render_page`, which injects batch + state as JSON (escaping `</` and U+2028/2029).
-- **Agent ↔ panel channel is a file**, not a socket: the server atomically writes `decisions.json` (tmp + `os.replace`, under `Store.lock`) on every action; `wait`/`summary` just read it. `batch.json` is read once at startup.
-- **Round/resume logic lives in `Store.__init__`**: same `batch_id` + `round` resumes; different → the old file is archived as `decisions.r<N>[.k].json`, never overwritten.
-- **Live vs offline**: `serve` talks to `/api/*` (token in URL for GET, `X-AR-Token` header for POST, `Host` must be 127.0.0.1/localhost, strict CSP); `build` produces `live=false` HTML that only uses `localStorage` and exports through the Copiar button (`AR-BOARD-RESULT` + JSON, a different shape from `decisions.json`).
-- `wait`/`summary` read state through `read_state`, which ignores a `decisions.json` from another batch/round (the agent must never act on a previous round's approvals).
-- `finished` resets to `false` on any item edit (`Store.set_item`), but not on note edits.
-- `SKILL.md` is the agent-facing contract (flow, card-quality rules, preferences.md format) and tells the agent to install `~/.claude/ar-board/ar_board.py` and run it with `python3 -I`.
+## Keeping things consistent (non-obvious)
 
-## Keeping the package consistent
-
-- `scripts/ar_board.py` is the source of truth. After editing it, run `python3 tools/sync.py`: it re-embeds the script in `SKILL.md`, propagates `VERSION` into README/SKILL/install.sh, rewrites the script SHA-256 in the README and regenerates `CHECKSUMS.sha256`. `python3 tools/sync.py --check` only verifies (the test suite runs it).
-- Never edit the fenced python block in `SKILL.md` by hand.
-- To bump the version: change the header comment and `VERSION` in the script, add a row to the README history table by hand, then run sync (history rows are not rewritten).
-- `tests/` and `tools/` are repo-only; they are not in `install.sh` or `CHECKSUMS.sha256`.
-- README documents behavior in detail (API, keyboard, validation messages, security model, known limits); update the relevant section when changing behavior.
+- The script's `VERSION` is the source of truth for ar-board's version. After editing the script run `python3 plugins/ar-board/tools/sync.py` (updates `plugin.json` and regenerates `dist/ar-board-single-file.SKILL.md`) and then `python3 tools/marketplace.py` (copies version/description into the catalog). Never edit generated files by hand.
+- To release: bump `VERSION` and the `# ar-board X.Y.Z -` header comment, add a `## [X.Y.Z]` entry to `plugins/ar-board/CHANGELOG.md`, then run both sync tools. `--check` (run by the tests and CI) fails on drift, on a stale header comment and on a missing changelog entry.
+- The `<!-- ar-board:locate-script -->` markers in `SKILL.md` are what the single-file generator swaps for the "install the script" step; don't remove them.
+- The JS in `PAGE` is not executed by the suite (only string guards + WCAG checks on the palette); check UI changes in a browser.
 - In-page UI strings are deliberately accent-free Portuguese; card content may be any Unicode.
