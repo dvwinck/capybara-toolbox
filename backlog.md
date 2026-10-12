@@ -64,6 +64,14 @@ Counts are as read on 2026-10-12 and may have drifted. Versions refer to the Cla
 - **variant-board.** Design activity is large (Pocock prototype 925k installs, impeccable 80k stars). *Objection:* no direct ask; rendering needs a browser or screenshot tool outside stdlib, and picking one variant is a choice, not approve/reject.
 - **Rejected: review-map, skill-check, settings-doctor, changelog-keeper, guard-recipes.** No reason was recorded. The reviewers' objections were: review-map overlaps diff-board's risk grouping; skill-check is saturated (snyk/agent-scan, Cisco skill-scanner, agnix) and rule-only scanning catches about 8% of threats; settings-doctor overlaps `/doctor`; changelog-keeper is served by git-cliff (12.3k stars), release-please and release-it; guard-recipes is saturated (destructive_command_guard 6.2k, cc-safety-net 1.6k, hookify).
 
+## Refinements
+
+Each approved skill is refined one at a time, with scope questions judged in an ar-board panel; the closed result lives in `docs/refinements/<skill>.md`.
+
+| Skill | Status | Refinement |
+| --- | --- | --- |
+| question-board | Refined, 1 open point (effort S or M) | [docs/refinements/question-board.md](docs/refinements/question-board.md) |
+
 ## Suggested build order
 
 1. **question-board**, as a second skill inside the ar-board plugin: effort S, current engine, no new plugin, so no engine-sharing decision is needed.
