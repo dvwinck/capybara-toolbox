@@ -146,20 +146,20 @@ class Store:
     def set_item(self, iid, body):
         if not isinstance(iid, str) or iid not in self.ids:
             raise ValueError("id desconhecido")
+        has_d, has_c = "decision" in body, "comment" in body
+        d, c = body.get("decision"), body.get("comment")
+        if has_d and d is not None and (not isinstance(d, str) or d not in DECISIONS):
+            raise ValueError("decisao invalida")
+        if has_c and not isinstance(c, str):
+            raise ValueError("comment deve ser string")
         with self.lock:
-            e = self.state["items"].setdefault(iid, {})
-            if "decision" in body:
-                d = body["decision"]
+            e = {k: v for k, v in self.state["items"].get(iid, {}).items() if k != "at"}
+            if has_d:
                 if d is None:
                     e.pop("decision", None)
-                elif d in DECISIONS:
-                    e["decision"] = d
                 else:
-                    raise ValueError("decisao invalida")
-            if "comment" in body:
-                c = body["comment"]
-                if not isinstance(c, str):
-                    raise ValueError("comment deve ser string")
+                    e["decision"] = d
+            if has_c:
                 c = c[:MAX_COMMENT]
                 if c.strip():
                     e["comment"] = c
@@ -167,6 +167,7 @@ class Store:
                     e.pop("comment", None)
             if e:
                 e["at"] = now()
+                self.state["items"][iid] = e
             else:
                 self.state["items"].pop(iid, None)
             self.state["finished"] = False
@@ -516,7 +517,7 @@ def make_handler(store, token):
 
         def _token_ok(self, qs):
             got = self.headers.get("X-AR-Token") or (qs.get("t") or [""])[0]
-            return secrets.compare_digest(got, token)
+            return secrets.compare_digest(got.encode("utf-8"), token.encode("utf-8"))
 
         def do_GET(self):
             u = urlparse(self.path)
@@ -548,6 +549,8 @@ def make_handler(store, token):
                 return self._json(403, {"error": "forbidden"})
             try:
                 n = int(self.headers.get("Content-Length") or 0)
+                if n < 0:
+                    raise ValueError("content-length invalido")
                 if n > MAX_BODY:
                     return self._json(413, {"error": "too large"})
                 body = json.loads(self.rfile.read(n) or b"{}")
