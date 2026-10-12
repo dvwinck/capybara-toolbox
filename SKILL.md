@@ -159,6 +159,17 @@ def now():
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
+def write_private(path, text):
+    """Grava texto com permissao 0600 desde a criacao e sem seguir symlinks plantados."""
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 # ---------------------------------------------------------------- batch
 
 def validate(b):
@@ -168,6 +179,8 @@ def validate(b):
     for k in ("batch_id", "title"):
         if not isinstance(b.get(k), str) or not b[k].strip():
             errs.append(f"campo '{k}' e obrigatorio (string)")
+    if "round" in b and (not isinstance(b["round"], int) or isinstance(b["round"], bool) or b["round"] < 1):
+        errs.append("campo 'round' deve ser inteiro >= 1")
     items = b.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["'items' deve ser uma lista nao vazia"]
@@ -185,11 +198,21 @@ def validate(b):
             seen.add(iid)
         if not isinstance(it.get("title"), str) or not it["title"].strip():
             errs.append(f"item {i}: 'title' obrigatorio")
+        for k in ("tag", "image"):
+            if k in it and not isinstance(it[k], str):
+                errs.append(f"item {i}: '{k}' deve ser string")
+        if "meta" in it and not isinstance(it["meta"], dict):
+            errs.append(f"item {i}: 'meta' deve ser objeto")
+        if "risk" in it:
+            r = it["risk"]
+            if not isinstance(r, dict) or any(k in r and not isinstance(r[k], str) for k in ("level", "text")):
+                errs.append(f"item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto")
         f = it.get("fields", [])
         if not isinstance(f, list) or any(
-            not isinstance(x, dict) or "label" not in x or "text" not in x for x in f
+            not isinstance(x, dict) or not isinstance(x.get("label"), str) or not isinstance(x.get("text"), str)
+            for x in f
         ):
-            errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}}")
+            errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
     return errs
 
 
@@ -207,6 +230,23 @@ def load_batch(d):
     return b
 
 
+def round_of(b):
+    return int(b.get("round", 1))
+
+
+def read_state(d, batch):
+    """Le decisions.json da pasta; None se ausente, ilegivel ou de outro lote/rodada."""
+    try:
+        s = json.loads((Path(d) / "decisions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(s, dict):
+        return None
+    if s.get("batch_id") != batch["batch_id"] or s.get("round") != round_of(batch):
+        return None
+    return s
+
+
 # ---------------------------------------------------------------- estado
 
 class Store:
@@ -216,13 +256,15 @@ class Store:
         self.batch = load_batch(self.dir)
         self.path = self.dir / "decisions.json"
         self.ids = {it["id"] for it in self.batch["items"]}
-        self.round = int(self.batch.get("round", 1))
+        self.round = round_of(self.batch)
         self.exit_cb = None
         state = None
         if self.path.exists():
             try:
                 state = json.loads(self.path.read_text(encoding="utf-8"))
             except Exception:
+                state = None
+            if not isinstance(state, dict):
                 state = None
         if state and (state.get("batch_id") != self.batch["batch_id"] or state.get("round") != self.round):
             n, old = 0, self.dir / f"decisions.r{state.get('round', 'x')}.json"
@@ -247,26 +289,26 @@ class Store:
     def save(self):
         self.state["updated_at"] = now()
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_private(tmp, json.dumps(self.state, ensure_ascii=False, indent=2))
         os.replace(tmp, self.path)
 
     def set_item(self, iid, body):
         if not isinstance(iid, str) or iid not in self.ids:
             raise ValueError("id desconhecido")
+        has_d, has_c = "decision" in body, "comment" in body
+        d, c = body.get("decision"), body.get("comment")
+        if has_d and d is not None and (not isinstance(d, str) or d not in DECISIONS):
+            raise ValueError("decisao invalida")
+        if has_c and not isinstance(c, str):
+            raise ValueError("comment deve ser string")
         with self.lock:
-            e = self.state["items"].setdefault(iid, {})
-            if "decision" in body:
-                d = body["decision"]
+            e = {k: v for k, v in self.state["items"].get(iid, {}).items() if k != "at"}
+            if has_d:
                 if d is None:
                     e.pop("decision", None)
-                elif d in DECISIONS:
-                    e["decision"] = d
                 else:
-                    raise ValueError("decisao invalida")
-            if "comment" in body:
-                c = body["comment"]
-                if not isinstance(c, str):
-                    raise ValueError("comment deve ser string")
+                    e["decision"] = d
+            if has_c:
                 c = c[:MAX_COMMENT]
                 if c.strip():
                     e["comment"] = c
@@ -274,6 +316,7 @@ class Store:
                     e.pop("comment", None)
             if e:
                 e["at"] = now()
+                self.state["items"][iid] = e
             else:
                 self.state["items"].pop(iid, None)
             self.state["finished"] = False
@@ -301,6 +344,7 @@ class Store:
             self.state["items"] = {}
             self.state["batch_note"] = ""
             self.state["finished"] = False
+            self.state.pop("finished_at", None)
             self.save()
 
 
@@ -546,6 +590,7 @@ document.addEventListener('keydown', ev => {
   if(ev.key === 'Escape'){ if(typing) ev.target.blur(); return; }
   if(typing) return;
   const k = ev.key.toLowerCase();
+  if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;
   if(k === 'a') decide('approved');
   else if(k === 'r') decide('rejected');
   else if(k === 'm') decide('maybe');
@@ -568,6 +613,7 @@ $('#bD').onclick = () => {
 };
 $('#bX').onclick = () => {
   if(!confirm('Limpar todas as decisoes e comentarios deste lote?')) return;
+  Object.keys(timers).forEach(k => clearTimeout(timers[k])); pend = {};
   S.items = {}; S.batch_note = ''; S.finished = false; post('/api/reset', {}); persistLocal(); idx = 0; render();
 };
 $('#bF').onclick = () => {
@@ -580,6 +626,8 @@ $('#bF').onclick = () => {
 };
 
 setLive(BOOT.live);
+const first = items.findIndex(it => !(S.items[it.id] || {}).decision);
+idx = first < 0 ? 0 : first;
 render();
 })();
 </script></body></html>
@@ -623,7 +671,7 @@ def make_handler(store, token):
 
         def _token_ok(self, qs):
             got = self.headers.get("X-AR-Token") or (qs.get("t") or [""])[0]
-            return secrets.compare_digest(got, token)
+            return secrets.compare_digest(got.encode("utf-8"), token.encode("utf-8"))
 
         def do_GET(self):
             u = urlparse(self.path)
@@ -655,6 +703,8 @@ def make_handler(store, token):
                 return self._json(403, {"error": "forbidden"})
             try:
                 n = int(self.headers.get("Content-Length") or 0)
+                if n < 0:
+                    raise ValueError("content-length invalido")
                 if n > MAX_BODY:
                     return self._json(413, {"error": "too large"})
                 body = json.loads(self.rfile.read(n) or b"{}")
@@ -682,15 +732,23 @@ def make_handler(store, token):
 # ---------------------------------------------------------------- comandos
 
 def cmd_serve(a):
-    store = Store(a.dir)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", a.port), BaseHTTPRequestHandler)
+    except OSError as e:
+        raise SystemExit(f"nao consegui abrir a porta {a.port}: {e}")
+    try:
+        store = Store(a.dir)
+    except BaseException:
+        srv.server_close()
+        raise
     token = secrets.token_urlsafe(16)
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(store, token))
+    srv.RequestHandlerClass = make_handler(store, token)
     if a.exit_on_finish:
         store.exit_cb = lambda: (time.sleep(0.6), srv.shutdown())
     signal.signal(signal.SIGTERM, lambda s, f: threading.Thread(target=srv.shutdown, daemon=True).start())
     url = f"http://127.0.0.1:{srv.server_address[1]}/?t={token}"
     info = store.dir / "server.json"
-    info.write_text(json.dumps({"url": url, "pid": os.getpid(), "started_at": now()}), encoding="utf-8")
+    write_private(info, json.dumps({"url": url, "pid": os.getpid(), "started_at": now()}))
     try:
         os.chmod(info, 0o600)
     except OSError:
@@ -712,13 +770,9 @@ def cmd_serve(a):
 
 def cmd_wait(a):
     batch = load_batch(a.dir)
-    p = Path(a.dir) / "decisions.json"
     end = time.time() + a.timeout if a.timeout else None
     while True:
-        try:
-            s = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            s = None
+        s = read_state(a.dir, batch)
         if s and s.get("finished"):
             print(render_summary(batch, s))
             return 0
@@ -730,8 +784,7 @@ def cmd_wait(a):
 
 def cmd_summary(a):
     batch = load_batch(a.dir)
-    p = Path(a.dir) / "decisions.json"
-    state = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"round": batch.get("round", 1), "items": {}}
+    state = read_state(a.dir, batch) or {"round": round_of(batch), "items": {}}
     print(render_summary(batch, state, as_json=a.json))
     return 0
 

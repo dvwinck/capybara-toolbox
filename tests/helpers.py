@@ -68,3 +68,7 @@ class LiveServer:
         except urllib.error.HTTPError as e:
             with e:
                 return e.code, e.read().decode("utf-8")
+
+
+def load_sync():
+    return load_module(ROOT / "tools" / "sync.py", "sync_tool")
