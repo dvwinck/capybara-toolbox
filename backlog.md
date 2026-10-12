@@ -71,6 +71,7 @@ Each approved skill is refined one at a time, with scope questions judged in an 
 | Skill | Status | Refinement |
 | --- | --- | --- |
 | question-board | Refined, 1 open point (effort S or M) | [docs/refinements/question-board.md](docs/refinements/question-board.md) |
+| publish-check | Refined, scope closed (effort M) | [docs/refinements/publish-check.md](docs/refinements/publish-check.md) |
 
 ## Suggested build order
 
