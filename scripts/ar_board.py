@@ -42,6 +42,8 @@ def validate(b):
     for k in ("batch_id", "title"):
         if not isinstance(b.get(k), str) or not b[k].strip():
             errs.append(f"campo '{k}' e obrigatorio (string)")
+    if "round" in b and (not isinstance(b["round"], int) or isinstance(b["round"], bool) or b["round"] < 1):
+        errs.append("campo 'round' deve ser inteiro >= 1")
     items = b.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["'items' deve ser uma lista nao vazia"]
@@ -59,11 +61,21 @@ def validate(b):
             seen.add(iid)
         if not isinstance(it.get("title"), str) or not it["title"].strip():
             errs.append(f"item {i}: 'title' obrigatorio")
+        for k in ("tag", "image"):
+            if k in it and not isinstance(it[k], str):
+                errs.append(f"item {i}: '{k}' deve ser string")
+        if "meta" in it and not isinstance(it["meta"], dict):
+            errs.append(f"item {i}: 'meta' deve ser objeto")
+        if "risk" in it:
+            r = it["risk"]
+            if not isinstance(r, dict) or any(k in r and not isinstance(r[k], str) for k in ("level", "text")):
+                errs.append(f"item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto")
         f = it.get("fields", [])
         if not isinstance(f, list) or any(
-            not isinstance(x, dict) or "label" not in x or "text" not in x for x in f
+            not isinstance(x, dict) or not isinstance(x.get("label"), str) or not isinstance(x.get("text"), str)
+            for x in f
         ):
-            errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}}")
+            errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
     return errs
 
 
