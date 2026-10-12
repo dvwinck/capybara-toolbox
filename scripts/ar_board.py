@@ -81,6 +81,23 @@ def load_batch(d):
     return b
 
 
+def round_of(b):
+    return int(b.get("round", 1))
+
+
+def read_state(d, batch):
+    """Le decisions.json da pasta; None se ausente, ilegivel ou de outro lote/rodada."""
+    try:
+        s = json.loads((Path(d) / "decisions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(s, dict):
+        return None
+    if s.get("batch_id") != batch["batch_id"] or s.get("round") != round_of(batch):
+        return None
+    return s
+
+
 # ---------------------------------------------------------------- estado
 
 class Store:
@@ -90,13 +107,15 @@ class Store:
         self.batch = load_batch(self.dir)
         self.path = self.dir / "decisions.json"
         self.ids = {it["id"] for it in self.batch["items"]}
-        self.round = int(self.batch.get("round", 1))
+        self.round = round_of(self.batch)
         self.exit_cb = None
         state = None
         if self.path.exists():
             try:
                 state = json.loads(self.path.read_text(encoding="utf-8"))
             except Exception:
+                state = None
+            if not isinstance(state, dict):
                 state = None
         if state and (state.get("batch_id") != self.batch["batch_id"] or state.get("round") != self.round):
             n, old = 0, self.dir / f"decisions.r{state.get('round', 'x')}.json"
@@ -586,13 +605,9 @@ def cmd_serve(a):
 
 def cmd_wait(a):
     batch = load_batch(a.dir)
-    p = Path(a.dir) / "decisions.json"
     end = time.time() + a.timeout if a.timeout else None
     while True:
-        try:
-            s = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            s = None
+        s = read_state(a.dir, batch)
         if s and s.get("finished"):
             print(render_summary(batch, s))
             return 0
@@ -604,8 +619,7 @@ def cmd_wait(a):
 
 def cmd_summary(a):
     batch = load_batch(a.dir)
-    p = Path(a.dir) / "decisions.json"
-    state = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"round": batch.get("round", 1), "items": {}}
+    state = read_state(a.dir, batch) or {"round": round_of(batch), "items": {}}
     print(render_summary(batch, state, as_json=a.json))
     return 0
 

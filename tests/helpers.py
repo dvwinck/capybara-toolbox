@@ -66,4 +66,5 @@ class LiveServer:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return r.status, r.read().decode("utf-8")
         except urllib.error.HTTPError as e:
-            return e.code, e.read().decode("utf-8")
+            with e:
+                return e.code, e.read().decode("utf-8")
