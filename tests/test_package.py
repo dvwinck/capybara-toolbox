@@ -37,6 +37,15 @@ class PackageTest(unittest.TestCase):
             installed = Path(home, ".claude", "ar-board", "ar_board.py").read_bytes()
             self.assertEqual(installed, (ROOT / "scripts" / "ar_board.py").read_bytes())
 
+    def test_install_script_rejects_tampered_package(self):
+        with tempfile.TemporaryDirectory() as pkg, tempfile.TemporaryDirectory() as home:
+            copy_package(pkg)
+            with open(Path(pkg, "README.md"), "a", encoding="utf-8") as f:
+                f.write("\nadulterado\n")
+            r = subprocess.run(["bash", str(Path(pkg, "install.sh"))], env={**os.environ, "HOME": home}, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertFalse(Path(home, ".claude", "ar-board", "ar_board.py").exists())
+
 
 class SyncToolTest(unittest.TestCase):
     def test_detects_drift_and_fixes_it(self):

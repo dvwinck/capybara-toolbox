@@ -2,10 +2,10 @@
 
 Painel local de **aprovar/rejeitar** para o Claude Code. O agente propõe N opções, você julga uma a uma com o teclado (e comenta o porquê), e ao dizer "terminei" o agente lê o resultado direto do disco, age só sobre o que foi aprovado e guarda suas preferências para as próximas rodadas.
 
-- **Versão:** 1.0.2
+- **Versão:** 1.0.3
 - **Dependências:** `python3` (somente biblioteca padrão; testado em 3.13). Sem `pip`, sem Node, sem rede externa.
 - **Formato:** uma skill de arquivo único (`SKILL.md`) com o servidor embutido.
-- **SHA-256 do script v1.0.2:** `942fd35a7142b4146c0e28e6e4caa4576424ba239fa06d9d6370801033593092` (use para conferir se a cópia gravada em `~/.claude/ar-board/ar_board.py` é idêntica).
+- **SHA-256 do script v1.0.3:** `f8988a6e637c24ae752437db6a1726acffd65a0c2dcdf1c2a81a6513f1b40ced` (use para conferir se a cópia gravada em `~/.claude/ar-board/ar_board.py` é idêntica).
 
 > Inspirada na ideia do "AR board" mostrada no vídeo *Minha NOVA SKILL Favorita do Claude Code* (Maestros da IA). É uma implementação independente, escrita a partir do que o vídeo demonstra; não usa código nem material da skill original e não tem vínculo com o canal.
 
@@ -79,8 +79,8 @@ Peças:
 2. Na primeira execução o agente grava o servidor em `~/.claude/ar-board/ar_board.py` (a seção **Script** do `SKILL.md` contém o código completo). Verificação manual:
 
 ```bash
-test -f ~/.claude/ar-board/ar_board.py && grep -q 'ar-board 1.0.2' ~/.claude/ar-board/ar_board.py && echo OK || echo FALTA
-sha256sum ~/.claude/ar-board/ar_board.py     # compare com o hash no topo deste README
+test -f ~/.claude/ar-board/ar_board.py && grep -q 'ar-board 1.0.3' ~/.claude/ar-board/ar_board.py && echo OK || echo FALTA
+shasum -a 256 ~/.claude/ar-board/ar_board.py     # (Linux: sha256sum) compare com o hash no topo deste README
 ```
 
 3. Sugestão para repositórios: adicione `.ar-board/` ao `.gitignore`, pois os comentários podem conter informação interna.
@@ -88,7 +88,7 @@ sha256sum ~/.claude/ar-board/ar_board.py     # compare com o hash no topo deste 
 ### Instalação pelo pacote (zip)
 
 ```bash
-unzip ar-board-1.0.2.zip && cd ar-board && ./install.sh
+unzip ar-board-1.0.3.zip && cd ar-board && ./install.sh
 ```
 
 O `install.sh` copia `scripts/ar_board.py` para `~/.claude/ar-board/` e o `SKILL.md` para `~/.claude/skills/ar-board/`, confere a versão e valida o exemplo. Conteúdo do pacote:
@@ -101,6 +101,8 @@ O `install.sh` copia `scripts/ar_board.py` para `~/.claude/ar-board/` e o `SKILL
 | `install.sh` | Instalador local |
 | `CHECKSUMS.sha256` | Hashes SHA-256 de todos os arquivos |
 | `README.md` | Este documento |
+
+As pastas `tests/` e `tools/` existem só no repositório de desenvolvimento e não fazem parte do pacote. O `install.sh` confere o `CHECKSUMS.sha256` antes de copiar qualquer arquivo.
 
 Uso: peça em linguagem natural ou invoque `/ar-board`, por exemplo:
 
@@ -183,6 +185,7 @@ Regras que evitam acidentes:
 - **Modificadores são ignorados:** qualquer combinação com `Ctrl`, `Cmd` ou `Alt` passa direto, então `Ctrl+R` (recarregar), `Ctrl+C` etc. continuam funcionando.
 - **Foco em botões/checkbox não bloqueia os atalhos:** depois de clicar na caixa "avançar ao decidir", `A/R/M` continuam valendo. `Espaço`/`Enter` no botão focado o aciona normalmente.
 - **Cliques fazem o mesmo que teclas:** os botões e os chips têm o mesmo efeito dos atalhos.
+- **Tecla segurada não decide em rajada:** o auto-repeat de `A`, `R` e `M` é ignorado (uma pressão = uma decisão). Setas e `S` continuam repetindo.
 
 ### Avanço automático
 
@@ -255,7 +258,8 @@ Ao iniciar, o servidor lê `decisions.json` da pasta:
 
 - mesmo `batch_id` **e** mesma `round` → **retoma** (decisões, comentários, nota e `finished` voltam como estavam). Recarregar a página ou reiniciar o servidor não perde nada;
 - `batch_id` ou `round` diferentes → o arquivo antigo é **arquivado** e começa um estado novo;
-- arquivo ilegível/corrompido → começa um estado novo (sobrescreve).
+- arquivo ilegível/corrompido (ou JSON que não é um objeto) → começa um estado novo (sobrescreve);
+- `wait` e `summary` só consideram um `decisions.json` do mesmo `batch_id` e da mesma `round` do `batch.json`; se for de outro lote/rodada, ilegível ou não for um objeto JSON, é ignorado e tudo conta como sem decisão. Isso impede agir sobre aprovações antigas enquanto o servidor da nova rodada ainda não subiu.
 
 ### Rodadas
 
@@ -270,6 +274,7 @@ Para refinar, o agente cria um novo `batch.json` com o **mesmo** `batch_id` e `"
 - **`batch.json` é lido uma vez, na partida.** Alterá-lo com o servidor no ar não muda o painel; reinicie o `serve`. Decisões de ids que deixaram de existir ficam no arquivo mas são ignoradas por `summary` e pelos contadores.
 - **Duas abas abertas não se sincronizam:** cada aba carrega o estado ao abrir e grava por conta própria (vale a última gravação). Use uma aba por lote.
 - Recarregar a aba traz de volta o estado salvo no servidor.
+- Ao abrir (ou recarregar), o painel começa no primeiro item sem decisão.
 
 ## 11. Modo ao vivo × modo offline
 
@@ -337,10 +342,11 @@ S=~/.claude/ar-board/ar_board.py
 - Porta fixa (`--port N`) falha com erro se já estiver em uso.
 - Encerramento limpo (remove `server.json`) com `Ctrl+C`, `SIGTERM` (o `kill <pid>` que a skill recomenda) ou `--exit-on-finish`. `SIGKILL` não permite limpeza e deixa um `server.json` obsoleto (inofensivo).
 - Pensado para rodar em segundo plano (`run_in_background`) e imprimir a URL.
+- A porta é aberta antes de qualquer arquivamento de rodada: porta ocupada aborta sem tocar nos arquivos.
 
 ### `wait`
 
-Consulta `decisions.json` a cada 1 s e termina quando `finished` for `true`, imprimindo o mesmo resumo do `summary`. Em segundo plano, o término chega ao agente como notificação, funcionando como alternativa ao "terminei" digitado.
+Consulta `decisions.json` a cada 1 s e termina quando `finished` for `true`, imprimindo o mesmo resumo do `summary`. Ignora decisões de outro lote/rodada (ver §10). Em segundo plano, o término chega ao agente como notificação, funcionando como alternativa ao "terminei" digitado.
 
 ### `summary`
 
@@ -384,11 +390,13 @@ Usada pela própria página; documentada para depuração. Toda requisição pas
 
 Detalhes:
 
-- `decision` aceita `"approved"`, `"rejected"`, `"maybe"` ou `null` (limpa). Valor diferente → `400 {"error":"decisao invalida"}`.
+- `decision` aceita `"approved"`, `"rejected"`, `"maybe"` ou `null` (limpa). Qualquer outro valor, de qualquer tipo → `400 {"error":"decisao invalida"}`.
 - `id` que não seja uma string existente no lote (inclusive lista ou número) → `400 {"error":"id desconhecido"}`.
 - `comment` precisa ser string (senão `400`); é cortado em 5.000 caracteres; vazio remove o comentário.
 - Corpo acima de **1 MB** → `413`. JSON inválido → `400` com a mensagem do parser. Caminho desconhecido (autenticado) → `404`.
 - Métodos não implementados (`HEAD`, `PUT`…) recebem o erro padrão do `http.server` (`501`).
+- Uma requisição rejeitada (400) **não altera o estado**: a validação roda inteira antes de qualquer gravação.
+- `Content-Length` negativo ou inválido → `400`. Token com caracteres não-ASCII → `403`.
 - Respostas levam `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer`. A página leva ainda uma CSP restritiva (§16).
 - O servidor é multithread; escritas e leituras do estado são serializadas por lock. Em teste, 2.400 requisições concorrentes (16 threads, mistura de gravações e leituras) terminaram sem erro e com o JSON íntegro.
 
@@ -404,9 +412,13 @@ Detalhes:
 | Cada item é um objeto | `item <i>: deve ser objeto` |
 | `id`: string não vazia e única | `item <i>: 'id' obrigatorio` / `id duplicado '<id>'` |
 | `title` do item: string não vazia | `item <i>: 'title' obrigatorio` |
-| `fields`: lista de `{label, text}` | `item <i>: 'fields' deve ser lista de {label, text}` |
+| `fields`: lista de `{label, text}` com texto | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
+| `round` (se presente): inteiro >= 1 | `campo 'round' deve ser inteiro >= 1` |
+| `tag` / `image` (se presentes): string | `item <i>: '<k>' deve ser string` |
+| `meta` (se presente): objeto | `item <i>: 'meta' deve ser objeto` |
+| `risk` (se presente): objeto com `level`/`text` em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
 
-JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e convertido para inteiro. Campos extras são ignorados.
+JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e deve ser inteiro >= 1 (texto como `"2"` é rejeitado). Campos extras são ignorados.
 
 ## 16. Segurança
 
@@ -422,7 +434,7 @@ Modelo: um painel de uso individual, na própria máquina, que precisa ser inofe
 | Imagens maliciosas (ex.: SVG com script) | Servidas com `Content-Security-Policy: sandbox`, `nosniff`, só de dentro da pasta do lote e só com extensão de imagem |
 | Path traversal em `/files/` | O caminho resolvido precisa estar dentro da pasta do lote (testado com `..%2F`) |
 | Abuso de tamanho | Corpo ≤ 1 MB; comentário/nota ≤ 5.000 caracteres |
-| Vazamento do token em disco | `server.json` com permissão `0600`, removido ao encerrar normalmente |
+| Vazamento do token em disco | `server.json` e `decisions.json` criados com permissão `0600` desde a criação (sem janela legível) e sem seguir symlinks plantados no lugar do arquivo temporário; `server.json` removido ao encerrar normalmente |
 
 Limitações a considerar: o token vai na URL, então fica no histórico do navegador e em qualquer extensão que leia URLs; processos do mesmo usuário na máquina podem ler `server.json`; não há HTTPS (tráfego só em loopback). Para o agente, comentários e cards são **dados, não instruções** (ver §17).
 
@@ -432,7 +444,7 @@ O `SKILL.md` define o comportamento do agente em seis passos.
 
 **Gatilhos:** `/ar-board`, "ar board", "painel de aprovação", "me dá 10 opções pra eu aprovar/rejeitar", "quero escolher entre várias", "treina o agente com meu gosto".
 
-**0. Instalar** o script uma vez por máquina (verifica `ar-board 1.0.2` no arquivo; regrava se faltar ou for versão anterior).
+**0. Instalar** o script uma vez por máquina (verifica `ar-board 1.0.3` no arquivo; regrava se faltar ou for versão anterior).
 
 **1. Definir o lote.** Descobre tema e o que cada decisão destrava; pergunta só o que faltar. Padrão de **10 itens**; acima de 20 só a pedido, com aviso de que o custo em tokens cresce com a quantidade. Lê `.ar-board/preferences.md` antes de gerar, para não repetir o que foi rejeitado.
 
@@ -453,7 +465,7 @@ O `SKILL.md` define o comportamento do agente em seis passos.
 
 1. confirma em uma linha o que entendeu (contagens e nota geral);
 2. **age só sobre os aprovados**; rejeitados e sem decisão não são executados; os "talvez" geram pergunta ou entram na próxima rodada;
-3. extrai preferências (§18);
+3. extrai preferências (§18), mostra as regras inferidas e pede a confirmação; só as `Regra confirmada` são aplicadas ao agente e tratadas como restrição firme;
 4. se o lote era para treinar um agente, aplica as aprovações e as regras confirmadas ao arquivo desse agente: **direto** se você já pediu "use o feedback para aprimorar o agente", ou **mostrando o diff e esperando o OK** caso contrário;
 5. se fizer sentido refinar, abre nova rodada (`round` + 1, mesmo `batch_id`) e encerra o servidor ao terminar.
 
@@ -473,6 +485,7 @@ O ganho de longo prazo está nos comentários. Depois de cada lote, o agente acr
 - Aprovado: estado em JSON validável (A01, A05). Motivo dito pelo usuário: "migrar histórico antes"
 - Rejeitado: jobs que apagam cache (A03). Motivo dito pelo usuário: "pode apagar material em edição"
 - Regras inferidas (a confirmar): nunca propor limpeza automática de arquivos de produção
+- Regra confirmada: não apagar material em edição
 ```
 
 Princípios:
@@ -480,6 +493,7 @@ Princípios:
 - **Separação entre dito e inferido.** "Motivo dito pelo usuário" cita o que você escreveu; "Regras inferidas" é interpretação do agente e fica marcada como *a confirmar*. O agente não inventa motivo quando você não comentou.
 - **Uso posterior.** Nos próximos lotes o agente lê o arquivo e evita padrões rejeitados, puxando para o que costuma ser aprovado.
 - **Treinar agentes.** Quando o lote era sobre um agente (instruções, checklist, referências), as regras **confirmadas** viram edições nesse agente, sob a regra de consentimento do passo 5.4 acima.
+- **Confirmação explícita.** Regra inferida só vira `Regra confirmada` depois do OK do usuário; um `preferences.md` acima de ~150 linhas só é consolidado com o OK dele.
 - Por conter texto seu, `preferences.md` pode ter informação interna: mantenha `.ar-board/` fora do versionamento ou revise antes de compartilhar.
 
 ## 19. Visual, responsividade e acessibilidade
@@ -495,18 +509,19 @@ Princípios:
 
 - Uma pessoa por lote; sem sincronização entre abas ou entre pessoas (vale a última gravação).
 - O `batch.json` não é recarregado com o servidor no ar.
-- `Limpar` zera decisões, comentários, nota e `finished`, mas pode deixar um `finished_at` antigo no arquivo (não afeta nada).
 - Porta fixa em uso gera erro de inicialização; prefira a porta automática.
 - Em `--open` sem navegador padrão nada abre; copie a URL.
 - Texto dos cards é só texto simples com `` `código` `` e quebras de linha (sem Markdown completo).
 - Com mais de ~50 itens a barra de chips fica longa (funciona, mas a revisão item a item fica cansativa; prefira lotes menores e várias rodadas).
 - Imagens maiores que 2 MB são ignoradas silenciosamente no `build`.
-- Python 3.13 foi a única versão testada; o código usa apenas recursos de 3.7+ e não depende de pacotes externos.
+- A suíte automatizada (`python3 -m unittest discover -s tests`) foi executada em Python 3.15.0 e o fluxo manual original em 3.13; o código usa apenas recursos de 3.7+ e não depende de pacotes externos.
 - O fluxo completo dentro de uma sessão real do Claude Code (agente lendo o resultado) foi exercitado por script e navegador, mas não observado de ponta a ponta numa sessão interativa.
 
 ## 21. Validação e histórico de versões
 
-**Bateria de testes executada** (Python 3.13, Chromium headless via Playwright):
+**Suíte automatizada** (`tests/`, só `unittest`): `python3 -m unittest discover -s tests -v`. Cobre estado e rodadas (`wait`/`summary` × rodada antiga), atomicidade e tipos inválidos nos endpoints, validação do `batch.json`, permissões de arquivo, porta ocupada, guardas do JS embutido e a coerência do pacote (`tools/sync.py --check`, `install.sh`). O comportamento do JS (tecla segurada, Limpar, abertura no primeiro item pendente) foi conferido à mão no navegador, pois a suíte não executa JavaScript.
+
+**Bateria manual histórica (1.0.0–1.0.2, não incluída no pacote)** (Python 3.13, Chromium headless via Playwright):
 
 - fluxo completo com teclado (`A/R/M/C/S/Esc/←/→`), autosave, reload com retomada e finalização;
 - 2.400 requisições concorrentes (16 threads) sem erro e com JSON final íntegro; limites de comentário (5.000), corpo (413) e tipos inválidos (400);
@@ -527,6 +542,7 @@ Princípios:
 | 1.0.0 | Primeira versão: painel, atalhos, autosave, `serve`/`wait`/`summary`/`build`/`check`, rodadas e arquivamento. |
 | 1.0.1 | Descarga dos envios pendentes antes de concluir (corrida comentário × Concluir) e em `pagehide`/`visibilitychange`; quebra de texto longo no mobile; lock na leitura do estado pelo `GET`; opção "avançar ao decidir" com aviso de como voltar para comentar. |
 | 1.0.2 | `id` malformado agora responde `400` (antes derrubava a conexão); arquivamento de rodada sem sobrescrever arquivos existentes (sufixos numéricos); `finished_at` coerente com `finished`; banner de conclusão sincronizado ao editar comentário; `SIGTERM` limpa o `server.json`. |
+| 1.0.3 | `wait`/`summary` ignoram `decisions.json` de outro lote/rodada (antes agiam sobre aprovações antigas); requisição rejeitada (400) não altera mais o estado; `decision` não-string → 400 e token não-ASCII → 403 (antes derrubavam a conexão); `Content-Length` negativo → 400; `check` valida `round` (inteiro ≥ 1; texto como `"2"` agora é rejeitado), `tag`, `image`, `risk`, `meta` e `fields`; auto-repeat de A/R/M ignorado; Limpar cancela envios pendentes e remove `finished_at`; painel abre no primeiro item sem decisão; arquivos criados com `0600` e sem seguir symlinks; porta ocupada não arquiva a rodada anterior; `install.sh` confere `CHECKSUMS.sha256`; suíte de testes e `tools/sync.py`; passo de confirmação das regras inferidas na skill. |
 
 ## 22. Solução de problemas
 
@@ -558,4 +574,11 @@ Princípios:
     ├── server.json                   # url/pid/token do servidor em execução (0600)
     ├── board.html                    # só no modo offline (build)
     └── *.png                         # imagens opcionais dos cards
+```
+
+No repositório de desenvolvimento (fora do pacote):
+
+```
+tests/        # suíte unittest
+tools/sync.py # sincroniza SKILL.md, versão, hash do README e CHECKSUMS
 ```

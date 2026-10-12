@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ar-board 1.0.2 - painel local de aprovar/rejeitar (somente stdlib, sem rede externa)
+# ar-board 1.0.3 - painel local de aprovar/rejeitar (somente stdlib, sem rede externa)
 #
 # Uso:
 #   ar_board.py serve   DIR [--port N] [--open] [--exit-on-finish]
@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
