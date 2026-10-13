@@ -19,7 +19,7 @@ It exists because these leaks are real and the common tools miss them: gitleaks 
 | P02 | Detection | Four built-in categories plus an owner-supplied denylist: (1) claude.ai session links, (2) absolute home paths (`/Users/<name>`, `/home/<name>` and Windows equivalents), (3) e-mail addresses of authors and committers and inside text, (4) the denylist of internal names. Secrets are deliberately out of scope (use gitleaks); the report says so. |
 | P03 | Where it looks | The working tree (tracked and non-ignored files) plus `git log --all`: commit messages, author and committer fields, patches, and annotated tags, on all refs. Stash and reflog are not scanned, because they are not pushed. Large repositories are bounded with `--since` and `--max-commits`. |
 | P04 | Output | A readable report and `--json`. Exit code 0 = clean, 1 = findings, 2 = error. Each finding carries category, location (commit, file:line or message field) and a snippet with the sensitive value partly masked, so the report does not leak what it finds. The JSON has a `schema` field because it becomes a public contract. |
-| P05 | False positives | A JSON config, `.publish-check.json`, with `denylist` and `allow` (accepted findings by fingerprint: category, commit and snippet). JSON because the CI matrix includes Python 3.9 and `tomllib` exists only from 3.11. |
+| P05 | False positives | A JSON config, `.publish-check.json`, with `denylist` and `allow` (accepted findings by fingerprint: category, kind of place, file when there is one, and the value; see the amendments at the end). JSON because the CI matrix includes Python 3.9 and `tomllib` exists only from 3.11. |
 | P06 | Triage | Command line only in v1. Triage in the ar-board panel (each finding as a card) is a v2. |
 | P07 | Remediation | Strictly read-only: it never rewrites history. It prints guidance (filter-repo, filter-branch, back up first) but runs nothing. |
 | P08 | Integration | The CLI, the agent-facing skill, and documented examples of a `pre-push` hook and a CI step. No hook installer. |
@@ -30,7 +30,7 @@ It exists because these leaks are real and the common tools miss them: gitleaks 
 
 - **Dependencies:** Python 3.9+ standard library and the `git` command only. No network.
 - **Tests:** temporary repositories built in the test run, one planted leak per category in a past commit message, an author field, a patch and a tracked file; exit codes and JSON schema are asserted. The documented `pre-push` snippet is exercised in a temporary repository.
-- **Fingerprint:** category + commit id + normalised snippet, so accepting one finding does not silently accept a new, similar one.
+- **Fingerprint:** category + kind of place + file (when there is one) + the value (lower-cased), so accepting one finding does not silently accept a new value or a new file. The commit id is deliberately not included (see the amendments).
 - **Report masking:** values are shown partly masked (for example the local part of an e-mail), because the report itself may be pasted somewhere.
 
 ## Risks
@@ -64,3 +64,10 @@ It exists because these leaks are real and the common tools miss them: gitleaks 
 - A `publish-check install-hook` command (P08 B), or the CLI alone (P08 C).
 - Offering only on explicit request (P09 B), or running before every push (P09 C).
 - Skipping the real scan of the toolbox (P10 B), or including SARIF and the panel in the first delivery (P10 C).
+
+## Amendments made while planning and building
+
+- The fingerprint does not include the commit id: a real scan of this toolbox showed one intended e-mail producing 27 fingerprints, growing with every commit.
+- Shallow clones are reported as incomplete (`"shallow": true`), a failing git command is exit code 2 instead of a silent "clean", and files that cannot be scanned (binary, unreadable, over 50 MB) are counted in the report.
+- Scanning is hardened for untrusted repositories: `core.fsmonitor` is disabled (a hostile `.git/config` could otherwise make `git ls-files` run a program), e-mail matching is linear-time, patch hunks are parsed by their line counts, commit fields are NUL-delimited and control characters are neutralised in the report.
+- Masked home paths show only the prefix (`/Users/***`), because a one-letter masked name looks like a real path and the scanner flagged its own documentation.
