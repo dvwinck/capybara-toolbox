@@ -319,3 +319,33 @@ def scan(root, denylist, since=None, max_commits=None):
     findings += scan_patches(root, denylist, since, max_commits)
     findings += scan_tags(root, denylist)
     return findings, stats
+
+
+# ---------------------------------------------------------------- configuration
+
+def load_config(path):
+    """(denylist, allow) from a .publish-check.json file."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as e:
+        raise ScanError(f"cannot read config {path}: {e.strerror}")
+    except ValueError as e:
+        raise ScanError(f"config {path} is not valid JSON: {e}")
+    if not isinstance(data, dict):
+        raise ScanError(f"config {path} must be a JSON object")
+    unknown = sorted(set(data) - {"denylist", "allow"})
+    if unknown:
+        raise ScanError(f"config {path}: unknown keys {', '.join(unknown)}")
+    for key in ("denylist", "allow"):
+        value = data.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+            raise ScanError(f"config {path}: '{key}' must be a list of strings")
+    return list(data.get("denylist", [])), list(data.get("allow", []))
+
+
+def read_denylist_file(path):
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        raise ScanError(f"cannot read denylist {path}: {e.strerror}")
+    return [x.strip() for x in lines if x.strip() and not x.strip().startswith("#")]
