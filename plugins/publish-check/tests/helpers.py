@@ -49,9 +49,9 @@ def _env(author=("Alice Example", "alice@example.com"), committer=None, date=Non
     return env
 
 
-def git(repo, *args, author=("Alice Example", "alice@example.com"), committer=None, date=None):
+def git(repo, *args, author=("Alice Example", "alice@example.com"), committer=None, date=None, input=None):
     r = subprocess.run(["git", "-C", str(repo), "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", *args],
-                       env=_env(author, committer, date), capture_output=True, text=True)
+                       env=_env(author, committer, date), capture_output=True, text=True, input=input)
     if r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed: {r.stderr}")
     return r.stdout

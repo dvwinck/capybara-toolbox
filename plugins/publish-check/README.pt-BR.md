@@ -24,7 +24,7 @@ Ou copie a skill sem o sistema de plugins: `./install.sh publish-check`, a parti
 | `email` | endereços no texto, no autor e no committer (endereços `noreply` e `example.*` são ignorados) |
 | `denylist` | qualquer nome interno da sua lista, sem diferenciar maiúsculas |
 
-Onde procura: arquivos rastreados e não ignorados da árvore de trabalho, mais `git log --all`: toda mensagem de commit, autor e committer, toda linha adicionada em todo patch e as tags anotadas. Stash e reflog não são varridos (não vão no push).
+Onde procura: arquivos rastreados e não ignorados da árvore de trabalho, mais todas as refs exceto o stash: toda mensagem de commit, autor e committer, todo nome de arquivo, branch e tag, toda linha adicionada em todo patch (um commit de merge é comparado com o primeiro pai, então o que o próprio merge alterou é coberto; arquivos marcados `binary` ou `-diff` no `.gitattributes` são lidos como texto) e as tags anotadas. Stash e reflog não são varridos (não vão no push).
 
 ## Uso
 
@@ -63,10 +63,12 @@ Código de saída: `0` limpo, `1` com achados, `2` erro. Em um clone raso (por e
 
 ## Limites
 
-- Ele lê texto. Arquivos binários e arquivos de texto maiores que 50 MB **não são varridos**; o relatório os conta ("N files skipped"), então um resultado limpo nunca fica parcial em silêncio. Valores codificados ou propositalmente quebrados (base64, um nome dividido em duas linhas) não são detectados.
+- Na árvore de trabalho ele lê texto: arquivos binários e arquivos de texto maiores que 50 MB **não são varridos** e o relatório os conta ("N files skipped"). No histórico, os patches são lidos como texto mesmo para arquivos marcados como binários.
+- Uma varredura limitada avisa: `--since`, `--max-commits`, clones rasos e clones parciais são todos informados (`limits`, `shallow`, `partial` no JSON), então "limpo" nunca fica parcial em silêncio. Valores codificados ou propositalmente quebrados (base64, um nome dividido em duas linhas) não são detectados.
+- O conteúdo de submódulos não é varrido (varra cada submódulo como um repositório próprio); nomes de arquivos, branches e tags são varridos.
 - Os padrões são heurísticos: espere aceitar alguns falsos positivos e trate "limpo" como "nada encontrado por estas quatro checagens", não como garantia.
 - Um `.publish-check.json` dentro do repositório varrido é confiável por definição: um pull request pode adicionar entradas em `allow` que escondem achados. O relatório sempre mostra quantos achados a lista de aceitos absorveu; no CI, prefira `--config` apontando para um arquivo que você controla.
-- A varredura é somente leitura e segura em repositórios de terceiros: todo comando git roda com `--no-optional-locks` e com `core.fsmonitor` desativado (a config do próprio repositório poderia fazer o `git ls-files` executar um programa), e os diffs são lidos sem drivers de diff externo nem de textconv.
+- A varredura é somente leitura e endurecida contra repositórios hostis, mas não é um sandbox. Todo comando git roda sem travas opcionais, com `core.fsmonitor`, verificação de assinatura (`gpg.program`), busca preguiçosa de objetos ausentes (`protocol.allow=never`, `GIT_NO_LAZY_FETCH`), replace refs e grafts desativados, e os diffs são lidos sem drivers de diff externo nem de textconv. A config do próprio repositório poderia, de outro modo, fazer o git executar um programa ou acessar a rede. Para um repositório em que você não confia, varra um clone novo em um ambiente descartável.
 - Se o git falhar em qualquer etapa, a varredura para com código de saída 2, em vez de relatar um "limpo" parcial.
 
 ## Quando encontrar algo

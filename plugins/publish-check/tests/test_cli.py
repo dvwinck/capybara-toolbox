@@ -53,6 +53,8 @@ class CliTest(unittest.TestCase):
         self.assertEqual(set(report["scanned"]), {"files", "commits", "skipped"})
         self.assertIn("allowed", report)
         self.assertIn("shallow", report)
+        self.assertIn("partial", report)
+        self.assertIn("limits", report)
         for f in report["findings"]:
             self.assertEqual(set(f), {"category", "where", "location", "snippet", "fingerprint"})
             self.assertNotIn("fixture.person", json.dumps(f))
@@ -64,6 +66,25 @@ class CliTest(unittest.TestCase):
         self.assertEqual(text.returncode, 0, text.stdout + text.stderr)
         self.assertIn("1 file skipped", text.stdout)
         self.assertEqual(json.loads(run(str(self.repo), "--json").stdout)["scanned"]["skipped"], 1)
+
+    def test_a_limited_history_scan_is_never_a_plain_clean(self):
+        commit(self.repo, "one", {"a.txt": "1\n"})
+        commit(self.repo, "two", {"a.txt": "2\n"})
+        limited = run(str(self.repo), "--max-commits", "1")
+        self.assertEqual(limited.returncode, 0, limited.stdout + limited.stderr)
+        self.assertIn("history limited", limited.stdout)
+        self.assertEqual(json.loads(run(str(self.repo), "--json", "--max-commits", "1").stdout)["limits"],
+                         {"since": None, "max_commits": 1})
+        full = run(str(self.repo))
+        self.assertNotIn("history limited", full.stdout)
+        self.assertEqual(json.loads(run(str(self.repo), "--json").stdout)["limits"], {"since": None, "max_commits": None})
+
+    def test_a_since_value_that_matches_nothing_is_called_out(self):
+        commit(self.repo, "one", {"a.txt": "1\n"}, date="2020-01-01T00:00:00")
+        r = run(str(self.repo), "--since", "2022-01-01")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("history limited (--since 2022-01-01)", r.stdout)
+        self.assertIn("no commits were scanned", r.stdout)
 
     def test_json_report_of_a_clean_repository(self):
         commit(self.repo, "fine", {"a.txt": "hello\n"})

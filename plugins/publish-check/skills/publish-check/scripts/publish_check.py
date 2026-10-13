@@ -21,6 +21,7 @@ Exit codes: 0 clean, 1 findings, 2 error.
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -35,21 +36,27 @@ MAX_FILE_BYTES = 50_000_000  # larger text files are not read; they are counted 
 CATEGORIES = ("session-link", "home-path", "email", "denylist")
 
 SESSION_LINK = re.compile(r"https?://claude\.ai/(?:code/session|chat|share)[^\s)>\]\"'`]*")
-HOME_PATH = re.compile(r"(?:/Users/|/home/|[A-Za-z]:[\\/]Users[\\/])([A-Za-z0-9._-]+)")
+HOME_PATH = re.compile(r"(?:/Users/|/home/|[A-Za-z]:[\\/]+(?i:users)[\\/]+)([A-Za-z0-9._-]+)")
 LOCAL_TAIL = re.compile(r"[A-Za-z0-9._%+-]+$")
 DOMAIN_HEAD = re.compile(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
 
 # Generic values that are never a leak: placeholders, CI users, noreply addresses.
 BENIGN_HOME_NAMES = {"shared", "runner", "user", "username", "you", "name", "me", "example",
-                     "yourname", "your-name", "root", "ubuntu", "vagrant"}
+                     "yourname", "your-name", "root", "ubuntu", "vagrant", "public", "default"}
 BENIGN_EMAILS = {"noreply@anthropic.com", "noreply@github.com", "support@github.com"}
 BENIGN_EMAIL_DOMAINS = {"example.com", "example.org", "example.net", "example.invalid",
                         "users.noreply.github.com", "noreply.github.com"}
 
 # Every git call: read-only, and deaf to what the scanned repository's own config asks git to run
 # (core.fsmonitor makes `git ls-files --others` execute a program named in .git/config).
-GIT_FLAGS = ["--no-optional-locks", "-c", "core.quotepath=off", "-c", "core.fsmonitor=false"]
+GIT_FLAGS = ["--no-optional-locks", "-c", "core.quotepath=off", "-c", "core.fsmonitor=false",
+             "-c", "protocol.allow=never", "-c", "log.showSignature=false", "-c", "log.showRoot=true",
+             "-c", "i18n.logOutputEncoding=UTF-8"]
+# Also: no lazy fetch of missing objects (a partial clone would reach the network and run
+# core.sshCommand), no replace refs and no grafts (they can hide history), no prompts.
+GIT_ENV = {"GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1", "GIT_GRAFT_FILE": os.devnull,
+           "GIT_TERMINAL_PROMPT": "0"}
 
 Match = namedtuple("Match", "category start end value")
 
@@ -167,7 +174,8 @@ def findings_in_text(text, denylist, where, origin, locate):
 
 def git(root, *args):
     try:
-        return subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, check=False)
+        return subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, check=False,
+                              env={**os.environ, **GIT_ENV})
     except FileNotFoundError:
         raise ScanError("git was not found on PATH")
 
@@ -194,8 +202,15 @@ def is_shallow(root):
     return r.returncode == 0 and r.stdout.decode("utf-8", "replace").strip() == "true"
 
 
+def is_partial(root):
+    """True for a partial (promisor) clone: blobs missing locally are never fetched by this tool."""
+    r = git(root, "config", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor)$")
+    return r.returncode == 0 and bool(r.stdout.strip())
+
+
 def history_args(since, max_commits):
-    args = []
+    """Every ref except the stash (it is not pushed); the stash is itself a merge commit."""
+    args = ["--exclude=refs/stash", "--all"]
     if since:
         args.append(f"--since={since}")
     if max_commits:
@@ -210,6 +225,7 @@ def scan_tree(root, denylist, stats):
         if not rel:
             continue
         path = root / rel
+        yield from findings_in_text(rel, denylist, "path", rel, lambda n, rel=rel: rel)
         if path.is_symlink() or not path.is_file():
             continue
         try:
@@ -231,7 +247,7 @@ def scan_tree(root, denylist, stats):
 def scan_commit_metadata(root, denylist, since, max_commits, stats):
     """One NUL-terminated record of six NUL-separated fields per commit; git cannot put NUL in any of them."""
     fmt = "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%B"
-    r = git_checked(root, "log", "--all", "--no-color", "-z", fmt, *history_args(since, max_commits))
+    r = git_checked(root, "log", "--no-color", "-z", fmt, *history_args(since, max_commits))
     fields = r.stdout.decode("utf-8", "replace").split("\0")
     if fields and fields[-1] == "":
         fields.pop()
@@ -255,11 +271,14 @@ def scan_patches(root, denylist, since, max_commits):
 
     The body of each hunk is consumed by the line counts in its `@@` header, so a content line that
     merely looks like a header ("+++ ...", "@@ ...") is scanned as content, never mistaken for one."""
-    cmd = ["git", *GIT_FLAGS, "-C", str(root), "log", "--all", "-p", "-U0", "--no-color",
-           "--no-ext-diff", "--no-textconv", "--format=%x1e%H", *history_args(since, max_commits)]
+    # --text: files marked binary/-diff in .gitattributes are scanned too; --root: the first commit's patch;
+    # --diff-merges=first-parent: what a merge commit itself changed (resolutions, files added in the merge).
+    cmd = ["git", *GIT_FLAGS, "-C", str(root), "log", "-p", "-U0", "--no-color", "--text", "--root",
+           "--diff-merges=first-parent", "--no-ext-diff", "--no-textconv", "--format=%x1e%H",
+           *history_args(since, max_commits)]
     with tempfile.TemporaryFile() as errors:
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errors)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errors, env={**os.environ, **GIT_ENV})
         except FileNotFoundError:
             raise ScanError("git was not found on PATH")
         sha = path = ""
@@ -282,6 +301,8 @@ def scan_patches(root, denylist, since, max_commits):
                     sha, path = line[1:].strip(), ""
                 elif line.startswith("diff --git "):
                     path = line.rsplit(" b/", 1)[-1]
+                    yield from findings_in_text(path, denylist, "path", path,
+                                                lambda n, s=sha[:7], p=path: f"{s} {p}")
                 elif line.startswith("+++ "):
                     target = line[4:].rstrip("\t")
                     if target != "/dev/null":
@@ -311,6 +332,13 @@ def scan_tags(root, denylist):
         yield from findings_in_text(text, denylist, "tag", name, lambda n, name=name: f"tag {name}")
 
 
+def scan_refs(root, denylist):
+    """Branch and tag names can carry client names or addresses too."""
+    r = git_checked(root, "for-each-ref", "--format=%(refname)")
+    for name in r.stdout.decode("utf-8", "replace").splitlines():
+        yield from findings_in_text(name, denylist, "ref", name, lambda n, name=name: f"ref {name}")
+
+
 def scan(root, denylist, since=None, max_commits=None):
     """Return (findings, stats) for a repository root."""
     stats = {"files": 0, "commits": 0, "skipped": 0}
@@ -318,6 +346,7 @@ def scan(root, denylist, since=None, max_commits=None):
     findings += scan_commit_metadata(root, denylist, since, max_commits, stats)
     findings += scan_patches(root, denylist, since, max_commits)
     findings += scan_tags(root, denylist)
+    findings += scan_refs(root, denylist)
     return findings, stats
 
 
@@ -353,7 +382,7 @@ def read_denylist_file(path):
 
 # ---------------------------------------------------------------- report
 
-def build_report(root, findings, stats, allowed, shallow=False):
+def build_report(root, findings, stats, allowed, shallow=False, partial=False, limits=None):
     counts = {c: 0 for c in CATEGORIES}
     for f in findings:
         counts[f["category"]] += 1
@@ -367,6 +396,8 @@ def build_report(root, findings, stats, allowed, shallow=False):
         "counts": counts,
         "allowed": allowed,
         "shallow": shallow,
+        "partial": partial,
+        "limits": limits or {"since": None, "max_commits": None},
         "findings": findings,
     }
 
@@ -395,6 +426,16 @@ def render_text(report):
                      f"{MAX_FILE_BYTES // 1_000_000} MB): not scanned")
     if report["allowed"]:
         lines.append(f"({report['allowed']} accepted by the allow list)")
+    limits = report["limits"]
+    if limits["since"] or limits["max_commits"]:
+        parts = [f"--since {limits['since']}" if limits["since"] else "",
+                 f"--max-commits {limits['max_commits']}" if limits["max_commits"] else ""]
+        lines.append("note: history limited (" + ", ".join(p for p in parts if p) + "): older commits were not scanned.")
+        if report["scanned"]["commits"] == 0:
+            lines.append("note: no commits were scanned; check the --since value.")
+    if report["partial"]:
+        lines.append("warning: this is a partial clone; blobs that are not stored locally are never fetched, so the "
+                     "scan stops with an error if it needs one.")
     if report["shallow"]:
         lines.append("warning: this is a shallow clone, so only part of the history was scanned; "
                      "fetch the full history (git fetch --unshallow) for a complete scan.")
@@ -440,7 +481,8 @@ def run(args):
     findings, stats = scan(root, denylist, args.since, args.max_commits)
     allow_set = set(allow)
     kept = [f for f in findings if f["fingerprint"] not in allow_set]
-    return build_report(root, kept, stats, len(findings) - len(kept), is_shallow(root))
+    limits = {"since": args.since, "max_commits": args.max_commits}
+    return build_report(root, kept, stats, len(findings) - len(kept), is_shallow(root), is_partial(root), limits)
 
 
 def main(argv=None):

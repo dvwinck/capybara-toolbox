@@ -2717,3 +2717,17 @@ git checkout base && git merge --ff-only feat/publish-check && git branch -d fea
 - **Placeholders:** none. Every code block is the file as verified by running the full plan from a clean copy of `base`.
 - **Type consistency:** `scan` returns `(findings, stats)`; `stats` has `files`, `commits`, `skipped` everywhere; `build_report` takes `shallow` as its fifth argument; finding dicts have the same five keys in the script, the tests and the JSON schema.
 - **Out of scope (unchanged):** secrets, SARIF, panel triage, stash/reflog scanning, history rewriting, a hook installer.
+
+## Execution notes (added after implementation)
+
+Executed inline on 2026-10-12 on branch `feat/publish-check`: Tasks 1-8 matched their expected RED and GREEN results. A final whole-branch review by an independent reviewer then found two Critical and four Important problems that the plan's tests did not cover, and one pass fixed them, each with a test that failed first:
+
+- **C1, hostile config still ran programs or reached the network:** signature verification (`log.showSignature` with `gpg.program`) and lazy fetching of missing objects (partial clone with `core.sshCommand`). git now runs with `protocol.allow=never`, `log.showSignature=false`, `GIT_NO_LAZY_FETCH=1`, and also without replace refs and grafts (which can hide history); partial clones are reported.
+- **C2, merge commits were never scanned:** `git log -p` shows no diff for merges. Patches are now read with `--diff-merges=first-parent`, and the stash is excluded explicitly (it is a merge commit too).
+- **I1, history that was silently dropped:** files marked `binary` or `-diff` in `.gitattributes` and the root commit's patch (`log.showRoot`). Patches are now read with `--text --root`.
+- **I2:** file, branch and tag names are scanned (places `path` and `ref`).
+- **I3:** a limited scan is no longer a plain "clean": `limits`, `partial` and "no commits were scanned" are reported.
+- **I4:** Windows home paths with doubled separators or any case are found.
+
+Consequences for this document: the embedded script and tests of Tasks 3-6 are the first-pass code; the script in the repository now supersedes them (see the fix commit). Deferred minor findings from that review (exit code of unexpected errors, symlinked parent directories, blobs pointed at by tags, an empty denylist entry, escapes in the repository path header, other encodings of the same values, line numbers on files with form feeds, some test gaps around the git hardening flags, a `main` branch in the CI example that this repository does not have, stale `refs/original` after a rewrite) are listed in the plan ledger, not fixed.
+

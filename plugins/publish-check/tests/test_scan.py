@@ -186,6 +186,128 @@ class AdversarialInputTest(RepoCase):
         self.assertEqual(stats["files"], 1)
 
 
+class HostileConfigTest(RepoCase):
+    """Scanning a repository must not run programs or reach a network on that repository's say-so."""
+
+    def program(self, name):
+        marker = self.repo.parent / ("PWNED-" + name)
+        script = self.repo.parent / (name + ".sh")
+        script.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 1\n", encoding="utf-8")
+        script.chmod(0o755)
+        return marker, script
+
+    def test_signature_verification_cannot_run_a_program(self):
+        marker, script = self.program("gpg")
+        commit(self.repo, "base", {"a.txt": "x\n"})
+        tree = git(self.repo, "rev-parse", "HEAD^{tree}").strip()
+        body = (f"tree {tree}\nauthor A <a@example.com> 1700000000 +0000\ncommitter A <a@example.com> 1700000000 +0000\n"
+                "gpgsig -----BEGIN PGP SIGNATURE-----\n \n abc\n -----END PGP SIGNATURE-----\n\nsigned\n")
+        sha = git(self.repo, "hash-object", "-t", "commit", "-w", "--stdin", input=body).strip()
+        git(self.repo, "update-ref", "refs/heads/main", sha)
+        git(self.repo, "config", "log.showSignature", "true")
+        git(self.repo, "config", "gpg.program", str(script))
+        self.scan()
+        self.assertFalse(marker.exists(), "scanning ran the program named by gpg.program")
+
+    def test_a_missing_object_is_never_fetched_from_a_promisor_remote(self):
+        marker, script = self.program("ssh")
+        commit(self.repo, "base", {"a.txt": "hello\n"})
+        blob = git(self.repo, "rev-parse", "HEAD:a.txt").strip()
+        os.remove(self.repo / ".git" / "objects" / blob[:2] / blob[2:])
+        for key, value in (("core.repositoryformatversion", "1"), ("extensions.partialClone", "origin"),
+                           ("remote.origin.url", "ssh://scan-must-not-connect.invalid/r"),
+                           ("remote.origin.promisor", "true"), ("core.sshCommand", str(script))):
+            git(self.repo, "config", key, value)
+        with self.assertRaises(pc.ScanError):
+            self.scan()
+        self.assertFalse(marker.exists(), "scanning tried to fetch a missing object over the network")
+
+
+class HiddenHistoryTest(RepoCase):
+    """Replace refs and grafts can make git show a different history than the one that will be pushed."""
+
+    def test_a_replace_ref_cannot_hide_a_commit(self):
+        commit(self.repo, "base", {"a.txt": "1\n"})
+        leaky = commit(self.repo, f"oops {LEAK_EMAIL}", {"a.txt": "2\n"})
+        git(self.repo, "replace", leaky, git(self.repo, "rev-parse", "HEAD~1").strip())
+        findings, _ = self.scan()
+        self.assertEqual([f["category"] for f in self.where(findings, "commit-message")], ["email"])
+
+    def test_a_grafts_file_cannot_hide_history(self):
+        commit(self.repo, f"oops {LEAK_EMAIL}", {"a.txt": "1\n"})
+        tip = commit(self.repo, "clean", {"a.txt": "2\n"})
+        (self.repo / ".git" / "info").mkdir(exist_ok=True)
+        (self.repo / ".git" / "info" / "grafts").write_text(tip + "\n", encoding="utf-8")  # tip becomes a root
+        findings, stats = self.scan()
+        self.assertEqual(stats["commits"], 2)
+        self.assertEqual([f["category"] for f in self.where(findings, "commit-message")], ["email"])
+
+
+class MergeAndStashTest(RepoCase):
+    def test_changes_made_in_a_merge_commit_are_scanned(self):
+        commit(self.repo, "base", {"a.txt": "1\n"})
+        git(self.repo, "checkout", "-q", "-b", "feat")
+        commit(self.repo, "feature", {"b.txt": "b\n"})
+        git(self.repo, "checkout", "-q", "main")
+        commit(self.repo, "main work", {"m.txt": "m\n"})
+        git(self.repo, "merge", "-q", "--no-commit", "--no-ff", "feat")
+        commit(self.repo, "merge feat", {"evil.txt": f"mail {LEAK_EMAIL}\n"})
+        commit(self.repo, "remove it", remove=["evil.txt"])
+        findings, _ = self.scan()
+        self.assertEqual(self.where(findings, "tree"), [])
+        self.assertTrue([f for f in self.where(findings, "patch") if f["location"].endswith(" evil.txt:1")],
+                        [f["location"] for f in findings])
+
+    def test_the_stash_is_not_scanned(self):
+        commit(self.repo, "base", {"a.txt": "1\n"})
+        (self.repo / "a.txt").write_text(f"mail {LEAK_EMAIL}\n", encoding="utf-8")
+        git(self.repo, "stash", "push", "-q")
+        findings, _ = self.scan()
+        self.assertEqual(findings, [])
+
+
+class AttributesAndRootTest(RepoCase):
+    def history_hits(self, name):
+        findings, _ = self.scan()
+        return [f for f in self.where(findings, "patch") if f["location"].split()[1].startswith(name)]
+
+    def test_files_marked_binary_are_still_scanned_in_history(self):
+        commit(self.repo, "attrs", {".gitattributes": "*.svg binary\n", "ok.txt": "x\n"})
+        commit(self.repo, "add", {"logo.svg": f"<!-- {LEAK_PATH}/art -->\n"})
+        commit(self.repo, "remove", remove=["logo.svg"])
+        self.assertEqual(len(self.history_hits("logo.svg")), 1)
+
+    def test_files_with_the_diff_attribute_off_are_still_scanned_in_history(self):
+        commit(self.repo, "attrs", {".gitattributes": "*.ipynb -diff\n", "ok.txt": "x\n"})
+        commit(self.repo, "add", {"nb.ipynb": f"{{\"path\": \"{LEAK_PATH}/x\"}}\n"})
+        commit(self.repo, "remove", remove=["nb.ipynb"])
+        self.assertEqual(len(self.history_hits("nb.ipynb")), 1)
+
+    def test_the_root_commit_is_scanned_even_when_log_showroot_is_off(self):
+        commit(self.repo, "root", {"a.txt": f"home {LEAK_PATH}/x\n"})
+        commit(self.repo, "clean", {"a.txt": "ok\n"})
+        git(self.repo, "config", "log.showRoot", "false")
+        self.assertEqual(len(self.history_hits("a.txt")), 1)
+
+
+class NamesTest(RepoCase):
+    def test_file_branch_and_tag_names_are_scanned(self):
+        commit(self.repo, "add", {"docs/acmecorp-merger-plan.md": "plan\n"})
+        git(self.repo, "branch", "client/acmecorp-rollout")
+        git(self.repo, "tag", "acmecorp-v1")
+        findings, _ = self.scan(denylist=["acmecorp"])
+        places = {(f["where"], f["location"].split(" ", 1)[-1]) for f in findings if f["category"] == "denylist"}
+        self.assertIn(("path", "docs/acmecorp-merger-plan.md"), places)
+        self.assertIn(("ref", "refs/heads/client/acmecorp-rollout"), places)
+        self.assertIn(("ref", "refs/tags/acmecorp-v1"), places)
+        self.assertEqual({f["where"] for f in findings if f["location"].startswith("docs/")}, {"path"})
+
+    def test_a_file_named_after_an_email_address_is_found(self):
+        commit(self.repo, "add", {f"{LEAK_EMAIL}.txt": "x\n"})
+        findings, _ = self.scan()
+        self.assertEqual({(f["category"], f["where"]) for f in findings}, {("email", "path")})
+
+
 class FingerprintAcrossCommitsTest(RepoCase):
     def fingerprints(self, findings, where):
         return {f["fingerprint"] for f in self.where(findings, where)}

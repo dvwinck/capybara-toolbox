@@ -27,6 +27,18 @@ class HomePathTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual([c for c, _ in cats(f"cd {path}")], ["home-path"])
 
+    def test_windows_forms_with_doubled_separators_and_any_case_are_found(self):
+        for path in ("C:\\\\Users\\\\" + "fixtureuser", "c:\\users\\" + "fixtureuser", "C:/Users/" + "fixtureuser",
+                     "D:\\USERS\\" + "fixtureuser"):
+            with self.subTest(path=path):
+                self.assertEqual([c for c, _ in cats(f"x {path}\\Desktop")], ["home-path"])
+
+    def test_windows_shared_profiles_are_ignored(self):
+        self.assertEqual(cats("C:\\Users\\Public\\Documents and C:\\Users\\Default\\x"), [])
+
+    def test_the_case_insensitive_windows_form_does_not_leak_into_the_unix_one(self):
+        self.assertEqual(cats("GET /users/profile and /users/alice and /USERS/bob"), [])
+
     def test_placeholders_and_ci_users_are_ignored(self):
         for text in ("/Users/<name>/x", "/home/runner/work", "/Users/Shared/data", "~/x and $HOME/y", "/Users/you/x"):
             with self.subTest(text=text):

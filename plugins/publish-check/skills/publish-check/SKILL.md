@@ -46,6 +46,7 @@ Mostre os achados agrupados por categoria, como o relatório os imprime: os valo
 - achado só na **árvore**: editar o arquivo e commitar;
 - achado no **histórico** (mensagem, autor, patch, tag): só some reescrevendo o histórico. Aponte `docs/remediation.md` (dentro do plugin), lembre de fazer backup antes e de que todos os SHAs mudam. **Nunca reescreva histórico por conta própria**, nem ofereça rodar a reescrita sem pedido explícito do usuário;
 - se o relatório disser **skipped** (arquivos binários, ilegíveis ou muito grandes), esses arquivos **não foram verificados**: diga isso; se mostrar "accepted by the allow list", diga quantos achados foram aceitos e por quem (o `allow` do `.publish-check.json`);
+- se o relatório disser **history limited** (`--since`/`--max-commits`), **no commits were scanned** ou **partial clone**, a varredura foi parcial: diga o que ficou de fora e que "limpo" vale só para o que foi varrido (o hook de pre-push de exemplo limita a 200 commits);
 - se o relatório avisar **shallow clone**, o resultado é parcial (só parte do histórico foi varrida): diga isso e sugira `git fetch --unshallow` antes de confiar em "limpo";
 - achado que é falso positivo (um e-mail público de propósito, um caminho de exemplo): o usuário pode aceitá-lo adicionando o `fingerprint` ao `allow` de `.publish-check.json`. Só edite esse arquivo com o OK do usuário.
 

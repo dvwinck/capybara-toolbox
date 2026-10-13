@@ -24,7 +24,7 @@ Or copy the skill without the plugin system: `./install.sh publish-check` from a
 | `email` | addresses in text, in author and in committer fields (`noreply` and `example.*` addresses are ignored) |
 | `denylist` | any internal name you list, case-insensitive |
 
-Where it looks: tracked and non-ignored files of the working tree, plus `git log --all`: every commit message, author and committer, every added line of every patch, and annotated tags. Stash and reflog are not scanned (they are not pushed).
+Where it looks: tracked and non-ignored files of the working tree, plus every ref except the stash: every commit message, author and committer, every file, branch and tag name, every added line of every patch (a merge commit is compared with its first parent, so what a merge itself changed is covered; files marked `binary` or `-diff` in `.gitattributes` are read as text) and annotated tags. Stash and reflog are not scanned (they are not pushed).
 
 ## Use
 
@@ -63,10 +63,12 @@ Exit code: `0` clean, `1` findings, `2` error. On a shallow clone (for example a
 
 ## Limits
 
-- It reads text. Binary files, and text files larger than 50 MB, are **not scanned**; the report counts them ("N files skipped") so a clean result is never silently partial. Encoded or deliberately split values (base64, a name broken over two lines) are not detected.
+- In the working tree it reads text: binary files, and text files larger than 50 MB, are **not scanned** and the report counts them ("N files skipped"). In history, patches are read as text even for files marked binary.
+- A limited scan says so: `--since`, `--max-commits`, shallow clones and partial clones are all reported (`limits`, `shallow`, `partial` in the JSON), so "clean" is never silently partial. Encoded or deliberately split values (base64, a name broken over two lines) are not detected.
+- Submodule contents are not scanned (scan each submodule as its own repository); file names, branch names and tag names are.
 - Patterns are heuristic: expect to accept a few false positives, and treat "clean" as "nothing found by these four checks", not as a guarantee.
 - A `.publish-check.json` inside the scanned repository is trusted: a pull request can add `allow` entries that hide findings. The report always prints how many findings the allow list accepted; in CI, prefer `--config` pointing at a file you control.
-- Scanning is read-only and safe on untrusted repositories: every git call runs with `--no-optional-locks` and with `core.fsmonitor` disabled (a repository's own config could otherwise make `git ls-files` run a program), and diffs are read without external diff or textconv drivers.
+- Scanning is read-only and hardened against hostile repositories, but it is not a sandbox. Every git call runs without optional locks, with `core.fsmonitor`, signature verification (`gpg.program`), lazy fetching of missing objects (`protocol.allow=never`, `GIT_NO_LAZY_FETCH`), replace refs and grafts all disabled, and diffs are read without external diff or textconv drivers. A repository's own config could otherwise make git run a program or reach the network. For a repository you do not trust at all, scan a fresh clone in a throwaway environment.
 - If git fails on any step the scan stops with exit code 2 instead of reporting a partial "clean".
 
 ## When something is found
