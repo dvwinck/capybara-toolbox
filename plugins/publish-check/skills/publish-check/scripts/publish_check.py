@@ -161,3 +161,161 @@ def findings_in_text(text, denylist, where, origin, locate):
                 "snippet": printable(window(masked_line, start, length)),
                 "fingerprint": fingerprint(m.category, where, origin, m.value),
             }
+
+
+# ---------------------------------------------------------------- git scanning
+
+def git(root, *args):
+    try:
+        return subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, check=False)
+    except FileNotFoundError:
+        raise ScanError("git was not found on PATH")
+
+
+def git_checked(root, *args):
+    """git, but a failing command is an error: a scan that silently saw nothing would read as 'clean'."""
+    r = git(root, *args)
+    if r.returncode != 0:
+        detail = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise ScanError(f"git {args[0]} failed ({detail[-1] if detail else 'exit ' + str(r.returncode)})")
+    return r
+
+
+def repo_root(path):
+    r = git(path, "rev-parse", "--show-toplevel")
+    if r.returncode != 0:
+        raise ScanError(f"{path} is not inside a git repository")
+    return Path(r.stdout.decode("utf-8", "replace").strip())
+
+
+def is_shallow(root):
+    """True for a shallow clone: its history is incomplete, so a clean scan proves little."""
+    r = git(root, "rev-parse", "--is-shallow-repository")
+    return r.returncode == 0 and r.stdout.decode("utf-8", "replace").strip() == "true"
+
+
+def history_args(since, max_commits):
+    args = []
+    if since:
+        args.append(f"--since={since}")
+    if max_commits:
+        args += ["-n", str(max_commits)]
+    return args
+
+
+def scan_tree(root, denylist, stats):
+    """Tracked and untracked-but-not-ignored text files of the working tree."""
+    r = git_checked(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    for rel in r.stdout.decode("utf-8", "replace").split("\0"):
+        if not rel:
+            continue
+        path = root / rel
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            if path.stat().st_size > MAX_FILE_BYTES:
+                stats["skipped"] += 1
+                continue
+            data = path.read_bytes()
+        except OSError:
+            stats["skipped"] += 1
+            continue
+        if b"\0" in data[:8192]:
+            stats["skipped"] += 1  # binary
+            continue
+        stats["files"] += 1
+        yield from findings_in_text(data.decode("utf-8", "replace"), denylist, "tree", rel,
+                                    lambda n, rel=rel: f"{rel}:{n}")
+
+
+def scan_commit_metadata(root, denylist, since, max_commits, stats):
+    """One NUL-terminated record of six NUL-separated fields per commit; git cannot put NUL in any of them."""
+    fmt = "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%B"
+    r = git_checked(root, "log", "--all", "--no-color", "-z", fmt, *history_args(since, max_commits))
+    fields = r.stdout.decode("utf-8", "replace").split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    if len(fields) % 6:
+        raise ScanError("unexpected git log output (commit fields were not in groups of six)")
+    for k in range(0, len(fields), 6):
+        sha, an, ae, cn, ce, body = (x.strip("\n") if n == 0 else x for n, x in enumerate(fields[k:k + 6]))
+        stats["commits"] += 1
+        short = sha[:7]
+        who = [("commit-author", "author", f"{an} <{ae}>")]
+        if (cn, ce) != (an, ae):
+            who.append(("commit-committer", "committer", f"{cn} <{ce}>"))
+        for where, label, text in who:
+            yield from findings_in_text(text, denylist, where, "", lambda n, s=short, l=label: f"{s} {l}")
+        yield from findings_in_text(body, denylist, "commit-message", "",
+                                    lambda n, s=short: f"{s} message line {n}")
+
+
+def scan_patches(root, denylist, since, max_commits):
+    """Added lines of every patch on every ref (removed lines were added by an earlier commit).
+
+    The body of each hunk is consumed by the line counts in its `@@` header, so a content line that
+    merely looks like a header ("+++ ...", "@@ ...") is scanned as content, never mistaken for one."""
+    cmd = ["git", *GIT_FLAGS, "-C", str(root), "log", "--all", "-p", "-U0", "--no-color",
+           "--no-ext-diff", "--no-textconv", "--format=%x1e%H", *history_args(since, max_commits)]
+    with tempfile.TemporaryFile() as errors:
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errors)
+        except FileNotFoundError:
+            raise ScanError("git was not found on PATH")
+        sha = path = ""
+        number = old_left = new_left = 0
+        with proc:
+            for raw in proc.stdout:
+                line = raw.decode("utf-8", "replace").rstrip("\n")
+                if old_left or new_left:  # inside a hunk body
+                    if line.startswith("+") and new_left:
+                        new_left -= 1
+                        for f in findings_in_text(line[1:], denylist, "patch", path,
+                                                  lambda n, s=sha[:7], p=path, at=number: f"{s} {p}:{at}"):
+                            yield f
+                        number += 1
+                    elif line.startswith("-") and old_left:
+                        old_left -= 1
+                    # "\ No newline at end of file" and anything else inside a hunk is ignored
+                    continue
+                if line.startswith("\x1e"):
+                    sha, path = line[1:].strip(), ""
+                elif line.startswith("diff --git "):
+                    path = line.rsplit(" b/", 1)[-1]
+                elif line.startswith("+++ "):
+                    target = line[4:].rstrip("\t")
+                    if target != "/dev/null":
+                        path = target[2:] if target.startswith("b/") else target
+                elif line.startswith("@@"):
+                    m = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+                    if m:
+                        old_left = int(m.group(1)) if m.group(1) is not None else 1
+                        number = int(m.group(2))
+                        new_left = int(m.group(3)) if m.group(3) is not None else 1
+        if proc.returncode != 0:
+            errors.seek(0)
+            detail = errors.read().decode("utf-8", "replace").strip().splitlines()
+            raise ScanError(f"git log -p failed ({detail[-1] if detail else 'exit ' + str(proc.returncode)})")
+
+
+def scan_tags(root, denylist):
+    fmt = "--format=%(refname:short)%1f%(objecttype)%1f%(taggername)%1f%(taggeremail)%1f%(contents)%1e"
+    r = git_checked(root, "for-each-ref", fmt, "refs/tags")
+    for rec in r.stdout.decode("utf-8", "replace").split("\x1e"):
+        if not rec.strip():
+            continue
+        name, kind, tagger, email, contents = rec.strip("\n").split("\x1f", 4)
+        if kind != "tag":
+            continue
+        text = f"{tagger} {email}\n{contents}"
+        yield from findings_in_text(text, denylist, "tag", name, lambda n, name=name: f"tag {name}")
+
+
+def scan(root, denylist, since=None, max_commits=None):
+    """Return (findings, stats) for a repository root."""
+    stats = {"files": 0, "commits": 0, "skipped": 0}
+    findings = list(scan_tree(root, denylist, stats))
+    findings += scan_commit_metadata(root, denylist, since, max_commits, stats)
+    findings += scan_patches(root, denylist, since, max_commits)
+    findings += scan_tags(root, denylist)
+    return findings, stats
