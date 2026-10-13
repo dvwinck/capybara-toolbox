@@ -18,6 +18,7 @@ A small, carefully built collection of skills and plugins for [Claude Code](http
 | Plugin | What it does | Changes |
 | --- | --- | --- |
 | [**ar-board**](plugins/ar-board) | A local approve/reject board. The agent proposes N options, you judge them one by one with the keyboard (`A` approve, `R` reject, `M` maybe) and leave comments; the agent then acts only on what you approved and remembers your preferences for the next rounds. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
+| [**publish-check**](plugins/publish-check) | A read-only scan of a git repository, working tree and full history, for Claude conversation links, home paths, e-mail addresses and your own internal names, to run right before something goes public. Not a secret scanner. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
 
 ## Install
 
@@ -26,9 +27,10 @@ Inside Claude Code:
 ```text
 /plugin marketplace add dvwinck/capybara-toolbox
 /plugin install ar-board@capybara-toolbox
+/plugin install publish-check@capybara-toolbox
 ```
 
-Restart Claude Code, then ask for a board in plain language, for example *"give me 10 improvements for this repo as an AR board"*. The skill is also available explicitly as `/ar-board:ar-board`.
+Install only the plugins you want. Restart Claude Code, then ask for a board in plain language, for example *"give me 10 improvements for this repo as an AR board"*. The skill is also available explicitly as `/ar-board:ar-board`.
 
 <details>
 <summary>Other ways to install</summary>

@@ -92,5 +92,84 @@ class SyncToolTest(unittest.TestCase):
         self.assertIn("header comment", out)
 
 
+
+class DocsTest(unittest.TestCase):
+    def test_files_named_in_the_readmes_exist(self):
+        for readme in ("README.md", "README.pt-BR.md"):
+            text = (ROOT / readme).read_text(encoding="utf-8")
+            for rel in ("docs/remediation.md", "examples/pre-push.sh", "examples/ci-step.yml", "CHANGELOG.md"):
+                with self.subTest(readme=readme, rel=rel):
+                    self.assertIn(rel, text)
+                    self.assertTrue((ROOT / rel).is_file(), rel)
+
+
+class SkillTest(unittest.TestCase):
+    SKILL = (ROOT / "skills" / "publish-check" / "SKILL.md")
+
+    def test_frontmatter_names_the_skill_and_has_triggers(self):
+        text = self.SKILL.read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("---\nname: publish-check\ndescription: "))
+        head = text.split("\n---\n", 1)[0]
+        for trigger in ("/publish-check", "publish-check", "antes de publicar", "before I publish"):
+            self.assertIn(trigger, head)
+
+    def test_skill_runs_the_bundled_script_in_isolated_mode(self):
+        text = self.SKILL.read_text(encoding="utf-8")
+        self.assertIn('python3 -I "${CLAUDE_SKILL_DIR}/scripts/publish_check.py"', text)
+        self.assertIn("Base directory for this skill", text)  # fallback when the variable is not expanded
+
+    def test_skill_is_read_only_and_never_blocks(self):
+        text = self.SKILL.read_text(encoding="utf-8")
+        self.assertIn("somente leitura", text.lower())
+        self.assertIn("Nunca reescreva histórico", text)
+        self.assertIn("nunca bloqueie", text.lower())
+
+
+class ExamplesTest(unittest.TestCase):
+    def run_hook(self, repo):
+        env = {**os.environ, "PUBLISH_CHECK": str(SCRIPT)}
+        return subprocess.run(["bash", str(ROOT / "examples" / "pre-push.sh")], cwd=repo, env=env,
+                              capture_output=True, text=True)
+
+    def test_pre_push_hook_blocks_a_leak_and_lets_a_clean_repository_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clean = init_repo(Path(tmp) / "clean")
+            commit(clean, "fine", {"a.txt": "hello\n"})
+            r = self.run_hook(clean)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            leaky = init_repo(Path(tmp) / "leaky")
+            commit(leaky, "oops", {"a.txt": f"mail {LEAK_EMAIL}\n"})
+            r = self.run_hook(leaky)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("push blocked", r.stderr)
+
+    def test_ci_example_fetches_the_whole_history(self):
+        text = (ROOT / "examples" / "ci-step.yml").read_text(encoding="utf-8")
+        self.assertIn("fetch-depth: 0", text)
+
+
+class ManualInstallTest(unittest.TestCase):
+    def run_install(self, home, *args):
+        return subprocess.run(["bash", str(REPO / "install.sh"), *args], env={**os.environ, "HOME": home},
+                              capture_output=True, text=True)
+
+    def test_install_copies_the_skill_and_uninstall_removes_it(self):
+        with tempfile.TemporaryDirectory() as home:
+            r = self.run_install(home, "publish-check")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            dest = Path(home, ".claude", "skills", "publish-check")
+            self.assertEqual((dest / "scripts" / "publish_check.py").read_bytes(), SCRIPT.read_bytes())
+            self.assertTrue((dest / "SKILL.md").exists())
+            r = self.run_install(home, "publish-check", "--uninstall")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertFalse(dest.exists())
+
+    def test_list_shows_the_plugin(self):
+        with tempfile.TemporaryDirectory() as home:
+            r = self.run_install(home, "--list")
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("publish-check", r.stdout.split())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,15 @@ class RealCatalogTest(unittest.TestCase):
         self.assertNotIn("plugins/ar-board/tests", ci)
         self.assertNotIn("plugins/ar-board/tools/sync.py", ci)
 
+    def test_every_plugin_has_a_test_suite_a_sync_tool_and_both_readmes(self):
+        for d in sorted((REPO / "plugins").iterdir()):
+            with self.subTest(plugin=d.name):
+                self.assertTrue((d / "tests").is_dir())
+                self.assertTrue((d / "tools" / "sync.py").is_file())
+                self.assertTrue((d / "README.md").is_file())
+                self.assertTrue((d / "README.pt-BR.md").is_file())
+                self.assertTrue((d / "CHANGELOG.md").is_file())
+
     def test_catalog_has_no_unverifiable_fields(self):
         market = json.loads((REPO / tool.MARKET).read_text(encoding="utf-8"))
         self.assertNotIn("$schema", market)
