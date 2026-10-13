@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, base]
+    branches: [base]
   pull_request:
   workflow_dispatch:
 
@@ -24,9 +24,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.9", "3.11", "3.13"]
+        python: ["3.9", "3.11", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -46,3 +48,56 @@ jobs:
             echo "== $tool"
             python "$tool" --check
           done
+
+  # The unittest suite does not execute the ar-board panel's JavaScript, so at
+  # least make sure the embedded <script> still parses.
+  page-js:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Extract the panel script
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import pathlib
+          import re
+
+          path = "plugins/ar-board/skills/ar-board/scripts/ar_board.py"
+          spec = importlib.util.spec_from_file_location("ar_board", path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          scripts = re.findall(r"<script>(.*?)</script>", module.PAGE, re.S)
+          assert scripts, "no <script> block found in PAGE"
+          pathlib.Path("panel.js").write_text("\n".join(scripts), encoding="utf-8")
+          PY
+      - name: Syntax check
+        run: node --check panel.js
+
+  # Validates the manifests with the real Claude Code CLI.
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: claude plugin validate
+        run: npx --yes @anthropic-ai/claude-code plugin validate .
+
+  # Single, stable check name to require in the branch ruleset.
+  ci-ok:
+    if: always()
+    needs: [test, page-js, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Fail if any job did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
+      - run: echo "All CI jobs passed"
