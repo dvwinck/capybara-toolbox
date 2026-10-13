@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Keeps the publish-check plugin consistent from one source of truth: the script's VERSION.
+
+It propagates the version into .claude-plugin/plugin.json and reports problems it cannot fix by
+itself (stale header comment, missing CHANGELOG entry).
+
+Usage (from the plugin directory or anywhere):
+  python3 tools/sync.py           # write whatever is out of sync
+  python3 tools/sync.py --check   # only verify (exit 1 if anything differs or is wrong)
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = "skills/publish-check/scripts/publish_check.py"
+PLUGIN = ".claude-plugin/plugin.json"
+CHANGELOG = "CHANGELOG.md"
+
+INPUTS = [SCRIPT, PLUGIN, CHANGELOG]
+
+
+def read(root, rel):
+    return (root / rel).read_text(encoding="utf-8")
+
+
+def dump_json(obj):
+    return json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+
+
+def script_version(script):
+    return re.search(r'^VERSION = "(\d+\.\d+\.\d+)"', script, re.M).group(1)
+
+
+def build(root):
+    """Return {relative path: expected content} for every generated file."""
+    plugin = json.loads(read(root, PLUGIN))
+    plugin["version"] = script_version(read(root, SCRIPT))
+    return {PLUGIN: dump_json(plugin)}
+
+
+def problems(root):
+    """Things the tool cannot fix by itself; each one is a message."""
+    out = []
+    script = read(root, SCRIPT)
+    version = script_version(script)
+    if not re.search(rf"^# publish-check {re.escape(version)} - ", script, re.M):
+        out.append(f"{SCRIPT}: header comment must say 'publish-check {version}' (VERSION is {version})")
+    if not re.search(rf"^## \[{re.escape(version)}\]", read(root, CHANGELOG), re.M):
+        out.append(f"{CHANGELOG}: no '## [{version}]' entry")
+    return out
+
+
+def main(argv, root=ROOT):
+    files = build(root)
+    found = problems(root)
+    stale = [rel for rel, text in files.items() if not (root / rel).exists() or read(root, rel) != text]
+    if "--check" in argv:
+        for rel in stale:
+            print(f"out of sync: {rel}")
+        for msg in found:
+            print(f"problem: {msg}")
+        return 1 if (stale or found) else 0
+    for rel in stale:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(files[rel], encoding="utf-8")
+        print(f"updated: {rel}")
+    for msg in found:
+        print(f"problem: {msg}")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

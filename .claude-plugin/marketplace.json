@@ -28,6 +28,27 @@
       "category": "productivity",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"
+    },
+    {
+      "name": "publish-check",
+      "source": "./plugins/publish-check",
+      "author": {
+        "name": "Diogo Winck",
+        "email": "diogo.winck@gmail.com"
+      },
+      "license": "MIT",
+      "keywords": [
+        "security",
+        "privacy",
+        "git",
+        "pre-publish",
+        "skill"
+      ],
+      "category": "security",
+      "version": "0.1.0",
+      "description": "Read-only scan of a git repository (working tree and full history) for session links, home paths, e-mail addresses and internal names before it goes public. Python standard library and git only.",
+      "homepage": "https://github.com/dvwinck/capybara-toolbox",
+      "repository": "https://github.com/dvwinck/capybara-toolbox"
     }
   ]
 }
