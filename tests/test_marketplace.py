@@ -38,6 +38,13 @@ class RealCatalogTest(unittest.TestCase):
         names = [p["name"] for p in market["plugins"]]
         self.assertEqual(names, ["ar-board", "publish-check"])
 
+    def test_ci_runs_every_plugin_suite_and_sync_tool(self):
+        ci = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("plugins/*/tests", ci)
+        self.assertIn("plugins/*/tools/sync.py", ci)
+        self.assertNotIn("plugins/ar-board/tests", ci)
+        self.assertNotIn("plugins/ar-board/tools/sync.py", ci)
+
     def test_catalog_has_no_unverifiable_fields(self):
         market = json.loads((REPO / tool.MARKET).read_text(encoding="utf-8"))
         self.assertNotIn("$schema", market)

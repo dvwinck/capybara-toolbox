@@ -32,9 +32,17 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Catalog tests
         run: python -m unittest discover -s tests
-      - name: ar-board tests
-        run: python -m unittest discover -s plugins/ar-board/tests
+      - name: Plugin tests
+        run: |
+          for suite in plugins/*/tests; do
+            echo "== $suite"
+            python -m unittest discover -s "$suite"
+          done
       - name: Catalog is in sync with the plugins
         run: python tools/marketplace.py --check
-      - name: ar-board is in sync (version, manifest, single-file variant)
-        run: python plugins/ar-board/tools/sync.py --check
+      - name: Plugins are in sync (version, manifest, generated files)
+        run: |
+          for tool in plugins/*/tools/sync.py; do
+            echo "== $tool"
+            python "$tool" --check
+          done
