@@ -4,21 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Capybara Toolbox** is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`, name `capybara-toolbox`). Each plugin lives in `plugins/<name>/` and is self-contained. The first (and currently only) plugin is **ar-board**: a local approve/reject web panel (Python stdlib only, no build step, no package manager, no linter). Docs are English with Portuguese counterparts; the skill and the panel UI are Portuguese. `base` is the main branch.
+**Capybara Toolbox** is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`, name `capybara-toolbox`). Each plugin lives in `plugins/<name>/` and is self-contained. The first plugin is **ar-board**: a local approve/reject web panel; the second is **publish-check**: a read-only scan of a git repository for leaks before it goes public. Both are Python stdlib only (publish-check also needs `git`), with no build step, no package manager and no linter. Docs are English with Portuguese counterparts; the skill and the panel UI are Portuguese. `base` is the main branch.
 
 ## Commands
 
 ```bash
 python3 -m unittest discover -s tests                     # catalog tests (repo root)
 python3 -m unittest discover -s plugins/ar-board/tests    # ar-board suite
+python3 -m unittest discover -s plugins/publish-check/tests   # publish-check suite (builds temporary git repositories)
 python3 -m unittest discover -s plugins/ar-board/tests -v -k stale   # one test by name fragment
 python3 tools/marketplace.py [--check]                    # sync/verify the catalog from the plugins
 python3 plugins/ar-board/tools/sync.py [--check]          # sync/verify ar-board version, manifest, single-file variant
+python3 plugins/publish-check/tools/sync.py [--check]    # sync/verify publish-check version and manifest
 claude plugin validate .                                  # validate manifests with the real CLI
 ./install.sh ar-board [--uninstall]                       # manual (non-marketplace) install into ~/.claude/skills
 
 S=plugins/ar-board/skills/ar-board/scripts/ar_board.py    # the product itself
 python3 -I $S check|serve|wait|summary|build DIR          # DIR must contain batch.json (copy skills/ar-board/examples/batch.example.json)
+python3 -I plugins/publish-check/skills/publish-check/scripts/publish_check.py [PATH] [--json]   # scan a repository (exit 0 clean, 1 findings, 2 error)
 ```
 
 ## Architecture (ar-board)
@@ -29,6 +32,10 @@ python3 -I $S check|serve|wait|summary|build DIR          # DIR must contain bat
 - **Live vs offline**: `serve` talks to `/api/*` (token in the URL for GET, `X-AR-Token` for POST, `Host` must be 127.0.0.1/localhost, strict CSP); `build` makes `live=false` HTML that only uses `localStorage` and exports through Copiar (`AR-BOARD-RESULT` + JSON, a different shape from `decisions.json`).
 - `Store.set_item` validates everything before touching state, so a 400 leaves no trace. `finished` resets to `false` on any item edit, but not on note edits.
 - `skills/ar-board/SKILL.md` is the agent-facing contract (flow, card-quality rules, `preferences.md` format). It is lean: every command is `python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" <cmd> …` (Claude Code expands the variable to the skill's folder; the skill tells the agent to fall back to the "Base directory for this skill" path if it is not expanded). `tools/sync.py` rewrites that path to `$HOME/.claude/ar-board/ar_board.py` in the single-file variant.
+
+## publish-check (second plugin)
+
+`plugins/publish-check/skills/publish-check/scripts/publish_check.py` is the whole product: detection (`find_matches`, `mask`, `fingerprint`), git scanning (`scan_tree`, `scan_commit_metadata`, `scan_patches`, `scan_tags`), config (`load_config`) and the CLI. It never writes to the scanned repository. A fingerprint deliberately excludes the commit id (an address that authors every commit is accepted once). Test fixtures assemble their leaks at run time (string concatenation) so that scanning this repository with publish-check does not flag the tests. Its version source is the script's `VERSION`, kept in sync by `plugins/publish-check/tools/sync.py`.
 
 ## Keeping things consistent (non-obvious)
 

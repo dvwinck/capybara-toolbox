@@ -1,0 +1,11 @@
+# Steps for a GitHub Actions job. fetch-depth: 0 is required so the whole history is scanned.
+# The script is downloaded outside the workspace so the scan does not read the tool itself.
+# Replace "main" in the URL with a release tag or commit you have vetted.
+- uses: actions/checkout@v7
+  with:
+    fetch-depth: 0
+- name: publish-check
+  run: |
+    curl -fsSL "https://raw.githubusercontent.com/dvwinck/capybara-toolbox/main/plugins/publish-check/skills/publish-check/scripts/publish_check.py" \
+      -o "$RUNNER_TEMP/publish_check.py"
+    python3 -I "$RUNNER_TEMP/publish_check.py" .

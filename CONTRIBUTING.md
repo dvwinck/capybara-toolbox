@@ -15,17 +15,17 @@ cd capybara-toolbox
 
 ```bash
 python3 -m unittest discover -s tests                      # catalog tests
-python3 -m unittest discover -s plugins/ar-board/tests     # ar-board suite
+python3 -m unittest discover -s plugins/ar-board/tests     # one plugin's suite (repeat for each plugin)
 python3 tools/marketplace.py --check                       # catalog matches the plugins
-python3 plugins/ar-board/tools/sync.py --check             # ar-board version, manifest, single-file variant
+python3 plugins/ar-board/tools/sync.py --check             # one plugin's version, manifest, generated files
 claude plugin validate .                                   # optional: manifests, with the real CLI
 ```
 
-CI runs the same commands on every push and pull request.
+CI runs every plugin's suite and sync check (`plugins/*/tests`, `plugins/*/tools/sync.py`) on every push and pull request, so a new plugin needs no CI edit.
 
 ## Working on a plugin
 
-- The **script's `VERSION`** is the single source of truth for a plugin's version. After changing a plugin, run its sync tool (`python3 plugins/ar-board/tools/sync.py`) and then `python3 tools/marketplace.py`; they update the manifest, the generated files and the catalog. Never edit generated files by hand (`plugins/ar-board/dist/`).
+- The **script's `VERSION`** is the single source of truth for a plugin's version. After changing a plugin, run its sync tool (`python3 plugins/ar-board/tools/sync.py`) and then `python3 tools/marketplace.py`; they update the manifest, the generated files and the catalog. Never edit generated files by hand (for example `plugins/ar-board/dist/`).
 - Bumping a version needs a matching `## [x.y.z]` entry in the plugin's `CHANGELOG.md` and the script's header comment; the sync tool reports what is missing.
 - Write the failing test first, watch it fail, then fix. Keep the standard-library-only constraint.
 - Behavior changes belong in the plugin's docs (`docs/reference.md`, and `docs/pt-BR/guia-completo.md` while it is maintained).
@@ -34,7 +34,7 @@ CI runs the same commands on every push and pull request.
 
 1. Create `plugins/<name>/` with `.claude-plugin/plugin.json` (name, description, version, author, license) and `skills/<skill>/SKILL.md`.
 2. Add an entry to `.claude-plugin/marketplace.json` (`"source": "./plugins/<name>"`), then run `python3 tools/marketplace.py`.
-3. Give the plugin its own `README.md`, `CHANGELOG.md` and `tests/`, and extend `.github/workflows/ci.yml` with its test command.
+3. Give the plugin its own `README.md`, `README.pt-BR.md`, `CHANGELOG.md`, `tests/` and `tools/sync.py`; CI picks them up by glob and a catalog test fails if one is missing.
 4. List it in the root `README.md` table.
 
 ## Commits and pull requests
