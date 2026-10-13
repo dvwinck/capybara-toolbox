@@ -349,3 +349,110 @@ def read_denylist_file(path):
     except OSError as e:
         raise ScanError(f"cannot read denylist {path}: {e.strerror}")
     return [x.strip() for x in lines if x.strip() and not x.strip().startswith("#")]
+
+
+# ---------------------------------------------------------------- report
+
+def build_report(root, findings, stats, allowed, shallow=False):
+    counts = {c: 0 for c in CATEGORIES}
+    for f in findings:
+        counts[f["category"]] += 1
+    return {
+        "schema": SCHEMA,
+        "tool": "publish-check",
+        "version": VERSION,
+        "path": str(root),
+        "scanned": {"files": stats["files"], "commits": stats["commits"], "skipped": stats["skipped"]},
+        "clean": not findings,
+        "counts": counts,
+        "allowed": allowed,
+        "shallow": shallow,
+        "findings": findings,
+    }
+
+
+def render_text(report):
+    lines = [f"publish-check {VERSION}: scanned {report['scanned']['files']} files and "
+             f"{report['scanned']['commits']} commits in {report['path']}"]
+    if report["clean"]:
+        lines.append("clean: no findings")
+    else:
+        total = len(report["findings"])
+        lines.append(f"{total} finding{'s' if total != 1 else ''}")
+        for category in CATEGORIES:
+            group = [f for f in report["findings"] if f["category"] == category]
+            if not group:
+                continue
+            lines.append("")
+            lines.append(f"[{category}] {len(group)}")
+            for f in group:
+                lines.append(f"  {f['where']}: {f['location']}")
+                lines.append(f"    {f['snippet']}")
+                lines.append(f"    fingerprint: {f['fingerprint']}")
+    skipped = report["scanned"]["skipped"]
+    if skipped:
+        lines.append(f"{skipped} file{'s' if skipped != 1 else ''} skipped (binary, unreadable or larger than "
+                     f"{MAX_FILE_BYTES // 1_000_000} MB): not scanned")
+    if report["allowed"]:
+        lines.append(f"({report['allowed']} accepted by the allow list)")
+    if report["shallow"]:
+        lines.append("warning: this is a shallow clone, so only part of the history was scanned; "
+                     "fetch the full history (git fetch --unshallow) for a complete scan.")
+    lines.append("")
+    lines.append("Secrets are not scanned; use a secret scanner such as gitleaks for those.")
+    if not report["clean"]:
+        lines.append("This tool is read-only and never rewrites history. To remove a finding from "
+                     "history, see the plugin's docs/remediation.md (back up first).")
+        lines.append("To accept a finding, add its fingerprint to \"allow\" in " + CONFIG_NAME + ".")
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------- command line
+
+def positive_int(text):
+    n = int(text)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return n
+
+
+def parser():
+    p = argparse.ArgumentParser(prog="publish_check.py", description=__doc__.split("\n")[0])
+    p.add_argument("path", nargs="?", default=".", help="repository to scan (default: current directory)")
+    p.add_argument("--json", action="store_true", help="print the report as JSON")
+    p.add_argument("--config", help=f"config file (default: <repository>/{CONFIG_NAME} when present)")
+    p.add_argument("--denylist", action="append", default=[], metavar="FILE",
+                   help="file with one internal name per line (repeatable; keep it outside the repository)")
+    p.add_argument("--since", help="only scan commits newer than this (any date git accepts)")
+    p.add_argument("--max-commits", type=positive_int, help="only scan the newest N commits")
+    p.add_argument("--version", action="version", version=f"publish-check {VERSION}")
+    return p
+
+
+def run(args):
+    root = repo_root(args.path)
+    config_path = Path(args.config) if args.config else root / CONFIG_NAME
+    denylist, allow = [], []
+    if args.config or config_path.is_file():
+        denylist, allow = load_config(config_path)
+    for extra in args.denylist:
+        denylist += read_denylist_file(extra)
+    findings, stats = scan(root, denylist, args.since, args.max_commits)
+    allow_set = set(allow)
+    kept = [f for f in findings if f["fingerprint"] not in allow_set]
+    return build_report(root, kept, stats, len(findings) - len(kept), is_shallow(root))
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        report = run(args)
+    except ScanError as e:
+        print(f"publish-check: error: {e}", file=sys.stderr)
+        return 2
+    sys.stdout.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n" if args.json else render_text(report))
+    return 0 if report["clean"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
