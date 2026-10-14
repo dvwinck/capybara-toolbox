@@ -73,3 +73,37 @@ class ConfirmValidateTest(unittest.TestCase):
     def test_confirm_is_rejected_on_question_cards(self):
         errs = ab.validate(self.item(confirm="certeza?", open=True, fields=[{"label": "Contexto", "text": "c"}]))
         self.assertTrue(has(errs, "'confirm' nao vale em card de pergunta"), errs)
+
+
+class LabelsSummaryTest(unittest.TestCase):
+    BATCH = {"batch_id": "t", "title": "T", "labels": GOOD,
+             "items": [{"id": "A01", "title": "um"}, {"id": "A02", "title": "dois"}, {"id": "A03", "title": "tres"}]}
+    STATE = {"round": 1, "finished": True, "batch_note": "",
+             "items": {"A01": {"decision": "approved"}, "A02": {"decision": "rejected"}}}
+
+    def test_the_text_summary_uses_the_custom_wording(self):
+        out = ab.render_summary(self.BATCH, self.STATE)
+        self.assertIn("## Apagar (1)", out)
+        self.assertIn("## Manter (1)", out)
+        self.assertIn("## Depois (0)", out)
+        self.assertNotIn("## Aprovados", out)
+
+    def test_the_json_summary_keeps_its_keys(self):
+        import json
+        data = json.loads(ab.render_summary(self.BATCH, self.STATE, as_json=True))
+        self.assertEqual([r["id"] for r in data["approved"]], ["A01"])
+        self.assertEqual([r["id"] for r in data["rejected"]], ["A02"])
+        self.assertEqual([r["id"] for r in data["pending"]], ["A03"])
+
+    def test_a_partial_labels_object_only_renames_what_it_names(self):
+        b = {**self.BATCH, "labels": {"approve": {"text": "Apagar"}}}
+        out = ab.render_summary(b, self.STATE)
+        self.assertIn("## Apagar (1)", out)
+        self.assertIn("## Rejeitados (1)", out)
+        self.assertIn("## Talvez (0)", out)
+
+    def test_boards_without_labels_are_unchanged(self):
+        b = {k: v for k, v in self.BATCH.items() if k != "labels"}
+        out = ab.render_summary(b, self.STATE)
+        self.assertIn("## Aprovados (1)", out)
+        self.assertIn("## Rejeitados (1)", out)

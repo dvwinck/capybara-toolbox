@@ -524,7 +524,9 @@ def render_summary(batch, state, as_json=False):
             ensure_ascii=False,
             indent=2,
         )
-    names = [("approved", "Aprovados"), ("rejected", "Rejeitados"), ("maybe", "Talvez")]
+    lab = batch.get("labels") or {}
+    names = [(k, (lab.get(lk) or {}).get("text") or dflt) for k, lk, dflt in
+             (("approved", "approve", "Aprovados"), ("rejected", "reject", "Rejeitados"), ("maybe", "maybe", "Talvez"))]
     out = [f"# AR board - {batch['title']} (lote {batch['batch_id']}, rodada {state.get('round')})"]
     out.append(f"Concluido pelo usuario: {'sim' if state.get('finished') else 'NAO (parcial)'}")
 
