@@ -345,6 +345,13 @@ def valid_state(s):
             return False
         if c is not None and not isinstance(c, str):
             return False
+        ch, chs, ot = e.get("choice"), e.get("choices"), e.get("other")
+        if ch is not None and not isinstance(ch, str):
+            return False
+        if chs is not None and (not isinstance(chs, list) or any(not isinstance(x, str) for x in chs)):
+            return False
+        if ot is not None and not isinstance(ot, bool):
+            return False
     return True
 
 
@@ -361,6 +368,37 @@ def read_state(d, batch):
     return s
 
 
+def answer_of(card, entry):
+    """The person's answer to a question card: None (pending) or a dict with 'kind'.
+
+    Kinds: 'unsure' (asked for more context), 'open', 'other', 'choice', 'choices'. A choice id that
+    is no longer in the card (the batch was edited) is ignored, so the question reads as pending."""
+    e = entry or {}
+    if e.get("decision") == "maybe":
+        return {"kind": "unsure"}
+    text = (e.get("comment") or "").strip()
+    if card.get("open") is True:
+        return {"kind": "open", "text": text} if text else None
+    labels = {c["id"]: c["label"] for c in card["choices"]}
+    if card.get("multiple"):
+        ids = [i for i in (e.get("choices") or []) if i in labels]
+        other = bool(e.get("other"))
+        if other and not text:
+            return None
+        if len(ids) + (1 if other else 0) < card.get("min", 1):
+            return None
+        a = {"kind": "choices", "ids": ids, "labels": [labels[i] for i in ids]}
+        if other:
+            a["other"] = text
+        return a
+    cid = e.get("choice")
+    if cid in labels:
+        return {"kind": "choice", "id": cid, "label": labels[cid]}
+    if e.get("other") and text:
+        return {"kind": "other", "text": text}
+    return None
+
+
 # ---------------------------------------------------------------- estado
 
 class Store:
@@ -370,6 +408,7 @@ class Store:
         self.batch = load_batch(self.dir)
         self.path = self.dir / "decisions.json"
         self.ids = {it["id"] for it in self.batch["items"]}
+        self.cards = {it["id"]: it for it in self.batch["items"]}
         self.round = round_of(self.batch)
         self.exit_cb = None
         state = None
@@ -412,12 +451,46 @@ class Store:
     def set_item(self, iid, body):
         if not isinstance(iid, str) or iid not in self.ids:
             raise ValueError("id desconhecido")
+        card = self.cards[iid]
+        question = is_question(card)
         has_d, has_c = "decision" in body, "comment" in body
+        has_ch, has_chs, has_o = "choice" in body, "choices" in body, "other" in body
         d, c = body.get("decision"), body.get("comment")
+        ch, chs, o = body.get("choice"), body.get("choices"), body.get("other")
         if has_d and d is not None and (not isinstance(d, str) or d not in DECISIONS):
             raise ValueError("decisao invalida")
         if has_c and not isinstance(c, str):
             raise ValueError("comment deve ser string")
+        if not question:
+            if has_ch or has_chs or has_o:
+                raise ValueError("este card nao e uma pergunta")
+        else:
+            if has_d and d not in (None, "maybe"):
+                raise ValueError("pergunta so aceita decision 'maybe'")
+            if card.get("open") is True and (has_ch or has_chs or has_o):
+                raise ValueError("pergunta aberta so aceita comment")
+            ids = {x["id"] for x in card.get("choices") or []}
+            multiple = bool(card.get("multiple"))
+            if has_ch and ch is not None:
+                if multiple:
+                    raise ValueError("esta pergunta aceita varias opcoes: use 'choices'")
+                if not isinstance(ch, str) or ch not in ids:
+                    raise ValueError("opcao invalida")
+            if has_chs and chs is not None:
+                if not multiple:
+                    raise ValueError("esta pergunta aceita uma opcao: use 'choice'")
+                if not isinstance(chs, list) or any(not isinstance(x, str) or x not in ids for x in chs) or len(set(chs)) != len(chs):
+                    raise ValueError("opcoes invalidas")
+            if has_o and not isinstance(o, bool):
+                raise ValueError("other deve ser booleano")
+            if d == "maybe" and (ch or chs or o):
+                raise ValueError("'maybe' nao combina com uma resposta")
+            if multiple:
+                current = self.state["items"].get(iid, {})
+                n_other = (o if has_o else bool(current.get("other")))
+                n_list = len(chs if has_chs and chs is not None else ([] if has_chs else current.get("choices") or []))
+                if n_list + (1 if n_other else 0) > (card.get("max") or len(ids)):
+                    raise ValueError("mais opcoes do que o maximo")
         with self.lock:
             e = {k: v for k, v in self.state["items"].get(iid, {}).items() if k != "at"}
             if has_d:
@@ -425,6 +498,30 @@ class Store:
                     e.pop("decision", None)
                 else:
                     e["decision"] = d
+            if has_ch:
+                if ch is None:
+                    e.pop("choice", None)
+                else:
+                    e["choice"] = ch
+                    e.pop("other", None)
+                    e.pop("decision", None)
+            if has_chs:
+                if not chs:
+                    e.pop("choices", None)
+                else:
+                    e["choices"] = list(chs)
+                    e.pop("decision", None)
+            if has_o:
+                if o:
+                    e["other"] = True
+                    e.pop("decision", None)
+                    if not card.get("multiple"):
+                        e.pop("choice", None)
+                else:
+                    e.pop("other", None)
+            if has_d and d == "maybe":
+                for k in ("choice", "choices", "other"):
+                    e.pop(k, None)
             if has_c:
                 c = c[:MAX_COMMENT]
                 if c.strip():
