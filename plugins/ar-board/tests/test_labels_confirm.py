@@ -147,3 +147,12 @@ class LabelsPageGuardsTest(unittest.TestCase):
     def test_moving_or_pressing_escape_disarms_the_confirmation(self):
         self.assertIn("function go(i){armed = null;", ab.PAGE)
         self.assertIn("else if(armed){armed = null; showHint('Confirmacao cancelada.'); render();}", ab.PAGE)
+
+    def test_label_text_is_escaped_wherever_it_reaches_the_dom(self):
+        # labels come from batch.json, and the CSP allows inline scripts: the state chip and the counters are
+        # built as HTML strings, so the text must be escaped there (a `<img onerror=...>` label fits in 24 chars)
+        self.assertIn("(q ? QLBL[st] : esc(LBL[st]))", ab.PAGE)
+        for key in ("approved", "rejected", "maybe"):
+            self.assertIn(f"esc(CNT.{key})", ab.PAGE)
+        self.assertNotIn("+ CNT.", ab.PAGE)
+        self.assertNotIn("+ LBL[st] +", ab.PAGE)

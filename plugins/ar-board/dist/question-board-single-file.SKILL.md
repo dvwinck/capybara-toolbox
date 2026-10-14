@@ -1012,7 +1012,7 @@ function render(){
   $('#sub').textContent = (B.subtitle ? B.subtitle + ' · ' : '') + 'Lote: ' + B.batch_id + ' · ' + items.length + ' itens · rodada ' + (B.round || 1);
   $('.grid').hidden = reviewing; $('#rev').hidden = !reviewing; $('.res').hidden = reviewing;
   let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' · ' + esc(it.id) + (it.tag ? ' · ' + esc(it.tag) : '') + '</span>';
-  if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : LBL[st]) + '</span>';
+  if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : esc(LBL[st])) + '</span>';
   h += '<h2 id="qtitle">' + esc(it.title) + '</h2>';
   if(it.image) h += '<img alt="" src="' + esc(imgSrc(it.image)) + '">';
   h += '<div class="box">';
@@ -1039,7 +1039,7 @@ function render(){
   $('#chips').innerHTML = items.map((x,i) => { const d = status(x); return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
   const c = counts();
   $('#prog').style.width = ((items.length - c.pending) / items.length * 100) + '%';
-  const base = '<span style="color:var(--cA)">✓ ' + c.approved + ' ' + CNT.approved + '</span><span style="color:var(--cR)">✗ ' + c.rejected + ' ' + CNT.rejected + '</span><span style="color:var(--cM)">≈ ' + c.maybe + ' ' + CNT.maybe + '</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  const base = '<span style="color:var(--cA)">✓ ' + c.approved + ' ' + esc(CNT.approved) + '</span><span style="color:var(--cR)">✗ ' + c.rejected + ' ' + esc(CNT.rejected) + '</span><span style="color:var(--cM)">≈ ' + c.maybe + ' ' + esc(CNT.maybe) + '</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
   $('#counts').innerHTML = onlyQ
     ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span><span style="color:var(--mb)">' + c.maybe + ' precisam de contexto</span><span style="color:var(--mut)">' + c.pending + ' sem resposta</span>'
     : base + (hasQ ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span>' : '');
