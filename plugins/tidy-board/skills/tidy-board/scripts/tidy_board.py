@@ -335,9 +335,294 @@ def inventory(root, base, gh_mode="auto"):
     return {"base": base, "base_sha": rev(root, base), "gh": prs is not None, "items": items, "untouched": untouched}
 
 
-def main(argv=None):
-    print(f"tidy-board {VERSION}")
+# ---------------------------------------------------------------- cards
+
+WARN_CARDS = 40  # `check` warns above this many cards: a long board is a tiring one
+SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+KINDS = ("branch", "worktree", "stash")
+LABELS = {  # the board's own wording; "approve" deletes, so it is painted as the dangerous action
+    "approve": {"text": "Apagar", "tone": "danger"},
+    "reject": {"text": "Manter", "tone": "safe"},
+    "maybe": {"text": "Depois", "tone": "caution"},
+}
+
+
+def short_name(name):
+    """A worktree is named by its folder on the card (the full path is in its own field)."""
+    return os.path.basename(name.rstrip("/")) if os.path.isabs(name) else name
+
+
+def safe_text(text):
+    """Card text is shown with inline-code markup: a stray backtick would swallow the rest of the line."""
+    return str(text).replace("`", "'")
+
+
+def age_text(ts, now):
+    days = int((now - ts) // 86400)
+    return "hoje" if days <= 0 else f"ha {days} dia" + ("" if days == 1 else "s")
+
+
+def human_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def backup_name(it):
+    if it["kind"] == "stash":
+        return BACKUP + "stash-" + it["sha"][:12]
+    if it["kind"] == "worktree":
+        return BACKUP + "wt-" + it["sha"][:12]
+    return BACKUP + it["name"]
+
+
+def confirm_text(it):
+    """The second-press warning of a card that is not provably merged (None for P1 and P2)."""
+    if it["kind"] == "stash":
+        return "Trabalho unico: este stash nao existe em outro lugar. Um backup sera criado antes de descartar."
+    if it["kind"] == "worktree":
+        if it["branch"]:
+            return "A branch deste worktree tem trabalho que so existe nela: ela fica. Remove so a pasta do worktree."
+        return "Este worktree esta sem branch e seus commits so existem aqui. Um backup sera criado antes de remover."
+    if it["proof"] == "P3":
+        return "Heuristica: o mesmo patch parece estar na base, mas isso nao e prova. Um backup sera criado antes de apagar."
+    if it["proof"] == "P4":
+        return "Trabalho unico: estes commits nao existem em nenhuma outra branch, remoto ou tag. Um backup sera criado antes de apagar."
+    return None
+
+
+def card_for(it, iid, now):
+    kind, name = it["kind"], it["name"]
+    fields = [{"label": "Prova", "text": f"{it['proof']} - {PROOF_TEXT[it['proof']]}"}]
+    if kind == "worktree":
+        fields.append({"label": "Worktree", "text": f"`{safe_text(it['path'])}` ({human_size(it['size'])}, limpo)"})
+        if it["branch"]:
+            tail = " (sai junto)" if it["drop_branch"] else " (fica: tem trabalho que so existe nela)"
+            fields.append({"label": "Branch", "text": f"`{safe_text(it['branch'])}`{tail}"})
+        else:
+            fields.append({"label": "Branch", "text": "nenhuma (HEAD solto)"})
+    who = f", {safe_text(it['author'])}" if it["author"] else ""
+    fields.append({"label": "Ultimo", "text": f"{safe_text(it['subject'])} ({age_text(it['ts'], now)}{who})"})
+    if kind == "stash":
+        fields.append({"label": "Conteudo", "text": safe_text(it["shortstat"] or "vazio")})
+    else:
+        fields.append({"label": "Vs base", "text": f"{it['ahead']} a frente, {it['behind']} atras"})
+        if it["pr"]:
+            fields.append({"label": "PR", "text": it["pr"]})
+        if it["remote"]:
+            fields.append({"label": "Remoto", "text": safe_text(it["remote"])})
+    if kind == "stash" and it["files"]:
+        more = it["file_count"] - len(it["files"])
+        body = "\n".join(f"`{safe_text(f)}`" for f in it["files"]) + (f"\n(+{more})" if more > 0 else "")
+        fields.append({"label": "Arquivos", "text": body})
+    elif kind != "stash" and it["unique"]:
+        more = it["unique_count"] - len(it["unique"])
+        body = "\n".join(f"`{safe_text(line)}`" for line in it["unique"]) + (f"\n(+{more})" if more > 0 else "")
+        fields.append({"label": "So aqui", "text": body})
+    if kind == "branch":
+        effect = "Apaga a branch local."
+    elif kind == "worktree":
+        effect = "Remove a pasta do worktree" + (" e a branch." if it["drop_branch"] else ".")
+    else:
+        effect = "Descarta o stash."
+    if it["backup"]:
+        effect += f" Antes, guarda `{safe_text(backup_name(it))}`."
+    fields.append({"label": "Efeito", "text": effect})
+    verb = {"branch": "Apagar a branch", "worktree": "Remover o worktree", "stash": "Descartar o stash"}[kind]
+    card = {"id": iid, "tag": it["proof"], "title": f"{verb} {safe_text(short_name(name))}?", "fields": fields}
+    confirm = confirm_text(it) if it["proof"] in RISKY_PROOFS or kind == "stash" else None
+    if confirm:
+        card["confirm"] = confirm
+    return card
+
+
+def build_scan(root, inv, now=None, stamp=None):
+    """(batch, scan) for an inventory, or None when there is nothing to offer."""
+    if not inv["items"]:
+        return None
+    now = now or time.time()
+    stamp = stamp or time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+    repo_name = Path(root).name
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", repo_name).strip("-") or "repo"
+    cards, entries, safe_ids, safe_lines = [], [], [], []
+    for n, it in enumerate(inv["items"], 1):
+        iid = f"T{n:02d}"
+        cards.append(card_for(it, iid, now))
+        entries.append({"id": iid, "kind": it["kind"], "name": it["name"], "sha": it["sha"], "proof": it["proof"],
+                        "branch": it.get("branch"), "path": it.get("path"), "drop_branch": bool(it.get("drop_branch")),
+                        "backup": bool(it["backup"])})
+        if it["proof"] in SAFE_PROOFS:
+            safe_ids.append(iid)
+            safe_lines.append(f"`{safe_text(short_name(it['name']))}` ({it['kind']}, {it['proof']})")
+    group = None
+    if len(safe_ids) >= 2:
+        lines = "\n".join(safe_lines)
+        cards.insert(0, {"id": "G", "tag": "grupo P1/P2",
+                         "title": f"Apagar os {len(safe_ids)} itens provados como mergeados?",
+                         "fields": [{"label": "Itens", "text": lines},
+                                    {"label": "Regra", "text": "Vale para os itens abaixo em que voce nao marcar Manter ou Depois. Nao inclui P3, P4 nem stashes."}]})
+        group = {"id": "G", "members": safe_ids}
+    if inv["untouched"]:  # a field, not meta: the side panel's key column is too narrow for this label
+        lines = "\n".join(f"`{safe_text(short_name(u['name']))}`: {safe_text(u['why'])}" for u in inv["untouched"])
+        cards[0]["fields"].append({"label": "Nao tocar", "text": lines})
+    cards[0]["meta"] = {"Base": inv["base"], "gh": "sim" if inv["gh"] else "nao (so git local)"}
+    batch = {"batch_id": f"tidy-{slug}-{stamp}", "title": f"Limpeza de {repo_name}",
+             "subtitle": f"base: {inv['base']} - gh: {'sim' if inv['gh'] else 'nao'} - {len(inv['items'])} itens",
+             "round": 1, "labels": LABELS, "items": cards}
+    scan = {"version": VERSION, "repo": str(root), "base": inv["base"], "base_sha": inv["base_sha"], "gh": inv["gh"],
+            "scanned_at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now)), "group": group,
+            "untouched": inv["untouched"], "items": entries}
+    return batch, scan
+
+
+def write_private(path, text):
+    """0600 from creation, and never through a planted symlink (the files name your branches and paths)."""
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def dump_json(obj):
+    return json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+
+
+def write_dir(out, batch, scan):
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    write_private(out / "batch.json", dump_json(batch))
+    write_private(out / "scan.json", dump_json(scan))
+
+
+# ---------------------------------------------------------------- reading a scanned directory
+
+def load_dir(d):
+    d = Path(d)
+    try:
+        batch = json.loads((d / "batch.json").read_text(encoding="utf-8"))
+        scan = json.loads((d / "scan.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise TidyError(f"nao consegui ler batch.json e scan.json em {d}: {e}")
+    return batch, scan
+
+
+def scan_problems(batch, scan):
+    """What is wrong with a batch.json + scan.json pair; empty when `apply` may trust it."""
+    if not isinstance(scan, dict) or not isinstance(scan.get("items"), list):
+        return ["scan.json: 'items' deve ser uma lista"]
+    if not isinstance(batch, dict) or not isinstance(batch.get("items"), list):
+        return ["batch.json: 'items' deve ser uma lista"]
+    errs = []
+    for key in ("repo", "base"):
+        if not isinstance(scan.get(key), str) or not scan[key]:
+            errs.append(f"scan.json: '{key}' obrigatorio (texto)")
+    card_ids = {c.get("id") for c in batch["items"] if isinstance(c, dict)}
+    entries, seen = {}, set()
+    for i, it in enumerate(scan["items"]):
+        where = f"scan.json item {i}"
+        if not isinstance(it, dict):
+            errs.append(f"{where}: deve ser objeto")
+            continue
+        iid = it.get("id")
+        if not isinstance(iid, str) or not iid or iid == "G":
+            errs.append(f"{where}: 'id' invalido")
+            continue
+        if iid in seen:
+            errs.append(f"{where}: id duplicado '{iid}'")
+        seen.add(iid)
+        entries[iid] = it
+        if iid not in card_ids:
+            errs.append(f"{where}: '{iid}' nao tem card no batch.json")
+        if it.get("kind") not in KINDS:
+            errs.append(f"{where}: 'kind' deve ser branch, worktree ou stash")
+        if it.get("proof") not in PROOFS:
+            errs.append(f"{where}: 'proof' deve ser P1, P2, P3 ou P4")
+        if not isinstance(it.get("sha"), str) or not SHA.fullmatch(it["sha"]):
+            errs.append(f"{where}: 'sha' deve ser um id de commit completo")
+        if not isinstance(it.get("name"), str) or not it["name"]:
+            errs.append(f"{where}: 'name' obrigatorio")
+        if it.get("kind") == "worktree" and not it.get("path"):
+            errs.append(f"{where}: um worktree precisa de 'path'")
+    group = scan.get("group")
+    if group is not None:
+        if not isinstance(group, dict) or group.get("id") != "G" or not isinstance(group.get("members"), list):
+            errs.append("scan.json: 'group' invalido")
+        else:
+            if "G" not in card_ids:
+                errs.append("batch.json: falta o card G do grupo")
+            for m in group["members"]:
+                if m not in entries or entries[m].get("proof") not in SAFE_PROOFS:
+                    errs.append(f"scan.json: o grupo so aceita itens P1 ou P2 ('{m}')")
+    for cid in sorted(c for c in card_ids if isinstance(c, str) and c != "G"):
+        if cid not in entries:
+            errs.append(f"batch.json: o card '{cid}' nao tem entrada no scan.json")
+    return errs
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_scan(a):
+    root = repo_root(a.repo)
+    base = detect_base(root, a.base)
+    inv = inventory(root, base, a.gh)
+    built = build_scan(root, inv)
+    for u in inv["untouched"]:
+        print(f"NAO TOCAR: {u['name']} ({u['why']})")
+    if built is None:
+        print("TIDY-BOARD: nada para limpar")
+        return 0
+    batch, scan = built
+    out = Path(a.out) if a.out else root / ".tidy-board" / batch["batch_id"]
+    if not a.out and out.exists():  # same batch id: the panel would resume decisions made for other cards
+        raise TidyError(f"a pasta {out} ja existe (dois scans no mesmo segundo); tente de novo")
+    write_dir(out, batch, scan)
+    counts = ", ".join(f"{p} {n}" for p in PROOFS if (n := sum(1 for i in scan["items"] if i["proof"] == p)))
+    print(f"TIDY-BOARD DIR: {out}")
+    print(f"TIDY-BOARD ITENS: {len(scan['items'])} ({counts}); base {base}; gh {'sim' if scan['gh'] else 'nao'}")
     return 0
+
+
+def cmd_check(a):
+    batch, scan = load_dir(a.dir)
+    errs = scan_problems(batch, scan)
+    if errs:
+        print("scan.json/batch.json invalidos:\n- " + "\n- ".join(errs), file=sys.stderr)
+        return 1
+    n = len(scan["items"])
+    if n > WARN_CARDS:
+        print(f"aviso: {n} itens; acima de {WARN_CARDS} a revisao cansa (considere limpar em duas rodadas)", file=sys.stderr)
+    print(f"ok: {n} itens, lote {batch['batch_id']}")
+    return 0
+
+
+def parser():
+    p = argparse.ArgumentParser(prog="tidy_board.py", description="Cards para limpar branches, worktrees e stashes.")
+    p.add_argument("--version", action="version", version=f"tidy-board {VERSION}")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("scan", help="le o git (somente leitura) e escreve batch.json + scan.json")
+    s.add_argument("repo", nargs="?", default=".")
+    s.add_argument("--base", help="branch base (padrao: origin/HEAD, depois main, master, base, trunk)")
+    s.add_argument("--gh", choices=("auto", "off"), default="auto", help="usar o gh para provar PRs mergeados")
+    s.add_argument("--out", help="pasta do lote (padrao: <repo>/.tidy-board/<batch_id>)")
+    c = sub.add_parser("check", help="valida batch.json + scan.json")
+    c.add_argument("dir")
+    return p
+
+
+COMMANDS = {"scan": cmd_scan, "check": cmd_check}
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        return COMMANDS[args.cmd](args)
+    except TidyError as e:
+        print(f"erro: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
