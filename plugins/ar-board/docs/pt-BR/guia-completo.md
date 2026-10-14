@@ -33,6 +33,7 @@ Painel local de **aprovar/rejeitar** para o Claude Code. O agente propõe N opç
 21. [Testes e histórico de versões](#21-testes-e-histórico-de-versões)
 22. [Solução de problemas](#22-solução-de-problemas)
 23. [Estrutura de arquivos](#23-estrutura-de-arquivos)
+24. [Cartões de pergunta (question-board)](#24-cartões-de-pergunta-question-board)
 
 Veja também os [Créditos](#créditos).
 
@@ -586,7 +587,79 @@ plugins/ar-board/
     └── *.png                         # imagens opcionais dos cards
 ```
 
-`tools/sync.py` mantém o plugin coerente a partir da `VERSION` do script: propaga a versão para o `plugin.json` e gera a variante de arquivo único em `dist/`.
+`tools/sync.py` mantém o plugin coerente a partir da `VERSION` do script: propaga a versão para o `plugin.json`, gera uma variante de arquivo único por skill em `dist/` e mantém `skills/question-board/scripts/ar_board.py` como cópia gerada, byte a byte, do motor (o `--check` falha se divergirem).
+
+## 24. Cartões de pergunta (question-board)
+
+Um card é uma **pergunta** quando tem `choices` ou `"open": true`. Qualquer outro card é uma proposta, julgada com A/R/M como sempre, e os dois tipos podem dividir o mesmo painel. A skill `question-board` (`/ar-board:question-board`) usa os cartões de pergunta; o motor, o painel e os arquivos são os mesmos do ar-board. Nenhuma resposta é presumida: pergunta sem resposta, ou marcada "Preciso de mais contexto", chega ao agente como pendente e nunca é trocada pela opção recomendada.
+
+### Campos do card (`batch.json`)
+
+```json
+{
+  "id": "Q01", "tag": "merge",
+  "title": "Como detectar que um branch já foi mesclado?",
+  "fields": [{"label": "Contexto", "text": "Squash-merge reescreve os commits..."}],
+  "choices": [
+    {"id": "ancestor", "label": "Ancestral de base", "effect": "seguro, mas não reconhece squash-merge"},
+    {"id": "patch",    "label": "Comparar patch-id", "effect": "reconhece squash simples"}
+  ],
+  "recommended": ["patch"], "why": "cobre o caso mais comum sem rede.",
+  "multiple": false, "open": false
+}
+```
+
+Regras que o `check` aplica:
+
+- `choices`: lista de 2 a 8 objetos; `id` casa `[A-Za-z0-9_-]{1,32}` e é único no card; `label` é texto não vazio; `effect` é texto opcional. As teclas 1-9 cobrem as 8 opções mais a "Outra resposta..." que o painel acrescenta sozinho.
+- `open: true` exclui `choices`, `multiple`, `min`, `max`, `recommended` e `why`: a resposta é o texto do campo de comentário (obrigatório).
+- `recommended`: lista de ids de `choices` (no máximo 1 em escolha única, no máximo `max` em múltipla); exige `why`. A recomendada leva ★ e **nunca vem selecionada**.
+- `multiple`, `min`, `max`: booleano e inteiros; `min` e `max` só valem com `multiple: true`, com `1 <= min <= max <= nº de opções`. A "Outra resposta..." conta para o `max`.
+- Toda pergunta precisa de contexto: ao menos um item de `fields` com texto.
+- O `check` apenas avisa (exit 0) quando há mais de 8 perguntas na rodada; o limite é regra da skill.
+
+### Estado salvo (`decisions.json`)
+
+| Situação | Entrada do item |
+|---|---|
+| escolha única | `{"choice": "patch", "comment": "..."}` |
+| múltipla escolha | `{"choices": ["local", "wt"], "other": false, "comment": "..."}` |
+| "Outra" (única) | `{"other": true, "comment": "ordem alfabetica"}` (o comentário é a resposta) |
+| aberta | `{"comment": "limpar-branches"}` |
+| mais contexto | `{"decision": "maybe"}` |
+| card de proposta (inalterado) | `{"decision": "approved", "comment": "..."}` |
+
+`POST /api/item` aceita `choice`, `choices`, `other`, `decision` (em perguntas, só `maybe` ou `null`) e `comment`. Tudo é validado antes de tocar no estado (um 400 não deixa rastro). Responder limpa o `maybe`; marcar `maybe` limpa a resposta; um id de opção que não existe mais no card (lote editado depois de responder) conta como pendente.
+
+### `summary --json` (aditivo)
+
+Só em painéis com perguntas, o JSON ganha `answered` e `unsure`; `pending` é compartilhado e `approved`/`rejected`/`maybe` continuam valendo para as propostas.
+
+```json
+{
+  "answered": [{"id": "Q01", "title": "...",
+     "answer": {"kind": "choice", "id": "patch", "label": "Comparar patch-id"},
+     "recommended_taken": true, "comment": ""}],
+  "unsure":   [{"id": "Q05", "title": "...", "comment": ""}],
+  "pending":  [{"id": "Q04", "title": "...", "comment": ""}]
+}
+```
+
+`kind` é `choice`, `choices` (com `ids`, `labels` e `other` quando houve resposta própria), `other` (`text`) ou `open` (`text`). `recommended_taken` é `null` em resposta aberta, "Outra" ou card sem recomendação. A saída em texto ganha as seções "Respondidas (N)" e "Precisam de contexto (N)".
+
+### Teclas em um card de pergunta
+
+| Tecla | Escolha única | Múltipla escolha | Pergunta aberta |
+|---|---|---|---|
+| `1`-`8` | escolhe a opção (de novo desfaz); avança se "avançar ao decidir" estiver ligado | marca/desmarca; nunca avança; acima do `max` mostra "Maximo de N opcoes" | ignorada |
+| última tecla ("Outra resposta...") | marca e leva o foco ao comentário | alterna (conta para o `max`) e foca o comentário | n/a |
+| `Enter` | avança só se respondida; senão explica o motivo | avança só se a contagem estiver entre `min` e `max` | avança só se houver texto |
+| `M` | alterna "preciso de mais contexto" (limpa a resposta) | idem | idem |
+| `S`, `→` | próxima pergunta, sem resposta | idem | idem |
+| `C` / `Esc` | foca / sai do comentário | idem | idem |
+| `A` / `R` | ignoradas em perguntas | | |
+
+No último card, `Enter` com a pergunta respondida abre a **tela de revisão**: lista "pergunta → resposta", destaca as sem resposta (cada uma com link "responder") e só avisa o agente em "Confirmar e avisar o agente". No modo offline o mesmo botão copia o resultado (`AR-BOARD-RESULT`, com `kind`, `choice`, `choices` e `other` por item).
 
 ## Créditos
 

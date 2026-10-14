@@ -13,6 +13,7 @@ This document is a reference. Strings quoted in Portuguese (CLI output, validati
 - [Panel anatomy](#panel-anatomy)
 - [The card](#the-card)
 - [Decisions and states](#decisions-and-states)
+- [Question cards (question-board)](#question-cards-question-board)
 - [Keyboard](#keyboard)
 - [Comments, batch note and autosave](#comments-batch-note-and-autosave)
 - [Concluding and the finished lifecycle](#concluding-and-the-finished-lifecycle)
@@ -139,6 +140,80 @@ Behavior rules:
 - **Comment is independent of decision:** an item can have a comment and no decision (it stays "undecided" with a comment) and vice versa. An item with neither a decision nor a comment does not appear in `decisions.json`.
 - **Per-item timestamp:** `at` is updated on every decision or comment change for that item.
 - **Counters and progress** are recomputed on every render from local state.
+
+## Question cards (question-board)
+
+A card is a **question** when it has `choices` or `"open": true`; every other card is a proposal judged with A/R/M exactly as before, and the two kinds can share a board. The `question-board` skill drives question cards; the engine, the panel and the files are the same as the ar-board's. Answers are never implied: an unanswered question, or one marked "Preciso de mais contexto", reaches the agent as pending and is never replaced by the recommended option.
+
+### Card fields (`batch.json`)
+
+```json
+{
+  "id": "Q01", "tag": "merge",
+  "title": "Como detectar que um branch ja foi mesclado?",
+  "fields": [{"label": "Contexto", "text": "Squash-merge reescreve os commits..."}],
+  "choices": [
+    {"id": "ancestor", "label": "Ancestral de base", "effect": "seguro, mas nao reconhece squash-merge"},
+    {"id": "patch",    "label": "Comparar patch-id", "effect": "reconhece squash simples"}
+  ],
+  "recommended": ["patch"], "why": "cobre o caso mais comum sem rede.",
+  "multiple": false, "open": false
+}
+```
+
+Rules enforced by `check` (and by the same validation in `Store`):
+
+- A card is a **question** when `choices` or `open` is present; otherwise it is a proposal exactly as today.
+- `choices`: list of 2-8 objects; `id` matches `^[A-Za-z0-9_-]{1,32}$` and is unique in the card; `label` is a non-empty string; `effect` is an optional string. Keys 1-9 cover 8 options plus "Outra".
+- `open: true` excludes `choices`, `multiple`, `recommended`.
+- `recommended`: list of choice ids; at most 1 for single choice, at most `max` for multiple; `why` is required when `recommended` is present.
+- `multiple`, `min`, `max`: booleans and integers (not bool); `1 <= min <= max <= len(choices)`; defaults `min` 1, `max` `len(choices)`; "Outra" counts toward `max`.
+- A question card needs at least one `fields` entry with non-empty text (mandatory context).
+- `check` prints a warning (exit 0) when a board has more than 8 questions; the skill's limit is a rule, not an engine error.
+
+### Saved state (`decisions.json`)
+
+| Situation | Entry |
+| --- | --- |
+| single choice | `{"choice": "patch", "comment": "..."}` |
+| multiple choice | `{"choices": ["local", "wt"], "other": false, "comment": "..."}` |
+| "Outra" (single) | `{"other": true, "comment": "ordem alfabetica"}` (the comment is the answer) |
+| open | `{"comment": "limpar-branches"}` |
+| more context | `{"decision": "maybe"}` |
+| proposal card (unchanged) | `{"decision": "approved", "comment": "..."}` |
+
+`/api/item` accepts `choice` (string or null), `choices` (list of strings or null), `other` (bool), `decision` (only `maybe` or null for question cards; `approved`/`rejected` are a 400 there), `comment`. Validation, all before touching state: the card is a question; every id belongs to the card; no duplicates; the count, including "Outra", is within `max`. Setting an answer clears `maybe`; setting `maybe` clears `choice`, `choices` and `other`; single `choice` and `other` are mutually exclusive, multiple allows both. `valid_state` gains type checks (`choice` string, `choices` list of strings, `other` bool) and `summary` treats an id no longer in the card as pending, so editing a batch after answering cannot crash it.
+
+One function, `answer_of(card, entry)`, decides "answered / unsure / pending" and builds the answer object; the summary uses it and the page has a hand-written twin, guarded by tests on both sides.
+
+### `summary --json` (additive)
+
+```json
+{
+  "answered": [{"id": "Q01", "title": "...",
+     "answer": {"kind": "choice", "id": "patch", "label": "Comparar patch-id"},
+     "recommended_taken": true, "comment": ""}],
+  "unsure":   [{"id": "Q05", "title": "...", "comment": ""}],
+  "pending":  [{"id": "Q04", "title": "...", "comment": ""}]
+}
+```
+
+`kind` is `choice`, `choices` (with `ids`, `labels`, and `other` text when used), `other` (with `text`), or `open` (with `text`). `recommended_taken` is `null` for open and "Outra" answers. The existing `approved`/`rejected`/`maybe` groups stay for proposal cards, so a mixed board is read with one call. The text summary gains "Respondidas (N)" and "Precisam de contexto (N)" sections before "Sem decisao", each answered line showing the chosen label, a "(recomendada)" mark when applicable, and the comment. The offline `AR-BOARD-RESULT` adds the same fields per item.
+
+### Keys and behaviour on a question card
+
+| Input | Single choice | Multiple choice | Open card |
+| --- | --- | --- | --- |
+| `1`-`8` | choose that option (again to undo); advances if the toggle is on | toggle it; never advances; past `max` shows "Maximo de N opcoes" | ignored |
+| `9`... last number = "Outra" | selects it, moves focus to the comment box, does not advance | toggles it (counts toward `max`), focuses the comment box | n/a |
+| `Enter` | advances only if answered, else explains why | advances only if the count is within `min`..`max` | advances only if there is text |
+| `M` | toggles "more context", clearing any pick | same | same |
+| `S`, right arrow | next question, no answer | same | same |
+| `C` | focus the comment box | same | same |
+| `Esc` | leave the comment box | same | same |
+| `A`/`R` | ignored on question cards | | |
+
+On the last question, an answered Enter opens the review. In the review: "Voltar e corrigir" (Esc also) returns to the cards; each row has "alterar"/"responder"; "Confirmar e avisar o agente" sends the finish (live) or shows Copiar (offline). Unanswered questions are listed with a note that the agent will ask in chat and never assumes the recommended option. The browser `confirm()` of the ar-board is no longer needed for question boards.
 
 ## Keyboard
 

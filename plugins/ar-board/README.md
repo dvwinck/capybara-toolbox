@@ -51,6 +51,12 @@ Decisions and comments autosave to `decisions.json`; **Concluir** tells the agen
 
 Add `.ar-board/` to `.gitignore`: comments may contain internal information.
 
+## Second skill: question-board
+
+When the agent needs several independent answers before it can continue, it can put them in one form instead of a long chat round (`/ar-board:question-board`). Each question shows its context and numbered options; you press `1`-`9`, or write your own answer ("Outra resposta..."), or press `M` to ask for more context. A recommended option is marked with a star and its reason but is never pre-selected. A review screen lists every answer before the agent is told, and anything left unanswered comes back to the agent as pending (it asks in chat; it never assumes the recommendation).
+
+Use the ar-board to *judge proposals* (A/R/M) and the question-board to *answer questions*. Both share the same local engine and panel. Update both skills together.
+
 ## Documentation
 
 - [Reference](docs/reference.md) — panel, CLI, HTTP API, `batch.json` validation, security model, limits, troubleshooting.

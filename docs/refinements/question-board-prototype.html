@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>question-board: prototipo de design</title>
+<style>
+/* Tokens copiados do PAGE do ar-board (tema capivara, escuro e claro). Nada novo: o design reaproveita o sistema existente. */
+:root{color-scheme:dark;accent-color:var(--acc);--bg:#1a1410;--panel:#241c15;--panel2:#2e241b;--line:#46382b;--fg:#f4ebdf;--mut:#b09c85;--ok:#8cc474;--ok-bg:#1d2b1a;--no:#ef8570;--no-bg:#34201a;--mb:#ecb856;--mb-bg:#342a14;--acc:#f29a45;--accfg:#2a1a0c}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f7f0e5;--panel:#fffaf2;--panel2:#f1e7d8;--line:#dccbb3;--fg:#2c2018;--mut:#6b5645;--ok:#2d6a1f;--ok-bg:#e3f0da;--no:#a8381f;--no-bg:#fbe4dd;--mb:#8a5a00;--mb-bg:#faecc8;--acc:#a24d0d;--accfg:#ffffff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+.proto{background:var(--mb-bg);color:var(--mb);border:1px solid var(--mb);border-radius:10px;padding:8px 14px;font-size:13px;margin-bottom:14px}
+header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px}
+.badge{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--mb);color:var(--mb);white-space:nowrap}
+.keys{display:flex;flex-wrap:wrap;gap:6px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:14px 0 10px;font-size:13px;color:var(--mut)}
+kbd{font:600 11px ui-monospace,Menlo,monospace;background:var(--panel2);border:1px solid var(--mut);border-radius:5px;padding:1px 6px;color:var(--fg);margin-right:4px}
+.keys .auto{margin-left:auto;cursor:pointer;color:var(--fg)}#hint{flex-basis:100%;color:var(--acc);font-weight:600}#hint:empty{display:none}
+.bar{height:5px;background:var(--panel2);border-radius:9px;overflow:hidden;margin-bottom:16px}.bar>i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.grid>*{min-width:0;overflow-wrap:anywhere}
+.card,.side,.res{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.card{padding:22px}.side{padding:16px;align-self:start}
+.pill{display:inline-block;font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:2px 10px;margin-bottom:12px}
+.state{display:inline-block;margin-left:8px;font-size:12px;font-weight:600;padding:2px 10px;border-radius:99px;border:1px solid}
+.state.answered{color:var(--acc);border-color:var(--acc)}.state.unsure{color:var(--mb);background:var(--mb-bg);border-color:var(--mb)}
+/* a pergunta em serifa do sistema: da carater sem baixar fonte (a CSP so permite estilo e script inline) */
+.card h2{font:600 24px/1.3 ui-serif,"Iowan Old Style","Palatino Linotype",Georgia,serif;margin:0 0 16px}
+.box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px}
+.row{display:grid;grid-template-columns:86px 1fr;gap:12px;padding:6px 0}
+.row>b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);padding-top:3px}
+.how{font-size:13px;color:var(--mut);margin:0 0 8px}
+.opts{display:grid;gap:8px}
+/* contorno das opcoes em --mut (3:1 ou mais); --line tem so 1.5:1 e nao basta para um controle */
+.opt{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start;text-align:left;width:100%;font:inherit;color:var(--fg);background:var(--panel2);border:1.5px solid var(--mut);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .12s,background .12s}
+.opt:hover{border-color:var(--fg)}
+.opt:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.opt .k{font:600 13px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--mut);border-radius:7px;text-align:center;padding:3px 0}
+.opt .lbl{font-weight:600}.opt .fx{display:block;font-size:13px;color:var(--mut);font-weight:400;margin-top:2px}
+.opt .rec{font-size:12px;color:var(--mb);border:1px solid var(--mb);border-radius:99px;padding:1px 9px;white-space:nowrap}
+.opt[aria-checked="true"]{border-color:var(--acc);background:var(--panel);box-shadow:0 0 0 2px var(--acc) inset}
+.opt[aria-checked="true"] .k{background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+.opt[aria-checked="true"] .lbl::after{content:" \2713";color:var(--acc)}
+.why{font-size:13px;color:var(--mut);margin:10px 2px 0}.why b{color:var(--mb)}
+.side label{display:block;font-size:12px;color:var(--mut);margin:6px 0}
+textarea{width:100%;min-height:84px;resize:vertical;background:var(--panel2);color:var(--fg);border:1px solid var(--mut);border-radius:10px;padding:10px;font:inherit;font-size:14px}
+textarea:focus{outline:2px solid var(--acc);outline-offset:0}
+.req{color:var(--acc);font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+button.b{font:inherit;font-size:14px;cursor:pointer;color:var(--fg);background:var(--panel2);border:1px solid var(--mut);border-radius:10px;padding:8px 14px}
+button.b:hover{border-color:var(--fg)}button.b kbd{margin:0 0 0 6px}
+button.b.mb{color:var(--mb);border-color:var(--mb);background:var(--mb-bg)}button.b.on{box-shadow:0 0 0 2px currentColor inset}
+button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{width:34px;height:34px;padding:0;font-size:13px;border-radius:10px;border:1px solid var(--mut);background:var(--panel2);color:var(--fg);cursor:pointer}
+.chips .answered{color:var(--acc);border-color:var(--acc)}.chips .unsure{background:var(--mb-bg);color:var(--mb);border-color:var(--mb)}.chips .cur{outline:2px solid var(--acc);outline-offset:1px}
+.res{margin-top:16px;padding:18px}.res h3{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.counts{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-bottom:12px}
+.rev h2{font:600 24px/1.3 ui-serif,Georgia,serif;margin:0 0 12px}
+.rev table{width:100%;border-collapse:collapse;font-size:14px}.rev td{padding:9px 6px;border-bottom:1px dashed var(--line);vertical-align:top}
+.rev td:first-child{color:var(--mut);width:46%}.rev .none{color:var(--mb);font-weight:600}
+.rev a{color:var(--acc);cursor:pointer;margin-left:8px;text-decoration:underline}
+pre{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:12px}
+.foot{margin-top:28px;text-align:center;font-size:12px;color:var(--mut)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body><div class="wrap">
+<div class="proto">Prototipo de design: so interface, sem servidor e sem salvar nada. Usa os tokens reais do tema do ar-board. Experimente as teclas 1-9, Enter, M, S, C e as setas.</div>
+<header><div><h1 id="ttl">question-board: 5 perguntas antes de construir o tidy-board</h1><div class="sub" id="sub"></div></div><span class="badge">prototipo</span></header>
+<div class="keys"><span><kbd>1-9</kbd>escolher</span><span><kbd>Enter</kbd>confirmar</span><span><kbd>M</kbd>mais contexto</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao escolher</label><span id="hint" role="status" aria-live="polite"></span></div>
+<div class="bar"><i id="prog"></i></div>
+<div id="stage"></div>
+<div class="foot">question-board &middot; Capybara Toolbox &middot; prototipo</div>
+</div>
+<script>
+(function(){
+const Q = [
+ {id:'Q01',tag:'merge',title:'Como detectar que um branch ja foi mesclado?',
+  fields:[{label:'Contexto',text:'Squash-merge reescreve os commits; so comparar ids nao basta. O tidy-board apaga branches aprovados, entao um falso "mesclado" custa caro.'}],
+  choices:[{id:'ancestor',label:'Ancestral de base (git merge-base)',effect:'seguro, mas nao reconhece squash-merge'},
+           {id:'patch',label:'Comparar patch-id com base',effect:'reconhece squash simples; falha se houve conflito resolvido'},
+           {id:'gh',label:'Perguntar ao GitHub (gh pr list)',effect:'exato, mas exige rede e login'}],
+  recommended:['patch'],why:'cobre o caso mais comum sem rede e sem depender do gh.'},
+ {id:'Q02',tag:'cartao',title:'O que mostrar em cada card de branch?',
+  fields:[{label:'Contexto',text:'O card precisa permitir decidir em menos de 30 segundos, sem abrir o terminal.'}],
+  choices:[{id:'min',label:'Nome, ultimo commit e se esta mesclado'},{id:'full',label:'Nome, ultimo commit, autor, commits a frente, arquivos'},{id:'diff',label:'Tudo isso mais o diff resumido'}],
+  recommended:['full'],why:'da o contexto de risco sem virar uma tela de revisao de codigo.'},
+ {id:'Q03',tag:'alvos',title:'Quais tipos de coisa o tidy-board pode apagar?',
+  fields:[{label:'Contexto',text:'Cada tipo tem um risco diferente. Voce pode liberar mais de um.'}],
+  multiple:true,min:1,max:3,
+  choices:[{id:'local',label:'Branches locais ja mesclados'},{id:'remote',label:'Branches remotos ja mesclados',effect:'afeta outras pessoas'},{id:'wt',label:'Worktrees sem alteracoes',effect:'apaga a pasta'}],
+  recommended:['local','wt'],why:'sao locais e reversiveis; remotos ficam de fora ate haver confianca.'},
+ {id:'Q04',tag:'nome',title:'Qual nome voce quer para o comando de limpeza?',
+  fields:[{label:'Contexto',text:'Pergunta aberta: nao ha opcoes, a resposta e o seu texto.'}],open:true},
+ {id:'Q05',tag:'ordem',title:'Em que ordem os cards aparecem?',
+  fields:[{label:'Contexto',text:'Sem recomendacao: depende de como voce limpa.'}],
+  choices:[{id:'age',label:'Do mais antigo para o mais novo'},{id:'risk',label:'Do menor risco para o maior'}]}
+];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let idx=0,review=false,done=false,auto=true,hintT,shown=null;const S={};
+const ent=id=>S[id]||(S[id]={});
+const cm=e=>(e.comment||'').trim();
+function status(it){const e=S[it.id]||{};
+  if(e.maybe)return'unsure';
+  if(it.open)return cm(e)?'answered':'pending';
+  if(it.multiple){const n=(e.choices||[]).length+(e.other?1:0);if(e.other&&!cm(e))return'pending';return n>=(it.min||1)?'answered':'pending';}
+  if(e.choice)return'answered';
+  if(e.other&&cm(e))return'answered';
+  return'pending';}
+function answerText(it){const e=S[it.id]||{};const st=status(it);
+  if(st==='unsure')return'Preciso de mais contexto';
+  if(st==='pending')return null;
+  if(it.open)return cm(e);
+  const lab=id=>(it.choices.find(c=>c.id===id)||{}).label;
+  if(it.multiple){const p=(e.choices||[]).map(lab);if(e.other)p.push('Outra: '+cm(e));return p.join(' + ');}
+  if(e.other)return'Outra: '+cm(e);return lab(e.choice);}
+function hint(t){$('#hint').textContent=t;clearTimeout(hintT);hintT=setTimeout(()=>$('#hint').textContent='',4500);}
+function counts(){const c={answered:0,unsure:0,pending:0};Q.forEach(q=>c[status(q)]++);return c;}
+function chips(){return Q.map((q,i)=>'<button class="'+status(q)+(i===idx?' cur':'')+'" data-i="'+i+'" title="'+esc(q.title)+'" aria-label="Pergunta '+(i+1)+': '+({answered:'respondida',unsure:'precisa de contexto',pending:'sem resposta'})[status(q)]+'">'+(i+1)+'</button>').join('');}
+function renderCard(){
+  const it=Q[idx],e=S[it.id]||{},st=status(it);
+  let h='<span class="pill">'+(idx+1)+'/'+Q.length+' &middot; '+esc(it.id)+' &middot; '+esc(it.tag)+'</span>';
+  if(st==='answered')h+='<span class="state answered">Respondida</span>';else if(st==='unsure')h+='<span class="state unsure">Precisa de contexto</span>';
+  h+='<h2 id="q">'+esc(it.title)+'</h2><div class="box">'+it.fields.map(f=>'<div class="row"><b>'+esc(f.label)+'</b><div>'+esc(f.text)+'</div></div>').join('')+'</div>';
+  let side='';
+  if(it.open){h+='<p class="how">Pergunta aberta: escreva a resposta ao lado (obrigatoria).</p>';}
+  else{
+    const opts=it.choices.concat([{id:'__other',label:'Outra resposta...',effect:'o texto do campo ao lado vira a resposta'}]);
+    h+='<p class="how" id="how">'+(it.multiple?'Escolha de '+(it.min||1)+' ate '+(it.max||it.choices.length)+'. Enter confirma.':'Escolha uma opcao.')+'</p>';
+    h+='<div class="opts" role="'+(it.multiple?'group':'radiogroup')+'" aria-labelledby="q">';
+    opts.forEach((o,i)=>{
+      const on=o.id==='__other'?!!e.other:(it.multiple?(e.choices||[]).includes(o.id):e.choice===o.id);
+      const rec=(it.recommended||[]).includes(o.id);
+      h+='<button class="opt" role="'+(it.multiple?'checkbox':'radio')+'" aria-checked="'+on+'" data-n="'+(i+1)+'"><span class="k">'+(i+1)+'</span><span><span class="lbl">'+esc(o.label)+'</span>'+(o.effect?'<span class="fx">'+(o.id==='__other'?'':'se escolher: ')+esc(o.effect)+'</span>':'')+'</span>'+(rec?'<span class="rec">&#9733; recomendada</span>':'<span></span>')+'</button>';});
+    h+='</div>';
+    if(it.why)h+='<p class="why"><b>&#9733; Por que recomendamos:</b> '+esc(it.why)+'</p>';
+  }
+  $('#card').innerHTML=h;
+  const needText=it.open||e.other;
+  $('#cmtlbl').innerHTML=needText?'Sua resposta <span class="req">(obrigatoria)</span>':'Comentario (opcional, salva sozinho)';
+  const t=$('#cmt');if(t.value!==(e.comment||''))t.value=e.comment||'';
+  $('#bM').classList.toggle('on',!!e.maybe);
+  $('#chips').innerHTML=chips();
+}
+function frame(){
+  if(review||done){$('#stage').innerHTML='<section class="card rev" id="rev"></section>';return;}
+  $('#stage').innerHTML='<div class="grid"><section class="card" id="card"></section><aside class="side"><label id="cmtlbl" for="cmt"></label><textarea id="cmt" placeholder="Seu motivo, ou a resposta quando for Outra ou pergunta aberta."></textarea><div class="btns"><button class="b mb" id="bM" type="button">Preciso de mais contexto<kbd>M</kbd></button><button class="b" id="bS" type="button">Pular<kbd>S</kbd></button><button class="b" id="bP" type="button">&larr; Anterior</button><button class="b" id="bN" type="button">Proximo &rarr;</button></div><div class="chips" id="chips"></div></aside></div><section class="res"><h3>Resultado</h3><div class="counts" id="counts"></div><button class="b go" id="bF" type="button">Revisar e concluir</button></section>';
+  $('#cmt').addEventListener('input',ev=>{const e=ent(Q[idx].id);if(ev.target.value.trim())e.comment=ev.target.value;else delete e.comment;render();});
+  $('#bM').onclick=()=>unsure();$('#bS').onclick=()=>go(idx+1);$('#bN').onclick=()=>go(idx+1);$('#bP').onclick=()=>go(idx-1);
+  $('#bF').onclick=()=>{review=true;render();};
+  $('#chips').addEventListener('click',ev=>{const b=ev.target.closest('button');if(b)go(+b.dataset.i);});
+  $('#card').addEventListener('click',ev=>{const b=ev.target.closest('.opt');if(b)pick(+b.dataset.n);});
+}
+function renderReview(){
+  const miss=Q.filter(q=>status(q)==='pending').length;
+  let h=done?'<h2>Concluido</h2><p>Volte ao Claude Code e diga "terminei": o agente le as respostas sozinho. Abaixo, o que <code>summary --json</code> entregaria:</p><pre>'+esc(JSON.stringify(contract(),null,2))+'</pre>':'<h2>Revise suas respostas ('+(Q.length-miss)+' de '+Q.length+')</h2><table>'+Q.map((q,i)=>{const a=answerText(q);return'<tr><td>'+(i+1)+'. '+esc(q.title)+'</td><td>'+(a===null?'<span class="none">(sem resposta)</span>':esc(a))+'<a data-i="'+i+'" role="button" tabindex="0">'+(a===null?'responder':'alterar')+'</a></td></tr>';}).join('')+'</table><div class="btns"><button class="b" id="rB" type="button">Voltar e corrigir</button><button class="b go" id="rC" type="button">Confirmar e avisar o agente</button></div>'+(miss?'<p class="sub">'+miss+' sem resposta: o agente vai perguntar no chat, nunca assume a recomendada.</p>':'');
+  $('#rev').innerHTML=h;
+  if(!done){$('#rB').onclick=()=>{review=false;render();};$('#rC').onclick=()=>{done=true;render();};
+    $('#rev').addEventListener('click',ev=>{const a=ev.target.closest('a[data-i]');if(a){review=false;idx=+a.dataset.i;render();}});}
+}
+function contract(){return{batch_id:'question-board-demo',round:1,finished:true,
+  answered:Q.filter(q=>status(q)==='answered').map(q=>{const e=S[q.id]||{};const a=q.open?{kind:'open',text:cm(e)}:e.other&&!q.multiple?{kind:'other',text:cm(e)}:q.multiple?{kind:'choices',choices:e.choices||[],other:e.other?cm(e):undefined}:{kind:'choice',choice:e.choice};
+    const rec=!q.open&&q.recommended&&!e.other&&(q.multiple?JSON.stringify([...(e.choices||[])].sort())===JSON.stringify([...q.recommended].sort()):q.recommended[0]===e.choice);
+    return{id:q.id,title:q.title,answer:a,recommended_taken:!!rec,comment:q.open?'':(e.other?'':cm(e))};}),
+  unsure:Q.filter(q=>status(q)==='unsure').map(q=>({id:q.id,title:q.title,comment:cm(S[q.id]||{})})),
+  pending:Q.filter(q=>status(q)==='pending').map(q=>({id:q.id,title:q.title}))};}
+function render(){
+  const want=(review||done)?'rev':'card';if(shown!==want){frame();shown=want;}
+  if(review||done)renderReview();else{renderCard();const c=counts();$('#counts').innerHTML='<span style="color:var(--acc)">'+c.answered+' respondidas</span><span style="color:var(--mb)">'+c.unsure+' precisam de contexto</span><span style="color:var(--mut)">'+c.pending+' sem resposta</span>';$('#bF').style.display='';}
+  const c=counts();$('#prog').style.width=((Q.length-c.pending)/Q.length*100)+'%';
+  $('#sub').textContent='Lote: question-board-demo · '+Q.length+' perguntas · rodada 1';
+}
+function go(i){idx=Math.max(0,Math.min(Q.length-1,i));render();}
+function unsure(){const it=Q[idx],e=ent(it.id);if(e.maybe)delete e.maybe;else{delete e.choice;delete e.choices;delete e.other;e.maybe=true;}render();if(e.maybe)hint('Marcada: precisa de mais contexto. O agente volta a explicar na proxima rodada.');}
+function pick(n){
+  const it=Q[idx];if(it.open)return;const e=ent(it.id);
+  const total=it.choices.length+1;if(n<1||n>total)return;
+  const isOther=n===total;delete e.maybe;
+  if(it.multiple){
+    const sel=e.choices||(e.choices=[]);
+    if(isOther){
+      if(!e.other&&sel.length>=(it.max||it.choices.length)){hint('Maximo de '+(it.max||it.choices.length)+' opcoes. Desmarque uma antes.');return;}
+      e.other=!e.other;if(e.other){render();$('#cmt').focus();hint('Escreva sua resposta no campo ao lado.');return;}}
+    else{const id=it.choices[n-1].id,p=sel.indexOf(id);
+      if(p>=0)sel.splice(p,1);else{if(sel.length+(e.other?1:0)>=(it.max||it.choices.length)){hint('Maximo de '+(it.max||it.choices.length)+' opcoes. Desmarque uma antes.');return;}sel.push(id);}}
+    render();return;
+  }
+  if(isOther){if(e.other){delete e.other;}else{e.other=true;delete e.choice;render();$('#cmt').focus();hint('Escreva sua resposta no campo ao lado.');return;}render();return;}
+  const id=it.choices[n-1].id;
+  if(e.choice===id)delete e.choice;else{e.choice=id;delete e.other;}
+  render();
+  if(auto&&e.choice&&idx<Q.length-1){hint('Respondida: '+it.id+' — use ← para voltar e mudar');idx++;render();}
+}
+function confirmCard(){const it=Q[idx],st=status(it);
+  if(st==='pending'){hint(it.open?'Escreva a resposta no campo ao lado (ou use M).':it.multiple?'Escolha pelo menos '+(it.min||1)+' opcao (ou use M).':'Escolha uma opcao primeiro (ou M para pedir contexto).');return;}
+  if(idx<Q.length-1)go(idx+1);else{review=true;render();}}
+$('#auto').onchange=ev=>{auto=ev.target.checked;};
+document.addEventListener('keydown',ev=>{
+  if(ev.ctrlKey||ev.metaKey||ev.altKey)return;
+  if(review||done){if(ev.key==='Escape'&&review){review=false;render();}return;}
+  const typing=(ev.target.tagName||'').toLowerCase()==='textarea';
+  if(ev.key==='Escape'){if(typing)ev.target.blur();return;}
+  if(typing)return;
+  if(ev.target.classList&&ev.target.classList.contains('opt')&&ev.key==='Enter')return;
+  const k=ev.key.toLowerCase();
+  if(/^[1-9]$/.test(k)){if(!ev.repeat)pick(+k);}
+  else if(k==='enter'){ev.preventDefault();confirmCard();}
+  else if(k==='m'){if(!ev.repeat)unsure();}
+  else if(k==='s')go(idx+1);
+  else if(k==='c'){ev.preventDefault();$('#cmt').focus();}
+  else if(ev.key==='ArrowRight')go(idx+1);
+  else if(ev.key==='ArrowLeft')go(idx-1);
+});
+render();
+})();
+</script></body></html>

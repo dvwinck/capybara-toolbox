@@ -16,7 +16,7 @@ Use quando a decisão é humana por natureza (gosto, prioridade, risco) e há v�
 ### 0. Instalar o script (uma vez por máquina)
 
 ```bash
-test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.1.0' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
+test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.2.0' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
 ```
 
 Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Os comandos abaixo usam esse caminho. Requer apenas `python3` (stdlib).
@@ -128,7 +128,7 @@ Grave este conteúdo, sem alterações, em `~/.claude/ar-board/ar_board.py`:
 
 ```python
 #!/usr/bin/env python3
-# ar-board 1.1.0 - painel local de aprovar/rejeitar (somente stdlib, sem rede externa)
+# ar-board 1.2.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -154,11 +154,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
 MAX_COMMENT = 5000
+MAX_CHOICES = 8  # keys 1-9: up to 8 options plus the automatic "Outra resposta..."
+MAX_QUESTIONS = 8  # per round: a skill rule, `check` only warns
+CHOICE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
 MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
@@ -184,6 +187,82 @@ def write_private(path, text):
 
 
 # ---------------------------------------------------------------- batch
+
+def is_question(it):
+    """A question card has 'choices' or 'open': true (null counts as omitted, like every optional key)."""
+    return isinstance(it, dict) and (it.get("choices") is not None or it.get("open") is True)
+
+
+def _int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def validate_question(i, it, errs):
+    opened = it.get("open")
+    if opened is not None and not isinstance(opened, bool):
+        errs.append(f"item {i}: 'open' deve ser booleano")
+    if not is_question(it):
+        return
+    if opened is True:
+        for k in ("choices", "multiple", "min", "max", "recommended", "why"):
+            if it.get(k) is not None:
+                errs.append(f"item {i}: 'open' nao combina com '{k}'")
+    else:
+        choices = it.get("choices")
+        listed = choices if isinstance(choices, list) else []
+        if not isinstance(choices, list) or not 2 <= len(choices) <= MAX_CHOICES:
+            errs.append(f"item {i}: 'choices' deve ser uma lista de 2 a {MAX_CHOICES} opcoes")
+        ids = []
+        for j, c in enumerate(listed):
+            if not isinstance(c, dict):
+                errs.append(f"item {i}: choices[{j}] deve ser objeto")
+                continue
+            cid = c.get("id")
+            if not isinstance(cid, str) or not CHOICE_ID.fullmatch(cid):
+                errs.append(f"item {i}: choices[{j}] 'id' deve casar [A-Za-z0-9_-]{{1,32}}")
+            elif cid in ids:
+                errs.append(f"item {i}: choices[{j}] id duplicado '{cid}'")
+            else:
+                ids.append(cid)
+            if not isinstance(c.get("label"), str) or not c["label"].strip():
+                errs.append(f"item {i}: choices[{j}] 'label' obrigatorio")
+            if c.get("effect") is not None and not isinstance(c["effect"], str):
+                errs.append(f"item {i}: choices[{j}] 'effect' deve ser string")
+        n = len(listed)
+        multiple = it.get("multiple")
+        if multiple is not None and not isinstance(multiple, bool):
+            errs.append(f"item {i}: 'multiple' deve ser booleano")
+        mn, mx = it.get("min"), it.get("max")
+        for k, v in (("min", mn), ("max", mx)):
+            if v is not None and not _int(v):
+                errs.append(f"item {i}: '{k}' deve ser inteiro")
+            elif v is not None and multiple is not True:
+                errs.append(f"item {i}: '{k}' so vale com 'multiple': true")
+        if multiple is True and n and (mn is None or _int(mn)) and (mx is None or _int(mx)):
+            lo, hi = (1 if mn is None else mn), (n if mx is None else mx)
+            if not 1 <= lo <= hi <= n:
+                errs.append(f"item {i}: precisa 1 <= min <= max <= {n} (numero de opcoes)")
+        rec = it.get("recommended")
+        if rec is not None:
+            if not isinstance(rec, list) or any(not isinstance(x, str) for x in rec):
+                errs.append(f"item {i}: 'recommended' deve ser lista de ids (texto)")
+            else:
+                if any(x not in ids for x in rec):
+                    errs.append(f"item {i}: 'recommended' cita id que nao esta em 'choices'")
+                if len(set(rec)) != len(rec):
+                    errs.append(f"item {i}: 'recommended' tem id repetido")
+                limit = (mx if _int(mx) else n) if multiple is True else 1
+                if len(rec) > limit:
+                    errs.append(f"item {i}: 'recommended' tem mais ids do que o limite ({limit})")
+                if rec and not (isinstance(it.get("why"), str) and it["why"].strip()):
+                    errs.append(f"item {i}: 'why' e obrigatorio quando ha 'recommended'")
+        if it.get("why") is not None and not isinstance(it["why"], str):
+            errs.append(f"item {i}: 'why' deve ser string")
+    fields = it.get("fields")
+    fields = fields if isinstance(fields, list) else []
+    if not any(isinstance(f, dict) and isinstance(f.get("text"), str) and f["text"].strip() for f in fields):
+        errs.append(f"item {i}: pergunta precisa de contexto (um item em 'fields' com texto)")
+
 
 def validate(b):
     errs = []
@@ -227,6 +306,7 @@ def validate(b):
             for x in f
         ):
             errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
+        validate_question(i, it, errs)
     return errs
 
 
@@ -265,6 +345,13 @@ def valid_state(s):
             return False
         if c is not None and not isinstance(c, str):
             return False
+        ch, chs, ot = e.get("choice"), e.get("choices"), e.get("other")
+        if ch is not None and not isinstance(ch, str):
+            return False
+        if chs is not None and (not isinstance(chs, list) or any(not isinstance(x, str) for x in chs)):
+            return False
+        if ot is not None and not isinstance(ot, bool):
+            return False
     return True
 
 
@@ -281,6 +368,37 @@ def read_state(d, batch):
     return s
 
 
+def answer_of(card, entry):
+    """The person's answer to a question card: None (pending) or a dict with 'kind'.
+
+    Kinds: 'unsure' (asked for more context), 'open', 'other', 'choice', 'choices'. A choice id that
+    is no longer in the card (the batch was edited) is ignored, so the question reads as pending."""
+    e = entry or {}
+    if e.get("decision") == "maybe":
+        return {"kind": "unsure"}
+    text = (e.get("comment") or "").strip()
+    if card.get("open") is True:
+        return {"kind": "open", "text": text} if text else None
+    labels = {c["id"]: c["label"] for c in card["choices"]}
+    if card.get("multiple"):
+        ids = [i for i in (e.get("choices") or []) if i in labels]
+        other = bool(e.get("other"))
+        if other and not text:
+            return None
+        if len(ids) + (1 if other else 0) < (card.get("min") or 1):
+            return None
+        a = {"kind": "choices", "ids": ids, "labels": [labels[i] for i in ids]}
+        if other:
+            a["other"] = text
+        return a
+    cid = e.get("choice")
+    if cid in labels:
+        return {"kind": "choice", "id": cid, "label": labels[cid]}
+    if e.get("other") and text:
+        return {"kind": "other", "text": text}
+    return None
+
+
 # ---------------------------------------------------------------- estado
 
 class Store:
@@ -290,6 +408,7 @@ class Store:
         self.batch = load_batch(self.dir)
         self.path = self.dir / "decisions.json"
         self.ids = {it["id"] for it in self.batch["items"]}
+        self.cards = {it["id"]: it for it in self.batch["items"]}
         self.round = round_of(self.batch)
         self.exit_cb = None
         state = None
@@ -332,12 +451,46 @@ class Store:
     def set_item(self, iid, body):
         if not isinstance(iid, str) or iid not in self.ids:
             raise ValueError("id desconhecido")
+        card = self.cards[iid]
+        question = is_question(card)
         has_d, has_c = "decision" in body, "comment" in body
+        has_ch, has_chs, has_o = "choice" in body, "choices" in body, "other" in body
         d, c = body.get("decision"), body.get("comment")
+        ch, chs, o = body.get("choice"), body.get("choices"), body.get("other")
         if has_d and d is not None and (not isinstance(d, str) or d not in DECISIONS):
             raise ValueError("decisao invalida")
         if has_c and not isinstance(c, str):
             raise ValueError("comment deve ser string")
+        if not question:
+            if has_ch or has_chs or has_o:
+                raise ValueError("este card nao e uma pergunta")
+        else:
+            if has_d and d not in (None, "maybe"):
+                raise ValueError("pergunta so aceita decision 'maybe'")
+            if card.get("open") is True and (has_ch or has_chs or has_o):
+                raise ValueError("pergunta aberta so aceita comment")
+            ids = {x["id"] for x in card.get("choices") or []}
+            multiple = bool(card.get("multiple"))
+            if has_ch and ch is not None:
+                if multiple:
+                    raise ValueError("esta pergunta aceita varias opcoes: use 'choices'")
+                if not isinstance(ch, str) or ch not in ids:
+                    raise ValueError("opcao invalida")
+            if has_chs and chs is not None:
+                if not multiple:
+                    raise ValueError("esta pergunta aceita uma opcao: use 'choice'")
+                if not isinstance(chs, list) or any(not isinstance(x, str) or x not in ids for x in chs) or len(set(chs)) != len(chs):
+                    raise ValueError("opcoes invalidas")
+            if has_o and not isinstance(o, bool):
+                raise ValueError("other deve ser booleano")
+            if d == "maybe" and (ch or chs or o):
+                raise ValueError("'maybe' nao combina com uma resposta")
+            if multiple:
+                current = self.state["items"].get(iid, {})
+                n_other = (o if has_o else bool(current.get("other")))
+                n_list = len(chs if has_chs and chs is not None else ([] if has_chs else current.get("choices") or []))
+                if n_list + (1 if n_other else 0) > (card.get("max") or len(ids)):
+                    raise ValueError("mais opcoes do que o maximo")
         with self.lock:
             e = {k: v for k, v in self.state["items"].get(iid, {}).items() if k != "at"}
             if has_d:
@@ -345,6 +498,30 @@ class Store:
                     e.pop("decision", None)
                 else:
                     e["decision"] = d
+            if has_ch:
+                if ch is None:
+                    e.pop("choice", None)
+                else:
+                    e["choice"] = ch
+                    e.pop("other", None)
+                    e.pop("decision", None)
+            if has_chs:
+                if not chs:
+                    e.pop("choices", None)
+                else:
+                    e["choices"] = list(chs)
+                    e.pop("decision", None)
+            if has_o:
+                if o:
+                    e["other"] = True
+                    e.pop("decision", None)
+                    if not card.get("multiple"):
+                        e.pop("choice", None)
+                else:
+                    e.pop("other", None)
+            if has_d and d == "maybe":
+                for k in ("choice", "choices", "other"):
+                    e.pop(k, None)
             if has_c:
                 c = c[:MAX_COMMENT]
                 if c.strip():
@@ -385,35 +562,90 @@ class Store:
             self.save()
 
 
+def recommended_taken(card, answer):
+    """True/False when the card recommended something and the answer is a choice; None otherwise."""
+    rec = card.get("recommended")
+    if not rec or answer["kind"] not in ("choice", "choices"):
+        return None
+    if answer.get("other"):
+        return False
+    chosen = [answer["id"]] if answer["kind"] == "choice" else answer["ids"]
+    return sorted(chosen) == sorted(rec)
+
+
+def answer_text(answer):
+    k = answer["kind"]
+    if k == "choice":
+        return answer["label"]
+    if k == "choices":
+        parts = list(answer["labels"])
+        if "other" in answer:
+            parts.append("Outra: " + answer["other"])
+        return " + ".join(parts)
+    if k == "other":
+        return "Outra: " + answer["text"]
+    return answer["text"]
+
+
 def render_summary(batch, state, as_json=False):
     groups = {"approved": [], "rejected": [], "maybe": [], "pending": []}
+    answered, unsure = [], []
+    has_questions = any(is_question(it) for it in batch["items"])
     for it in batch["items"]:
         e = state.get("items", {}).get(it["id"], {})
         row = {"id": it["id"], "title": it["title"], "comment": e.get("comment", "")}
+        if is_question(it):
+            a = answer_of(it, e)
+            if a is None:
+                groups["pending"].append(row)
+            elif a["kind"] == "unsure":
+                unsure.append(row)
+            else:
+                if a["kind"] in ("other", "open"):
+                    row["comment"] = ""  # the comment is the answer itself
+                answered.append({**row, "answer": a, "recommended_taken": recommended_taken(it, a)})
+            continue
         groups[e.get("decision", "pending")].append(row)
     if as_json:
+        extra = {"answered": answered, "unsure": unsure} if has_questions else {}
         return json.dumps(
             {
                 "batch_id": batch["batch_id"],
                 "round": state.get("round"),
                 "finished": state.get("finished", False),
                 "batch_note": state.get("batch_note", ""),
-                **groups,
+                **{k: v for k, v in groups.items() if k != "pending"},
+                **extra,
+                "pending": groups["pending"],
             },
             ensure_ascii=False,
             indent=2,
         )
-    names = [("approved", "Aprovados"), ("rejected", "Rejeitados"), ("maybe", "Talvez"), ("pending", "Sem decisao")]
+    names = [("approved", "Aprovados"), ("rejected", "Rejeitados"), ("maybe", "Talvez")]
     out = [f"# AR board - {batch['title']} (lote {batch['batch_id']}, rodada {state.get('round')})"]
     out.append(f"Concluido pelo usuario: {'sim' if state.get('finished') else 'NAO (parcial)'}")
-    for key, label in names:
-        rows = groups[key]
+
+    def section(label, rows, fmt):
         out.append(f"\n## {label} ({len(rows)})")
         for r in rows:
-            line = f"- {r['id']} - {r['title']}"
+            line = fmt(r)
             if r["comment"]:
                 line += f"\n    comentario do usuario: {r['comment']!r}"
             out.append(line)
+
+    def plain(r):
+        return f"- {r['id']} - {r['title']}"
+
+    def with_answer(r):
+        mark = " (recomendada)" if r["recommended_taken"] else ""
+        return f"- {r['id']} - {r['title']}\n    resposta: {answer_text(r['answer'])}{mark}"
+
+    for key, label in names:
+        section(label, groups[key], plain)
+    if has_questions:
+        section("Respondidas", answered, with_answer)
+        section("Precisam de contexto", unsure, plain)
+    section("Sem decisao", groups["pending"], plain)
     if state.get("batch_note"):
         out.append(f"\n## Nota geral do lote\n{state['batch_note']}")
     return "\n".join(out)
@@ -472,15 +704,37 @@ button.on{box-shadow:0 0 0 2px currentColor inset}
 button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-weight:600}
 .brand{display:flex;align-items:center;gap:14px}.mascot{width:56px;height:56px;flex:none}
 .foot{margin-top:28px;text-align:center;font-size:12px;color:var(--mut)}
+[hidden]{display:none!important}
+.qonly{display:none}.hasq .qonly{display:inline}.onlyq .pronly{display:none}
+.state.answered{color:var(--acc);border:1px solid var(--acc)}
+.chips .answered{color:var(--acc);border-color:var(--acc)}
+.card.q h2{font:600 24px/1.3 ui-serif,"Iowan Old Style","Palatino Linotype",Georgia,serif}
+.how{font-size:13px;color:var(--mut);margin:18px 0 8px}
+.opts{display:grid;gap:8px}
+.opt{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start;text-align:left;width:100%;font:inherit;color:var(--fg);background:var(--panel2);border:1.5px solid var(--mut);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .12s,background .12s}
+.opt:hover{border-color:var(--fg)}.opt:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.opt .k{font:600 13px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--mut);border-radius:7px;text-align:center;padding:3px 0}
+.opt .lbl{font-weight:600}.opt .fx{display:block;font-size:13px;color:var(--mut);font-weight:400;margin-top:2px}
+.opt .rec{font-size:12px;color:var(--mb);border:1px solid var(--mb);border-radius:99px;padding:1px 9px;white-space:nowrap}
+.opt[aria-checked="true"]{border-color:var(--acc);background:var(--panel);box-shadow:0 0 0 2px var(--acc) inset}
+.opt[aria-checked="true"] .k{background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+.opt[aria-checked="true"] .lbl::after{content:" \2713";color:var(--acc)}
+.why{font-size:13px;color:var(--mut);margin:10px 2px 0}.why b{color:var(--mb)}
+.req{color:var(--acc);font-weight:600}
+.rev h2{font:600 24px/1.3 ui-serif,"Iowan Old Style","Palatino Linotype",Georgia,serif;margin:0 0 12px}
+.rev table{width:100%;border-collapse:collapse;font-size:14px}.rev td{padding:9px 6px;border-bottom:1px dashed var(--line);vertical-align:top}
+.rev td:first-child{color:var(--mut);width:46%}.rev .none{color:var(--mb);font-weight:600}
+.rev a{color:var(--acc);cursor:pointer;margin-left:8px;text-decoration:underline}
+@media (prefers-reduced-motion:reduce){.opt{transition:none}}
 </style></head><body><div class="wrap">
 <header><div class="brand">__MASCOT__<div><h1 id="ttl"></h1><div class="sub" id="sub"></div></div></div><span class="badge" id="live"></span></header>
-<div class="keys"><span><kbd>A</kbd>aprovar</span><span><kbd>R</kbd>rejeitar</span><span><kbd>M</kbd>talvez</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint"></span></div>
+<div class="keys"><span class="pronly"><kbd>A</kbd>aprovar</span><span class="pronly"><kbd>R</kbd>rejeitar</span><span class="pronly"><kbd>M</kbd>talvez</span><span class="qonly"><kbd>1-9</kbd>escolher</span><span class="qonly"><kbd>Enter</kbd>confirmar</span><span class="qonly"><kbd>M</kbd>mais contexto</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint" role="status" aria-live="polite"></span></div>
 <div class="bar"><i id="prog"></i></div>
 <div class="grid">
   <section class="card" id="card"></section>
   <aside class="side">
     <div class="meta" id="meta"></div>
-    <label for="cmt">Comentario deste item (C foca &middot; salva sozinho). Vale para qualquer decisao.</label>
+    <label for="cmt" id="cmtlbl">Comentario deste item (C foca &middot; salva sozinho). Vale para qualquer decisao.</label>
     <textarea id="cmt" placeholder="Por que aprovou, rejeitou ou ficou em duvida? Isso e o que mais treina o agente."></textarea>
     <div class="btns">
       <button class="ok" id="bA">&#10003; Aprovar<kbd>A</kbd></button>
@@ -492,6 +746,7 @@ button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-
     <div class="chips" id="chips"></div>
   </aside>
 </div>
+<section class="card rev" id="rev" hidden></section>
 <section class="res">
   <h3>Resultado</h3>
   <div class="counts" id="counts"></div>
@@ -511,6 +766,7 @@ const BOOT = __BOOT__;
 const B = BOOT.batch, items = B.items, S = BOOT.state;
 S.items = S.items || {};
 const $ = s => document.querySelector(s);
+const CMT0 = $('#cmtlbl').innerHTML;
 const LBL = {approved:'Aprovado', rejected:'Rejeitado', maybe:'Talvez'};
 const LS = 'ar-board:' + B.batch_id + ':r' + (B.round || 1);
 let idx = 0, timers = {};
@@ -519,7 +775,136 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 function rich(s){return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
 function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
 function ent(id){return S.items[id] || (S.items[id] = {});}
-function tidy(id){const e=S.items[id]; if(e && !e.decision && !e.comment) delete S.items[id];}
+function tidy(id){const e=S.items[id]; if(e && !e.decision && !e.comment && !e.choice && !(e.choices && e.choices.length) && !e.other) delete S.items[id];}
+
+const QLBL = {answered:'Respondida', maybe:'Precisa de contexto'};
+const isQ = it => (it.choices != null || it.open === true);
+const hasQ = items.some(isQ), onlyQ = hasQ && items.every(isQ);
+document.body.classList.toggle('hasq', hasQ);
+document.body.classList.toggle('onlyq', onlyQ);
+let reviewing = false;
+function cmtOf(e){return (e.comment || '').trim();}
+function qlabels(it){const m = Object.create(null); (it.choices || []).forEach(c => {m[c.id] = c.label;}); return m;}
+function qmax(it){return it.max || (it.choices || []).length;}
+function qstatus(it){
+  const e = S.items[it.id] || {};
+  if(e.decision === 'maybe') return 'maybe';
+  const text = cmtOf(e), lab = qlabels(it);
+  if(it.open === true) return text ? 'answered' : '';
+  if(it.multiple){
+    if(e.other && !text) return '';
+    const n = (e.choices || []).filter(i => i in lab).length + (e.other ? 1 : 0);
+    return n >= (it.min || 1) ? 'answered' : '';
+  }
+  if(e.choice && e.choice in lab) return 'answered';
+  return e.other && text ? 'answered' : '';
+}
+function qanswer(it){
+  const e = S.items[it.id] || {}, st = qstatus(it);
+  if(st === 'maybe') return 'Preciso de mais contexto';
+  if(st !== 'answered') return null;
+  const lab = qlabels(it);
+  if(it.open === true) return cmtOf(e);
+  if(it.multiple){const p = (e.choices || []).filter(i => i in lab).map(i => lab[i]); if(e.other) p.push('Outra: ' + cmtOf(e)); return p.join(' + ');}
+  return e.other ? 'Outra: ' + cmtOf(e) : lab[e.choice];
+}
+function status(it){return isQ(it) ? qstatus(it) : ((S.items[it.id] || {}).decision || '');}
+function answerText(it){
+  if(isQ(it)) return qanswer(it);
+  const d = (S.items[it.id] || {}).decision;
+  return d ? LBL[d] : null;
+}
+function qbody(it, e){
+  const dec = e.decision === 'maybe' ? 'maybe' : null;
+  if(it.open === true) return {id: it.id, decision: dec};
+  return {id: it.id, decision: dec, choice: it.multiple ? null : (e.choice || null), choices: it.multiple ? (e.choices || []) : null, other: !!e.other};
+}
+function qsave(it){
+  const body = qbody(it, S.items[it.id] || {});
+  tidy(it.id); S.finished = false;
+  post('/api/item', body);
+}
+function questionHtml(it, e){
+  if(it.open === true) return '<p class="how">Pergunta aberta: escreva a resposta ao lado (obrigatoria).</p>';
+  const opts = it.choices.concat([{id: null, label: 'Outra resposta...', effect: 'o texto do campo ao lado vira a resposta'}]);
+  const rec = it.recommended || [];
+  let h = '<p class="how">' + (it.multiple ? 'Escolha de ' + (it.min || 1) + ' ate ' + qmax(it) + '. Enter confirma.' : 'Escolha uma opcao.') + '</p>';
+  h += '<div class="opts" role="' + (it.multiple ? 'group' : 'radiogroup') + '" aria-labelledby="qtitle">';
+  opts.forEach((o, i) => {
+    const other = i === opts.length - 1;
+    const on = other ? !!e.other : (it.multiple ? (e.choices || []).includes(o.id) : e.choice === o.id);
+    h += '<button type="button" class="opt" role="' + (it.multiple ? 'checkbox' : 'radio') + '" aria-checked="' + on + '" data-n="' + (i+1) + '"><span class="k">' + (i+1) + '</span><span><span class="lbl">' + esc(o.label) + '</span>' + (o.effect ? '<span class="fx">' + (other ? '' : 'se escolher: ') + esc(o.effect) + '</span>' : '') + '</span>' + (!other && rec.includes(o.id) ? '<span class="rec">&#9733; recomendada</span>' : '<span></span>') + '</button>';
+  });
+  h += '</div>';
+  if(it.why) h += '<p class="why"><b>&#9733; Por que recomendamos:</b> ' + esc(it.why) + '</p>';
+  return h;
+}
+function pick(n){
+  const it = items[idx]; if(!isQ(it) || it.open === true) return;
+  const e = ent(it.id), total = it.choices.length + 1;
+  if(n < 1 || n > total) return;
+  const other = n === total, max = qmax(it);
+  if(it.multiple){
+    const lab = qlabels(it), sel = (e.choices || []).filter(i => i in lab);
+    if(other){
+      if(!e.other && sel.length >= max){showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;}
+    } else if(!sel.includes(it.choices[n-1].id) && sel.length + (e.other ? 1 : 0) >= max){
+      showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;
+    }
+    delete e.decision;
+    e.choices = sel;
+    if(other){e.other = !e.other;}
+    else {const id = it.choices[n-1].id, p = sel.indexOf(id); if(p >= 0) sel.splice(p, 1); else sel.push(id);}
+    qsave(it); render();
+    if(other && e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
+    return;
+  }
+  delete e.decision;
+  if(other){
+    e.other = !e.other; if(e.other) delete e.choice;
+    qsave(it); render();
+    if(e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
+    return;
+  }
+  const id = it.choices[n-1].id;
+  if(e.choice === id) delete e.choice; else {e.choice = id; delete e.other;}
+  qsave(it);
+  if(auto && e.choice && idx < items.length - 1){idx++; showHint('Respondida: ' + it.id + ' — use ← para voltar e mudar');}
+  render();
+}
+function askMore(){
+  const it = items[idx]; if(!isQ(it)) return;
+  const e = ent(it.id);
+  if(e.decision === 'maybe') delete e.decision;
+  else {delete e.choice; delete e.choices; delete e.other; e.decision = 'maybe';}
+  qsave(it); render();
+  if(e.decision === 'maybe') showHint('Marcada: precisa de mais contexto. O agente volta a explicar na proxima rodada.');
+}
+function confirmCard(){
+  const it = items[idx], st = qstatus(it);
+  if(!st){showHint(it.open === true ? 'Escreva a resposta no campo ao lado (ou use M).' : it.multiple ? 'Escolha pelo menos ' + (it.min || 1) + ' opcao (ou use M).' : 'Escolha uma opcao primeiro (ou M para pedir contexto).'); return;}
+  if(idx < items.length - 1) go(idx + 1); else openReview();
+}
+function openReview(){reviewing = true; render();}
+function closeReview(){reviewing = false; render();}
+function renderReview(){
+  const miss = items.filter(it => answerText(it) === null).length;
+  let h = '<h2>Revise suas respostas (' + (items.length - miss) + ' de ' + items.length + ')</h2><table>';
+  items.forEach((it, i) => {
+    const a = answerText(it);
+    h += '<tr><td>' + (i+1) + '. ' + esc(it.title) + '</td><td>' + (a === null ? '<span class="none">(sem resposta)</span>' : esc(a)) + '<a data-i="' + i + '" role="button" tabindex="0">' + (a === null ? 'responder' : 'alterar') + '</a></td></tr>';
+  });
+  h += '</table>';
+  if(miss) h += '<p class="sub">' + miss + ' sem resposta: o agente vai perguntar no chat e nunca assume a opcao recomendada.</p>';
+  h += '<div class="btns"><button id="rB" type="button">Voltar e corrigir</button><button class="go" id="rC" type="button">' + (BOOT.live ? 'Confirmar e avisar o agente' : 'Copiar resultado') + '</button></div>';
+  $('#rev').innerHTML = h;
+}
+function finishNow(){
+  flushAll().then(() => post('/api/finish', {finished: true})).then(ok => {
+    S.finished = ok; if(ok) reviewing = false; render();
+    if(!ok) alert('Sem conexao com o servidor. Use Copiar e cole o resultado no chat.');
+  });
+}
 
 function persistLocal(){try{localStorage.setItem(LS, JSON.stringify(S));}catch(e){}}
 function setLive(ok){
@@ -555,44 +940,57 @@ document.addEventListener('visibilitychange', () => {if(document.visibilityState
 if(!BOOT.live){try{const raw=localStorage.getItem(LS); if(raw){const o=JSON.parse(raw); S.items=o.items||{}; S.batch_note=o.batch_note||'';}}catch(e){}}
 
 function counts(){
-  const c={approved:0,rejected:0,maybe:0};
-  items.forEach(it=>{const d=(S.items[it.id]||{}).decision; if(d) c[d]++;});
-  c.pending = items.length - c.approved - c.rejected - c.maybe;
+  const c={approved:0,rejected:0,maybe:0,answered:0};
+  items.forEach(it=>{const d=status(it); if(d) c[d]++;});
+  c.pending = items.length - c.approved - c.rejected - c.maybe - c.answered;
   return c;
 }
 function exportObj(){
   return {batch_id:B.batch_id, round:B.round||1, finished:!!S.finished, batch_note:S.batch_note||'',
-    items: items.map(it=>{const e=S.items[it.id]||{}; return {id:it.id,title:it.title,decision:e.decision||null,comment:e.comment||''};})};
+    items: items.map(it=>{const e=S.items[it.id]||{};
+      const o={id:it.id,title:it.title,decision:e.decision||null,comment:e.comment||''};
+      if(isQ(it)){o.kind = 'question'; o.choice = e.choice||null; o.choices = e.choices||[]; o.other = !!e.other;}
+      return o;})};
 }
 function imgSrc(p){return /^data:/.test(p) ? p : '/files/' + p.split('/').map(encodeURIComponent).join('/') + '?t=' + encodeURIComponent(BOOT.token);}
 
 function render(){
-  const it = items[idx], e = S.items[it.id] || {};
+  const it = items[idx], e = S.items[it.id] || {}, q = isQ(it), st = status(it);
   $('#ttl').textContent = B.title;
-  $('#sub').textContent = (B.subtitle ? B.subtitle + ' \u00B7 ' : '') + 'Lote: ' + B.batch_id + ' \u00B7 ' + items.length + ' itens \u00B7 rodada ' + (B.round || 1);
-  let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' \u00B7 ' + esc(it.id) + (it.tag ? ' \u00B7 ' + esc(it.tag) : '') + '</span>';
-  if(e.decision) h += '<span class="state ' + e.decision + '">' + LBL[e.decision] + '</span>';
-  h += '<h2>' + esc(it.title) + '</h2>';
+  $('#sub').textContent = (B.subtitle ? B.subtitle + ' · ' : '') + 'Lote: ' + B.batch_id + ' · ' + items.length + ' itens · rodada ' + (B.round || 1);
+  $('.grid').hidden = reviewing; $('#rev').hidden = !reviewing; $('.res').hidden = reviewing;
+  let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' · ' + esc(it.id) + (it.tag ? ' · ' + esc(it.tag) : '') + '</span>';
+  if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : LBL[st]) + '</span>';
+  h += '<h2 id="qtitle">' + esc(it.title) + '</h2>';
   if(it.image) h += '<img alt="" src="' + esc(imgSrc(it.image)) + '">';
   h += '<div class="box">';
   (it.fields || []).forEach(f => { h += '<div class="row"><b>' + esc(f.label) + '</b><div>' + rich(f.text) + '</div></div>'; });
   if(it.risk){
     const lvl = norm(it.risk.level);
-    h += '<div class="row"><b>Risco</b><div><span class="risk ' + (['baixo','medio','alto'].includes(lvl) ? lvl : 'medio') + '">' + esc(it.risk.level || '') + (it.risk.text ? ' \u2014 ' + esc(it.risk.text) : '') + '</span></div></div>';
+    h += '<div class="row"><b>Risco</b><div><span class="risk ' + (['baixo','medio','alto'].includes(lvl) ? lvl : 'medio') + '">' + esc(it.risk.level || '') + (it.risk.text ? ' — ' + esc(it.risk.text) : '') + '</span></div></div>';
   }
   h += '</div>';
+  if(q) h += questionHtml(it, e);
+  $('#card').className = q ? 'card q' : 'card';
   $('#card').innerHTML = h;
   $('#meta').innerHTML = Object.entries(it.meta || {}).map(([k,v]) => '<div><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>').join('');
+  $('#cmtlbl').innerHTML = q ? ((it.open === true || e.other) ? 'Sua resposta <span class="req">(obrigatoria)</span>' : 'Comentario (opcional, salva sozinho)') : CMT0;
   const cm = $('#cmt'); if(cm.value !== (e.comment || '')) cm.value = e.comment || '';
+  $('#bA').style.display = $('#bR').style.display = q ? 'none' : '';
+  $('#bM').innerHTML = q ? 'Preciso de mais contexto<kbd>M</kbd>' : '&asymp; Talvez<kbd>M</kbd>';
   ['A:approved','R:rejected','M:maybe'].forEach(p => { const [k,d] = p.split(':'); $('#b'+k).classList.toggle('on', e.decision === d); });
-  $('#chips').innerHTML = items.map((x,i) => { const d=(S.items[x.id]||{}).decision||''; return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
+  $('#chips').innerHTML = items.map((x,i) => { const d = status(x); return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
   const c = counts();
   $('#prog').style.width = ((items.length - c.pending) / items.length * 100) + '%';
-  $('#counts').innerHTML = '<span style="color:var(--ok)">\u2713 ' + c.approved + ' aprovados</span><span style="color:var(--no)">\u2717 ' + c.rejected + ' rejeitados</span><span style="color:var(--mb)">\u2248 ' + c.maybe + ' talvez</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  const base = '<span style="color:var(--ok)">✓ ' + c.approved + ' aprovados</span><span style="color:var(--no)">✗ ' + c.rejected + ' rejeitados</span><span style="color:var(--mb)">≈ ' + c.maybe + ' talvez</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  $('#counts').innerHTML = onlyQ
+    ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span><span style="color:var(--mb)">' + c.maybe + ' precisam de contexto</span><span style="color:var(--mut)">' + c.pending + ' sem resposta</span>'
+    : base + (hasQ ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span>' : '');
   const n = $('#note'); if(n.value !== (S.batch_note || '')) n.value = S.batch_note || '';
-  $('#bF').style.display = BOOT.live ? '' : 'none';
+  $('#bF').style.display = (BOOT.live || hasQ) ? '' : 'none';
   const dn = $('#done');
-  if(S.finished){dn.style.display='block';dn.textContent='Concluido. Volte ao Claude Code e diga "terminei" \u2014 o agente le as decisoes sozinho.';} else dn.style.display='none';
+  if(S.finished){dn.style.display='block';dn.textContent='Concluido. Volte ao Claude Code e diga "terminei" — o agente le as decisoes sozinho.';} else dn.style.display='none';
+  if(reviewing) renderReview();
 }
 
 function go(i){idx = Math.max(0, Math.min(items.length-1, i)); render();}
@@ -618,24 +1016,31 @@ $('#cmt').addEventListener('input', ev => {
   const id = items[idx].id, v = ev.target.value;
   const e = ent(id); if(v.trim()) e.comment = v; else delete e.comment; tidy(id);
   queue('c:' + id, '/api/item', {id: id, comment: v});
-  if(S.finished){S.finished = false; render();}
+  if(S.finished || isQ(items[idx])){S.finished = false; render();}
 });
 $('#note').addEventListener('input', ev => {
   S.batch_note = ev.target.value;
   queue('note', '/api/note', {text: S.batch_note});
 });
 $('#chips').addEventListener('click', ev => {const b = ev.target.closest('button'); if(b) go(+b.dataset.i);});
-$('#bA').onclick = () => decide('approved'); $('#bR').onclick = () => decide('rejected'); $('#bM').onclick = () => decide('maybe');
+$('#bA').onclick = () => decide('approved'); $('#bR').onclick = () => decide('rejected'); $('#bM').onclick = () => (isQ(items[idx]) ? askMore() : decide('maybe'));
 $('#bS').onclick = () => go(idx+1); $('#bN').onclick = () => go(idx+1); $('#bP').onclick = () => go(idx-1);
 
 document.addEventListener('keydown', ev => {
   if(ev.ctrlKey || ev.metaKey || ev.altKey) return;
   if(ev.repeat && ev.key === 'Enter' && ev.target.tagName === 'BUTTON'){ev.preventDefault(); return;}
+  if(reviewing){if(ev.key === 'Escape') closeReview(); return;}
   const typing = (ev.target.tagName || '').toLowerCase() === 'textarea';
   if(ev.key === 'Escape'){ if(typing) ev.target.blur(); return; }
   if(typing) return;
   const k = ev.key.toLowerCase();
   if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;
+  if(isQ(items[idx])){
+    if(/^[1-9]$/.test(k)){if(!ev.repeat) pick(+k); return;}
+    if(k === 'enter' && (ev.target === document.body || ev.target.classList.contains('opt'))){ev.preventDefault(); confirmCard(); return;}
+    if(k === 'm'){if(!ev.repeat) askMore(); return;}
+    if(k === 'a' || k === 'r') return;
+  }
   if(k === 'a') decide('approved');
   else if(k === 'r') decide('rejected');
   else if(k === 'm') decide('maybe');
@@ -670,8 +1075,25 @@ $('#bF').onclick = () => {
   });
 };
 
+if(hasQ){
+  $('#bF').textContent = 'Revisar e concluir';
+  $('#bF').onclick = openReview;
+}
+$('#card').addEventListener('click', ev => {
+  const b = ev.target.closest('.opt'); if(!b) return;
+  const n = +b.dataset.n, kb = ev.detail === 0, before = idx;
+  pick(n);
+  if(kb && document.activeElement !== $('#cmt')){const t = $('#card .opt[data-n="' + (idx === before ? n : 1) + '"]'); if(t) t.focus();}
+});
+$('#rev').addEventListener('click', ev => {
+  const a = ev.target.closest('a[data-i]');
+  if(a){reviewing = false; go(+a.dataset.i); return;}
+  if(ev.target.closest('#rB')) closeReview();
+  else if(ev.target.closest('#rC')) (BOOT.live ? finishNow() : $('#bC').click());
+});
+$('#rev').addEventListener('keydown', ev => {if(ev.key === 'Enter' && ev.target.matches('a[data-i]')){ev.preventDefault(); ev.target.click();}});
 setLive(BOOT.live);
-const first = items.findIndex(it => !(S.items[it.id] || {}).decision);
+const first = items.findIndex(it => !status(it));
 idx = first < 0 ? 0 : first;
 render();
 })();
@@ -861,6 +1283,9 @@ def cmd_build(a):
 
 def cmd_check(a):
     b = load_batch(a.dir)
+    nq = sum(1 for it in b["items"] if is_question(it))
+    if nq > MAX_QUESTIONS:
+        print(f"aviso: {nq} perguntas na rodada; o ideal e ate {MAX_QUESTIONS} (as dependentes ficam para a proxima rodada)", file=sys.stderr)
     print(f"ok: {len(b['items'])} itens, lote {b['batch_id']}, rodada {b.get('round', 1)}")
     return 0
 

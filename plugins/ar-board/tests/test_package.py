@@ -13,7 +13,7 @@ from pathlib import Path
 from helpers import REPO, ROOT, load_sync
 
 sync = load_sync()
-TRACKED = sync.INPUTS + [sync.SINGLE]
+TRACKED = sync.INPUTS + [sync.SINGLE, sync.QB_SINGLE, sync.QB_SCRIPT]
 
 
 def run_sync(argv, root):
@@ -75,6 +75,40 @@ class SkillCommandsTest(unittest.TestCase):
         self.assertIn('test -f %s' % self.INSTALLED, body)
 
 
+class QuestionBoardPackageTest(unittest.TestCase):
+    def test_the_script_copy_is_byte_identical(self):
+        self.assertEqual((ROOT / sync.QB_SCRIPT).read_bytes(), (ROOT / sync.SCRIPT).read_bytes())
+
+    def test_lean_skill_runs_the_bundled_script(self):
+        skill = (ROOT / sync.QB_SKILL).read_text(encoding="utf-8")
+        for cmd in ("check", "serve", "wait", "summary"):
+            with self.subTest(cmd=cmd):
+                self.assertIn('python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" %s ' % cmd, skill)
+        self.assertIn("Base directory for this skill", skill)
+
+    def test_skill_declares_its_name_and_both_triggers(self):
+        head = (ROOT / sync.QB_SKILL).read_text(encoding="utf-8").split("---", 2)[1]
+        self.assertIn("name: question-board", head)
+        self.assertIn("/ar-board:question-board", head)
+
+    def test_single_file_variant_uses_the_installed_path_everywhere(self):
+        skill = (ROOT / sync.QB_SKILL).read_text(encoding="utf-8")
+        single = sync.build(ROOT)[sync.QB_SINGLE]
+        body = single.split("\n## Script\n", 1)[0]
+        self.assertNotIn("CLAUDE_SKILL_DIR", body)
+        self.assertEqual(body.count('python3 -I "$HOME/.claude/ar-board/ar_board.py"'),
+                         skill.count('python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py"'))
+        self.assertIn("`" * 3 + "python", single)  # the embedded script block
+
+    def test_example_batch_is_valid(self):
+        import json
+        from helpers import ab
+
+        data = json.loads((ROOT / "skills" / "question-board" / "examples" / "batch.example.json").read_text(encoding="utf-8"))
+        self.assertEqual(ab.validate(data), [])
+        self.assertTrue(all(ab.is_question(it) for it in data["items"]))
+
+
 class SyncToolTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -112,6 +146,36 @@ class SyncToolTest(unittest.TestCase):
         rc, out = run_sync(["--check"], self.tmp)
         self.assertEqual(rc, 1)
         self.assertIn("header comment", out)
+
+    def test_drift_in_the_script_copy_is_detected_and_repaired(self):
+        self.assertEqual(run_sync(["--check"], self.tmp)[0], 0)
+        copy = self.tmp / sync.QB_SCRIPT
+        copy.write_text(copy.read_text(encoding="utf-8") + "# edited by hand\n", encoding="utf-8")
+        rc, out = run_sync(["--check"], self.tmp)
+        self.assertEqual(rc, 1)
+        self.assertIn(sync.QB_SCRIPT, out)
+        self.assertEqual(run_sync([], self.tmp)[0], 0)
+        self.assertEqual(copy.read_bytes(), (self.tmp / sync.SCRIPT).read_bytes())
+
+    def test_a_missing_script_copy_is_created(self):
+        (self.tmp / sync.QB_SCRIPT).unlink()
+        self.assertEqual(run_sync(["--check"], self.tmp)[0], 1)
+        self.assertEqual(run_sync([], self.tmp)[0], 0)
+        self.assertTrue((self.tmp / sync.QB_SCRIPT).is_file())
+
+    def test_sync_fails_loudly_when_the_question_board_marker_stops_matching(self):
+        skill = self.tmp / sync.QB_SKILL
+        text = skill.read_text(encoding="utf-8")
+        self.assertIn("<!-- question-board:locate-script -->", text)
+        skill.write_text(text.replace("<!-- question-board:locate-script -->", "", 1), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            run_sync(["--check"], self.tmp)
+
+    def test_sync_fails_loudly_when_the_question_board_skill_stops_naming_the_bundled_script(self):
+        skill = self.tmp / sync.QB_SKILL
+        skill.write_text(skill.read_text(encoding="utf-8").replace(sync.BUNDLED, "<script>"), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            run_sync(["--check"], self.tmp)
 
     def test_sync_fails_loudly_when_the_marker_stops_matching(self):
         skill = self.tmp / sync.SKILL
@@ -174,3 +238,17 @@ class ManualInstallTest(unittest.TestCase):
             r = self.run_install(home, "--list")
             self.assertEqual(r.returncode, 0)
             self.assertIn("ar-board", r.stdout.split())
+
+    def test_install_copies_both_skills_and_uninstall_removes_both(self):
+        with tempfile.TemporaryDirectory() as home:
+            r = self.run_install(home, "ar-board")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            for name in ("ar-board", "question-board"):
+                dest = Path(home, ".claude", "skills", name)
+                with self.subTest(skill=name):
+                    self.assertEqual((dest / "scripts" / "ar_board.py").read_bytes(), (ROOT / sync.SCRIPT).read_bytes())
+                    self.assertTrue((dest / "SKILL.md").exists())
+            r = self.run_install(home, "ar-board", "--uninstall")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            for name in ("ar-board", "question-board"):
+                self.assertFalse(Path(home, ".claude", "skills", name).exists())

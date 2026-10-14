@@ -17,7 +17,7 @@ Uma coleção pequena e cuidadosa de skills e plugins para o [Claude Code](https
 
 | Plugin | O que faz | Mudanças |
 | --- | --- | --- |
-| [**ar-board**](plugins/ar-board/README.pt-BR.md) | Painel local de aprovar/rejeitar. O agente propõe N opções, você julga uma a uma com o teclado (`A` aprova, `R` rejeita, `M` talvez) e comenta; depois o agente age só sobre o que você aprovou e guarda suas preferências para as próximas rodadas. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
+| [**ar-board**](plugins/ar-board/README.pt-BR.md) | Painel local de aprovar/rejeitar. O agente propõe N opções, você julga uma a uma com o teclado (`A` aprova, `R` rejeita, `M` talvez) e comenta; depois o agente age só sobre o que você aprovou e guarda suas preferências para as próximas rodadas. Inclui também o question-board, um formulário para uma rodada de perguntas independentes. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
 | [**publish-check**](plugins/publish-check/README.pt-BR.md) | Varredura somente leitura de um repositório git, árvore e histórico completo, atrás de links de conversa do Claude, caminhos da sua máquina, e-mails e nomes internos seus, para rodar logo antes de algo ficar público. Não é um scanner de segredos. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
 
 ## Instalação
