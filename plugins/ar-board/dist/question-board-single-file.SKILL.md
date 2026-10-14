@@ -164,6 +164,9 @@ MAX_COMMENT = 5000
 MAX_CHOICES = 8  # keys 1-9: up to 8 options plus the automatic "Outra resposta..."
 MAX_QUESTIONS = 8  # per round: a skill rule, `check` only warns
 CHOICE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
+LABEL_KEYS = ("approve", "reject", "maybe")  # batch-level `labels`: custom wording for A / R / M
+TONES = ("safe", "danger", "caution")  # colour meaning of a label: green, red, amber
+MAX_LABEL = 24
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
 MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
@@ -266,6 +269,28 @@ def validate_question(i, it, errs):
         errs.append(f"item {i}: pergunta precisa de contexto (um item em 'fields' com texto)")
 
 
+def validate_labels(b, errs):
+    """Optional batch-level `labels`: {"approve": {"text": "Apagar", "tone": "danger"}, ...}."""
+    lb = b.get("labels")
+    if lb is None:
+        return
+    if not isinstance(lb, dict):
+        errs.append("campo 'labels' deve ser objeto")
+        return
+    for k, v in lb.items():
+        if k not in LABEL_KEYS:
+            errs.append(f"labels: chave desconhecida '{k}' (use approve, reject ou maybe)")
+            continue
+        if not isinstance(v, dict):
+            errs.append(f"labels.{k}: deve ser objeto com 'text' e, opcional, 'tone'")
+            continue
+        t = v.get("text")
+        if not isinstance(t, str) or not t.strip() or len(t) > MAX_LABEL:
+            errs.append(f"labels.{k}: 'text' obrigatorio (1 a {MAX_LABEL} caracteres)")
+        if v.get("tone") is not None and v["tone"] not in TONES:
+            errs.append(f"labels.{k}: 'tone' deve ser safe, danger ou caution")
+
+
 def validate(b):
     errs = []
     if not isinstance(b, dict):
@@ -275,6 +300,7 @@ def validate(b):
             errs.append(f"campo '{k}' e obrigatorio (string)")
     if "round" in b and (not isinstance(b["round"], int) or isinstance(b["round"], bool) or b["round"] < 1):
         errs.append("campo 'round' deve ser inteiro >= 1")
+    validate_labels(b, errs)
     items = b.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["'items' deve ser uma lista nao vazia"]
@@ -308,6 +334,12 @@ def validate(b):
             for x in f
         ):
             errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
+        cf = it.get("confirm")  # null counts as omitted
+        if cf is not None:
+            if not isinstance(cf, str) or not cf.strip():
+                errs.append(f"item {i}: 'confirm' deve ser texto nao vazio")
+            elif is_question(it):
+                errs.append(f"item {i}: 'confirm' nao vale em card de pergunta")
         validate_question(i, it, errs)
     return errs
 
