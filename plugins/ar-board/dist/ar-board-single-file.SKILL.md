@@ -159,6 +159,9 @@ DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
 MAX_COMMENT = 5000
+MAX_CHOICES = 8  # keys 1-9: up to 8 options plus the automatic "Outra resposta..."
+MAX_QUESTIONS = 8  # per round: a skill rule, `check` only warns
+CHOICE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
 MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
@@ -184,6 +187,82 @@ def write_private(path, text):
 
 
 # ---------------------------------------------------------------- batch
+
+def is_question(it):
+    """A question card has 'choices' or 'open': true (null counts as omitted, like every optional key)."""
+    return isinstance(it, dict) and (it.get("choices") is not None or it.get("open") is True)
+
+
+def _int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def validate_question(i, it, errs):
+    opened = it.get("open")
+    if opened is not None and not isinstance(opened, bool):
+        errs.append(f"item {i}: 'open' deve ser booleano")
+    if not is_question(it):
+        return
+    if opened is True:
+        for k in ("choices", "multiple", "min", "max", "recommended", "why"):
+            if it.get(k) is not None:
+                errs.append(f"item {i}: 'open' nao combina com '{k}'")
+    else:
+        choices = it.get("choices")
+        listed = choices if isinstance(choices, list) else []
+        if not isinstance(choices, list) or not 2 <= len(choices) <= MAX_CHOICES:
+            errs.append(f"item {i}: 'choices' deve ser uma lista de 2 a {MAX_CHOICES} opcoes")
+        ids = []
+        for j, c in enumerate(listed):
+            if not isinstance(c, dict):
+                errs.append(f"item {i}: choices[{j}] deve ser objeto")
+                continue
+            cid = c.get("id")
+            if not isinstance(cid, str) or not CHOICE_ID.fullmatch(cid):
+                errs.append(f"item {i}: choices[{j}] 'id' deve casar [A-Za-z0-9_-]{{1,32}}")
+            elif cid in ids:
+                errs.append(f"item {i}: choices[{j}] id duplicado '{cid}'")
+            else:
+                ids.append(cid)
+            if not isinstance(c.get("label"), str) or not c["label"].strip():
+                errs.append(f"item {i}: choices[{j}] 'label' obrigatorio")
+            if c.get("effect") is not None and not isinstance(c["effect"], str):
+                errs.append(f"item {i}: choices[{j}] 'effect' deve ser string")
+        n = len(listed)
+        multiple = it.get("multiple")
+        if multiple is not None and not isinstance(multiple, bool):
+            errs.append(f"item {i}: 'multiple' deve ser booleano")
+        mn, mx = it.get("min"), it.get("max")
+        for k, v in (("min", mn), ("max", mx)):
+            if v is not None and not _int(v):
+                errs.append(f"item {i}: '{k}' deve ser inteiro")
+            elif v is not None and multiple is not True:
+                errs.append(f"item {i}: '{k}' so vale com 'multiple': true")
+        if multiple is True and n and (mn is None or _int(mn)) and (mx is None or _int(mx)):
+            lo, hi = (1 if mn is None else mn), (n if mx is None else mx)
+            if not 1 <= lo <= hi <= n:
+                errs.append(f"item {i}: precisa 1 <= min <= max <= {n} (numero de opcoes)")
+        rec = it.get("recommended")
+        if rec is not None:
+            if not isinstance(rec, list) or any(not isinstance(x, str) for x in rec):
+                errs.append(f"item {i}: 'recommended' deve ser lista de ids (texto)")
+            else:
+                if any(x not in ids for x in rec):
+                    errs.append(f"item {i}: 'recommended' cita id que nao esta em 'choices'")
+                if len(set(rec)) != len(rec):
+                    errs.append(f"item {i}: 'recommended' tem id repetido")
+                limit = (mx if _int(mx) else n) if multiple is True else 1
+                if len(rec) > limit:
+                    errs.append(f"item {i}: 'recommended' tem mais ids do que o limite ({limit})")
+                if rec and not (isinstance(it.get("why"), str) and it["why"].strip()):
+                    errs.append(f"item {i}: 'why' e obrigatorio quando ha 'recommended'")
+        if it.get("why") is not None and not isinstance(it["why"], str):
+            errs.append(f"item {i}: 'why' deve ser string")
+    fields = it.get("fields")
+    fields = fields if isinstance(fields, list) else []
+    if not any(isinstance(f, dict) and isinstance(f.get("text"), str) and f["text"].strip() for f in fields):
+        errs.append(f"item {i}: pergunta precisa de contexto (um item em 'fields' com texto)")
+
 
 def validate(b):
     errs = []
@@ -227,6 +306,7 @@ def validate(b):
             for x in f
         ):
             errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
+        validate_question(i, it, errs)
     return errs
 
 
@@ -861,6 +941,9 @@ def cmd_build(a):
 
 def cmd_check(a):
     b = load_batch(a.dir)
+    nq = sum(1 for it in b["items"] if is_question(it))
+    if nq > MAX_QUESTIONS:
+        print(f"aviso: {nq} perguntas na rodada; o ideal e ate {MAX_QUESTIONS} (as dependentes ficam para a proxima rodada)", file=sys.stderr)
     print(f"ok: {len(b['items'])} itens, lote {b['batch_id']}, rodada {b.get('round', 1)}")
     return 0
 
