@@ -24,7 +24,7 @@ Use quando o usuário quer limpar branches locais, worktrees ou stashes. Não us
 
 "Upstream gone" sozinho não prova nada: um remoto pode ser apagado sem merge.
 
-**Nunca são oferecidos:** a base, a branch atual, branches em uso por um worktree, e worktrees com alterações ou arquivos não rastreados. Eles aparecem em "Nao tocar" no primeiro card, com o motivo.
+**Nunca são oferecidos:** a base, a branch atual, branches em uso por um worktree, e worktrees com alterações ou arquivos não rastreados. Eles aparecem em "Nao tocar" no primeiro card, com o motivo. Um worktree limpo com arquivos ignorados pelo git (`.env`, `node_modules/`) é oferecido, mas com segundo A e fora do grupo: apagar a pasta apaga esses arquivos, sem backup.
 
 ## Fluxo
 

@@ -113,6 +113,22 @@ class BuildScanTest(BoardRepo):
             self.assertRegex(e["sha"], r"^[0-9a-f]{40}$")
             self.assertIn(e["kind"], ("branch", "worktree", "stash"))
 
+    def test_a_worktree_with_ignored_files_asks_for_confirmation_and_stays_out_of_the_group(self):
+        commit(self.repo, "ignore", {".gitignore": "*.env\n"})
+        git(self.repo, "branch", "wti")
+        wt = self.tmp / "wti"
+        git(self.repo, "worktree", "add", "-q", str(wt), "wti")
+        (wt / "secret.env").write_text("TOKEN=1\n")
+        batch, scan = self.build()
+        entry = [e for e in scan["items"] if e["kind"] == "worktree" and e["name"] == str(wt)][0]
+        self.assertEqual(entry["proof"], "P1")
+        self.assertNotIn(entry["id"], scan["group"]["members"])
+        card = [c for c in batch["items"] if c["id"] == entry["id"]][0]
+        self.assertIn("confirm", card)
+        text = json.dumps(card, ensure_ascii=False)
+        self.assertIn("secret.env", text)
+        self.assertEqual(capy.validate(batch), [])
+
     def test_a_single_safe_item_gets_no_group_card(self):
         for name in ("feat/b",):
             git(self.repo, "branch", "-D", name)

@@ -464,3 +464,116 @@ class RepoHooksTest(ApplyCase):
         self.assertNotIn("feat/a", self.branches())
         self.assertNotIn("spike/x", self.branches())
         self.assertFalse(marker.exists(), "git ran a hook of the repository")
+
+
+class LyingSidecarTest(ApplyCase):
+    """apply derives backups and branch drops from what it re-verifies, never from flags in scan.json."""
+
+    def rescan(self, name="board2"):
+        board = self.tmp / name
+        rc, out, _ = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(board))
+        assert rc == 0, out
+        scan = json.loads((board / "scan.json").read_text(encoding="utf-8"))
+        batch = json.loads((board / "batch.json").read_text(encoding="utf-8"))
+        return board, scan, batch
+
+    def approve_only(self, board, batch, iid):
+        (board / "decisions.json").write_text(json.dumps({"batch_id": batch["batch_id"], "round": 1, "finished": True,
+                                                          "items": {iid: {"decision": "approved"}}}), encoding="utf-8")
+
+    def lie(self, board, scan, iid, **fields):
+        for e in scan["items"]:
+            if e["id"] == iid:
+                e.update(fields)
+        (board / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
+
+    def test_a_cleared_backup_flag_still_gets_a_backup(self):
+        self.lie(self.board, self.scan, self.ids["spike/x"], backup=False)
+        self.decide({"spike/x": "approved"})
+        rc, out, _ = self.apply()
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("spike/x", self.branches())
+        self.assertEqual(self.backups(), {"refs/tidy-board/backup/spike/x"})
+
+    def test_a_drop_branch_flag_cannot_delete_the_unique_work_of_a_worktree(self):
+        git(self.repo, "checkout", "-q", "-b", "wtu")
+        commit(self.repo, "unique", {"wtu.txt": "u\n"})
+        git(self.repo, "checkout", "-q", "main")
+        wt = self.tmp / "wtu"
+        git(self.repo, "worktree", "add", "-q", str(wt), "wtu")
+        board, scan, batch = self.rescan()
+        iid = [e["id"] for e in scan["items"] if e["kind"] == "worktree" and e["name"] == str(wt)][0]
+        self.lie(board, scan, iid, drop_branch=True, backup=False)
+        self.approve_only(board, batch, iid)
+        rc, out, _ = run_cli("apply", str(board))
+        self.assertEqual(rc, 0, out)
+        self.assertFalse(wt.exists())
+        self.assertIn("wtu", self.branches())  # the branch has unique work: only the folder went
+
+    def test_a_detached_worktree_is_backed_up_even_when_the_sidecar_claims_it_is_merged(self):
+        git(self.repo, "checkout", "-q", "-b", "tmp")
+        sha = commit(self.repo, "wip", {"w.txt": "w\n"})
+        git(self.repo, "checkout", "-q", "main")
+        git(self.repo, "branch", "-D", "tmp")
+        wt = self.tmp / "det"
+        git(self.repo, "worktree", "add", "-q", "--detach", str(wt), sha)
+        board, scan, batch = self.rescan()
+        iid = [e["id"] for e in scan["items"] if e["name"] == str(wt)][0]
+        self.lie(board, scan, iid, proof="P1", backup=False)
+        self.approve_only(board, batch, iid)
+        rc, out, _ = run_cli("apply", str(board))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(git(self.repo, "rev-parse", "refs/tidy-board/backup/wt-" + sha[:12]).strip(), sha)
+
+    def test_a_worktree_that_switched_branch_since_the_scan_is_kept(self):
+        git(self.wt, "checkout", "-q", "-b", "other")  # same commit, another branch
+        self.decide({str(self.wt): "approved"})
+        rc, out, _ = self.apply()
+        self.assertEqual(rc, 1)
+        self.assertIn("mudou de branch", out)
+        self.assertTrue(self.wt.exists())
+        self.assertIn("wtm", self.branches())
+
+
+class DeletionMechanicsTest(ApplyCase):
+    def test_a_branch_is_deleted_only_if_it_still_points_where_it_was_checked(self):
+        sha = self.sha("feat/a")
+        calls = []
+        real = tb.git
+
+        def spy(root, *args, **kw):
+            calls.append(args)
+            return real(root, *args, **kw)
+
+        self.decide({"feat/a": "approved"})
+        with mock.patch.object(tb, "git", spy):
+            rc, out, _ = self.apply()
+        self.assertEqual(rc, 0, out)
+        deletions = [c for c in calls if c[:2] == ("update-ref", "-d")]
+        self.assertTrue(any(c[2] == "refs/heads/feat/a" and c[3] == sha for c in deletions), deletions)
+        self.assertFalse(any(c[:2] == ("branch", "-D") for c in calls))
+
+    def test_the_branch_config_section_goes_with_the_branch(self):
+        git(self.repo, "config", "branch.feat/a.remote", "origin")
+        git(self.repo, "config", "branch.feat/a.merge", "refs/heads/feat/a")
+        self.decide({"feat/a": "approved"})
+        self.assertEqual(self.apply()[0], 0)
+        left = git(self.repo, "config", "--get-regexp", r"^branch\.feat/a\.", check=False)
+        self.assertEqual(left.strip(), "")
+
+    def test_an_interrupted_run_still_records_what_it_already_deleted(self):
+        real = tb.apply_item
+        seen = []
+
+        def interrupt_on_second(*args, **kw):
+            if seen:
+                raise KeyboardInterrupt
+            seen.append(1)
+            return real(*args, **kw)
+
+        self.decide({"feat/a": "approved", "feat/b": "approved"})
+        with mock.patch.object(tb, "apply_item", interrupt_on_second):
+            with self.assertRaises(KeyboardInterrupt):
+                self.apply()
+        done = [e for e in self.applied().values() if e["action"] == "deleted"]
+        self.assertEqual([e["name"] for e in done], ["feat/a"])

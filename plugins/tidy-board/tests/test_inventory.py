@@ -171,6 +171,22 @@ class WorktreeAndStashTest(RepoCase):
         item = [i for i in self.inv()["items"] if i["kind"] == "worktree"][0]
         self.assertEqual((item["proof"], item["branch"], item["backup"]), ("P4", None, True))
 
+    def test_a_worktree_on_the_base_branch_never_offers_the_base_for_deletion(self):
+        git(self.repo, "checkout", "-q", "-b", "dev")
+        wt = self.tmp / "on-main"
+        git(self.repo, "worktree", "add", "-q", str(wt), "main")
+        item = [i for i in self.inv()["items"] if i["kind"] == "worktree"][0]
+        self.assertEqual((item["branch"], item["proof"], item["drop_branch"]), ("main", "P1", False))
+
+    def test_ignored_files_in_a_clean_worktree_are_listed_because_removing_it_deletes_them(self):
+        commit(self.repo, "ignore", {".gitignore": "*.env\n"})
+        git(self.repo, "branch", "feat/ig")
+        wt = self.tmp / "ig"
+        git(self.repo, "worktree", "add", "-q", str(wt), "feat/ig")
+        (wt / "secret.env").write_text("TOKEN=1\n")
+        item = [i for i in self.inv()["items"] if i["kind"] == "worktree"][0]
+        self.assertEqual(item["ignored"], ["secret.env"])  # git status says clean; the file is in no commit
+
     def test_a_stash_is_always_p4_and_is_identified_by_its_commit(self):
         (self.repo / "a.txt").write_text("dirty\n")
         git(self.repo, "stash", "push", "-q", "-m", "wip handoff draft")
@@ -179,6 +195,27 @@ class WorktreeAndStashTest(RepoCase):
         self.assertEqual((item["proof"], item["sha"], item["backup"]), ("P4", sha, True))
         self.assertIn("wip handoff draft", item["name"])
         self.assertEqual(item["files"], ["a.txt"])
+
+
+class RefNameTest(RepoCase):
+    """Ref names are resolved in full, so a tag cannot stand in for a branch."""
+
+    def test_a_tag_named_like_the_base_cannot_make_unique_work_look_merged(self):
+        sha = self.work("feat/x", {"x.txt": "x\n"})
+        git(self.repo, "tag", "main", sha)  # `main` is now ambiguous: a tag at the unique commit, and the branch
+        self.assertEqual(self.by_name()["feat/x"]["proof"], "P4")
+
+    def test_the_base_branch_is_never_a_card_even_when_a_tag_shares_its_name(self):
+        git(self.repo, "tag", "main", "HEAD")
+        inv = self.inv()
+        self.assertEqual([i["name"] for i in inv["items"] if i["name"].endswith("main")], [])
+        self.assertIn("main", [u["name"] for u in inv["untouched"]])
+
+    def test_a_tag_named_like_a_branch_does_not_rename_the_branch(self):
+        git(self.repo, "branch", "same")
+        git(self.repo, "tag", "same", "HEAD")
+        self.assertIn("same", self.by_name())
+        self.assertNotIn("heads/same", self.by_name())
 
 
 class OrderingTest(RepoCase):
@@ -225,9 +262,23 @@ class BaseDetectionTest(RepoCase):
         git(clone, "merge", "-q", "--ff-only", "feat/m")
         git(clone, "push", "-q", "origin", "main")
         git(clone, "reset", "-q", "--hard", "HEAD~1")  # local main is behind origin/main
-        self.assertEqual(tb.base_refs(clone, "main"), ["main", "origin/main"])
+        self.assertEqual(tb.base_refs(clone, "main"), ["refs/heads/main", "refs/remotes/origin/main"])
         inv = tb.inventory(clone, "main", "off")
         self.assertEqual({i["name"]: i for i in inv["items"]}["feat/m"]["proof"], "P1")
+
+    def test_a_base_spelled_as_a_full_ref_still_protects_the_base_branch(self):
+        base = tb.detect_base(self.repo, "refs/heads/main")
+        self.assertEqual(base, "main")
+        names = [i["name"] for i in tb.inventory(self.repo, base, "off")["items"]]
+        self.assertNotIn("main", names)
+
+    def test_a_remote_base_protects_its_local_twin(self):
+        clone = self.tmp / "cl"
+        git(self.tmp, "clone", "-q", str(self.repo), str(clone))
+        git(clone, "checkout", "-q", "-b", "dev")  # so that `main` is not protected just by being the current branch
+        inv = tb.inventory(clone, tb.detect_base(clone, "origin/main"), "off")
+        self.assertNotIn("main", [i["name"] for i in inv["items"]])
+        self.assertIn("main", [u["name"] for u in inv["untouched"]])
 
     def test_not_a_repository_is_an_error(self):
         with self.assertRaises(tb.TidyError):

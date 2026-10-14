@@ -53,11 +53,13 @@ O primeiro card (`G`) diz "apagar os N itens provados como mergeados" e os lista
 
 A branch base, a branch atual, qualquer branch em uso por um worktree (o worktree é o card) e qualquer worktree com alterações rastreadas ou arquivos não rastreados (apagá-lo perderia trabalho sem sha para recuperar). Eles aparecem no primeiro card como **Nao tocar**, com o motivo.
 
+Um worktree limpo que guarda arquivos ignorados pelo git (um `.env`, `node_modules/`) **é** oferecido, mas o card os lista, pede um segundo `A` e o deixa fora do card de grupo: remover a pasta apaga esses arquivos, que não estão em nenhum commit e não têm backup.
+
 ## O que o `apply` reconfere
 
 Por item, na hora de apagar (o scan é só uma fotografia):
 
-- **Branch:** ainda existe, a ponta continua o sha do scan, não é a base nem está em uso em algum worktree e, no P1, continua mesclada. No P2 ele pergunta ao `gh` de novo (uma vez por execução) se o PR mergeado ainda tem essa ponta, a menos que o histórico já prove a branch mesclada; se o `gh` não estiver disponível, o item é pulado. Apagada com `git branch -D`.
+- **Branch:** ainda existe, a ponta continua o sha do scan, não é a base nem está em uso em algum worktree e, no P1, continua mesclada. No P2 ele pergunta ao `gh` de novo (uma vez por execução) se o PR mergeado ainda tem essa ponta, a menos que o histórico já prove a branch mesclada; se o `gh` não estiver disponível, o item é pulado. Apagada com um `git update-ref -d` condicional, que o git recusa se a branch se mexeu desde a checagem.
 - **Worktree:** ainda existe, não está bloqueado, está limpo (sem alterações nem arquivos não rastreados) e o HEAD é o sha do scan. Removido com `git worktree remove` **sem `--force`**, e depois a branch dele se for P1/P2. Um worktree com trabalho único é removido, mas a branch fica.
 - **Stash:** reencontrado pelo sha do commit (nunca por `stash@{n}`, que muda de posição) e descartado.
 - Antes de apagar uma branch P3/P4, um stash ou um worktree solto, cria `refs/tidy-board/backup/...` (e pula o item se não conseguir).

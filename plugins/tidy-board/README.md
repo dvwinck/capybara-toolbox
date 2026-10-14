@@ -53,11 +53,13 @@ The first card (`G`) says "delete the N items proved as merged" and lists them. 
 
 The base branch, the current branch, any branch checked out in a worktree (the worktree is the card), and any worktree with tracked changes or untracked files (deleting it would lose work with no sha to recover). They are listed in the first card as **Nao tocar**, with the reason.
 
+A clean worktree that holds files git ignores (a `.env`, `node_modules/`) **is** offered, but its card lists them, asks for a second `A` and keeps it out of the group card: removing the folder deletes them, they are in no commit and they get no backup.
+
 ## What `apply` re-checks
 
 Per item, at deletion time (the scan is only a photograph):
 
-- **Branch:** it still exists, its tip is still the scanned sha, it is not the base and not checked out anywhere, and for P1 it is still merged. For P2 it asks `gh` again (once per run) that the merged PR still has this tip, unless the history now proves the branch merged; if `gh` is unavailable the item is skipped. Deleted with `git branch -D`.
+- **Branch:** it still exists, its tip is still the scanned sha, it is not the base and not checked out anywhere, and for P1 it is still merged. For P2 it asks `gh` again (once per run) that the merged PR still has this tip, unless the history now proves the branch merged; if `gh` is unavailable the item is skipped. Deleted with a conditional `git update-ref -d`, which git refuses if the branch moved since the check.
 - **Worktree:** it still exists, is not locked, is clean (no tracked changes, no untracked files) and its HEAD is the scanned sha. Removed with `git worktree remove` **without `--force`**, then its branch if that branch is P1/P2. A worktree on unique work is removed but its branch stays.
 - **Stash:** found again by its commit sha (never by `stash@{n}`, which shifts) and dropped.
 - Before deleting a P3/P4 branch, a stash or a detached worktree, it creates `refs/tidy-board/backup/...` (and skips the item if it cannot).

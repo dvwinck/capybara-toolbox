@@ -84,7 +84,8 @@ def detect_base(root, override=None):
     if override:
         if rev(root, override) is None:
             raise TidyError(f"a base '{override}' nao existe")
-        return override
+        full = git(root, "rev-parse", "--symbolic-full-name", override).out.strip()
+        return full[len("refs/heads/"):] if full.startswith("refs/heads/") else override
     r = git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if r.rc == 0 and "/" in r.out.strip():
         short = r.out.strip().split("/", 1)[1]
@@ -97,21 +98,33 @@ def detect_base(root, override=None):
 
 
 def base_refs(root, base):
-    """The refs a branch may be merged into: the local base and, when it exists, origin/<base>."""
-    refs = [base]
-    if rev(root, "refs/remotes/origin/" + base):
-        refs.append("origin/" + base)
+    """The refs a branch may be merged into: the local base and, when it exists, origin/<base>. Full names, so
+    a tag called like the base cannot stand in for it (`git` prefers tags to branches for a short name)."""
+    local = "refs/heads/" + base
+    refs = [local] if rev(root, local) else [base]
+    remote = "refs/remotes/origin/" + base
+    if rev(root, remote):
+        refs.append(remote)
     return refs
+
+
+def base_branch_names(root, base):
+    """Local branch names that are never offered: the base itself and, for `--base origin/main`, its local twin."""
+    names = {base}
+    full = git(root, "rev-parse", "--symbolic-full-name", base).out.strip()
+    if full.startswith("refs/remotes/"):
+        names.add(full.split("/", 3)[3])
+    return names
 
 
 # ---------------------------------------------------------------- what exists
 
 def list_branches(root):
-    fmt = "%(refname:short)%09%(objectname)%09%(upstream:track)%09%(committerdate:unix)%09%(authorname)%09%(subject)"
+    fmt = "%(refname)%09%(objectname)%09%(upstream:track)%09%(committerdate:unix)%09%(authorname)%09%(subject)"
     rows = []
     for line in git_ok(root, "for-each-ref", "--format=" + fmt, "refs/heads").splitlines():
-        name, sha, track, ts, author, subject = line.split("\t", 5)
-        rows.append({"name": name, "sha": sha, "gone": track == "[gone]", "ts": int(ts or 0), "author": author,
+        ref, sha, track, ts, author, subject = line.split("\t", 5)
+        rows.append({"name": ref[len("refs/heads/"):], "sha": sha, "gone": track == "[gone]", "ts": int(ts or 0), "author": author,
                      "subject": subject})
     return rows
 
@@ -142,6 +155,13 @@ def dirty_files(path):
     """Tracked changes and untracked files of a worktree; None when git cannot tell."""
     r = git(path, "status", "--porcelain", "--untracked-files=all")
     return [line for line in r.out.splitlines() if line.strip()] if r.rc == 0 else None
+
+
+def ignored_entries(path, limit=20):
+    """Top-level entries git ignores in a worktree (`.env`, `node_modules/`): they are in no commit and removing
+    the worktree deletes them, although `git status` calls it clean."""
+    r = git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
+    return [line for line in r.out.splitlines() if line.strip()][:limit] if r.rc == 0 else []
 
 
 def last_commit(root, sha):
@@ -263,6 +283,7 @@ def inventory(root, base, gh_mode="auto"):
     """Everything the board can offer and everything it must never touch. Read-only: no fetch, no network."""
     root = Path(root)
     refs = base_refs(root, base)
+    base_names = base_branch_names(root, base)
     prs = load_merged_prs(root, gh_mode)
     trees = list_worktrees(root)
     here = Path(os.path.realpath(root))
@@ -273,7 +294,7 @@ def inventory(root, base, gh_mode="auto"):
 
     for b in list_branches(root):
         name = b["name"]
-        if name == base:
+        if name in base_names:
             untouched.append({"name": name, "why": "branch base do repositorio"})
             continue
         wt = checked_out.get(name)
@@ -285,7 +306,7 @@ def inventory(root, base, gh_mode="auto"):
                 untouched.append({"name": name, "why": f"em uso pelo worktree principal ({wt})"})
             continue
         proof = classify(root, b["sha"], name, refs, prs)
-        ahead, behind = ahead_behind(root, base, b["sha"])
+        ahead, behind = ahead_behind(root, refs[0], b["sha"])
         count, lines = unique_commits(root, b["sha"], name) if proof in RISKY_PROOFS else (0, [])
         items.append({"kind": "branch", "name": name, "sha": b["sha"], "proof": proof, "ts": b["ts"],
                       "author": b["author"], "subject": b["subject"], "ahead": ahead, "behind": behind,
@@ -316,13 +337,13 @@ def inventory(root, base, gh_mode="auto"):
         branch = wt["branch"][len("refs/heads/"):] if wt.get("branch", "").startswith("refs/heads/") else None
         proof = classify(root, sha, branch, refs, prs)
         ts, author, subject = last_commit(root, sha)
-        ahead, behind = ahead_behind(root, base, sha)
+        ahead, behind = ahead_behind(root, refs[0], sha)
         count, lines = unique_commits(root, sha, branch) if proof in RISKY_PROOFS else (0, [])
         items.append({"kind": "worktree", "name": path, "path": path, "sha": sha, "branch": branch, "proof": proof,
-                      "drop_branch": bool(branch) and proof in SAFE_PROOFS, "ts": ts, "author": author,
+                      "drop_branch": bool(branch) and proof in SAFE_PROOFS and branch not in base_names, "ts": ts, "author": author,
                       "subject": subject, "ahead": ahead, "behind": behind, "unique": lines, "unique_count": count,
                       "pr": pr_note(prs, branch, sha), "remote": remote_note(root, branch, False) if branch else "",
-                      "size": dir_size(path), "backup": branch is None and proof in RISKY_PROOFS})
+                      "size": dir_size(path), "ignored": ignored_entries(path), "backup": branch is None and proof in RISKY_PROOFS})
 
     for s in list_stashes(root):
         files = git(root, "diff", "--no-ext-diff", "--name-only", s["sha"] + "^1", s["sha"]).out.splitlines()
@@ -381,7 +402,12 @@ def confirm_text(it):
     """The second-press warning of a card that is not provably merged (None for P1 and P2)."""
     if it["kind"] == "stash":
         return "Trabalho unico: este stash nao existe em outro lugar. Um backup sera criado antes de descartar."
+    if it["kind"] == "worktree" and it.get("ignored"):
+        shown = ", ".join(safe_text(e) for e in it["ignored"][:3])
+        return f"Este worktree tem arquivos ignorados pelo git (ex.: {shown}) que serao apagados junto e nao tem backup."
     if it["kind"] == "worktree":
+        if it["proof"] in SAFE_PROOFS:
+            return None
         if it["branch"]:
             return "A branch deste worktree tem trabalho que so existe nela: ela fica. Remove so a pasta do worktree."
         return "Este worktree esta sem branch e seus commits so existem aqui. Um backup sera criado antes de remover."
@@ -398,10 +424,13 @@ def card_for(it, iid, now):
     if kind == "worktree":
         fields.append({"label": "Worktree", "text": f"`{safe_text(it['path'])}` ({human_size(it['size'])}, limpo)"})
         if it["branch"]:
-            tail = " (sai junto)" if it["drop_branch"] else " (fica: tem trabalho que so existe nela)"
+            tail = " (sai junto)" if it["drop_branch"] else " (fica)"
             fields.append({"label": "Branch", "text": f"`{safe_text(it['branch'])}`{tail}"})
         else:
             fields.append({"label": "Branch", "text": "nenhuma (HEAD solto)"})
+        if it.get("ignored"):
+            body = "\n".join(f"`{safe_text(e)}`" for e in it["ignored"][:5])
+            fields.append({"label": "Ignorados", "text": body + "\n(apagados junto com a pasta, sem backup)"})
     who = f", {safe_text(it['author'])}" if it["author"] else ""
     fields.append({"label": "Ultimo", "text": f"{safe_text(it['subject'])} ({age_text(it['ts'], now)}{who})"})
     if kind == "stash":
@@ -431,7 +460,7 @@ def card_for(it, iid, now):
     fields.append({"label": "Efeito", "text": effect})
     verb = {"branch": "Apagar a branch", "worktree": "Remover o worktree", "stash": "Descartar o stash"}[kind]
     card = {"id": iid, "tag": it["proof"], "title": f"{verb} {safe_text(short_name(name))}?", "fields": fields}
-    confirm = confirm_text(it) if it["proof"] in RISKY_PROOFS or kind == "stash" else None
+    confirm = confirm_text(it)
     if confirm:
         card["confirm"] = confirm
     return card
@@ -452,7 +481,7 @@ def build_scan(root, inv, now=None, stamp=None):
         entries.append({"id": iid, "kind": it["kind"], "name": it["name"], "sha": it["sha"], "proof": it["proof"],
                         "branch": it.get("branch"), "path": it.get("path"), "drop_branch": bool(it.get("drop_branch")),
                         "backup": bool(it["backup"])})
-        if it["proof"] in SAFE_PROOFS:
+        if it["proof"] in SAFE_PROOFS and not it.get("ignored"):  # ignored files need their own confirmation
             safe_ids.append(iid)
             safe_lines.append(f"`{safe_text(short_name(it['name']))}` ({it['kind']}, {it['proof']})")
     group = None
@@ -670,17 +699,17 @@ def pr_blocker(root, scan, name, sha):
     return None
 
 
-def branch_blocker(root, scan, name, sha, proof, held_ok=False):
+def branch_blocker(root, scan, name, sha, proof, held_by=None):
     """Why a branch must not be deleted now (None when it may): the scan is a photograph, this is the check."""
     tip = rev(root, "refs/heads/" + name)
     if tip is None:
         return "a branch nao existe mais"
     if tip != sha:
         return "a ponta mudou desde o scan"
-    if name == scan["base"]:
+    if name in base_branch_names(root, scan["base"]):
         return "e a branch base"
     held = checked_out_branches(root).get(name)
-    if held and not held_ok:
+    if held and not (held_by and os.path.realpath(held) == os.path.realpath(held_by)):
         return f"esta em uso em {held}"
     merged = any(is_ancestor(root, sha, ref) for ref in base_refs(root, scan["base"]))
     if proof == "P1" and not merged:
@@ -690,20 +719,29 @@ def branch_blocker(root, scan, name, sha, proof, held_ok=False):
     return None
 
 
+def delete_branch(root, name, sha):
+    """Delete the ref only if it still points at sha (a commit landing since the check makes git refuse), then
+    drop the branch's config section the way `git branch -D` does (best effort)."""
+    r = git(root, "update-ref", "-d", "refs/heads/" + name, sha)
+    if r.rc == 0:
+        git(root, "config", "--remove-section", "branch." + name)
+    return r
+
+
 def apply_branch(root, scan, it, dry):
     why = branch_blocker(root, scan, it["name"], it["sha"], it["proof"])
     if why:
         return skip(it, why)
-    backup = backup_name(it) if it.get("backup") else None
+    backup = backup_name(it) if it["proof"] in RISKY_PROOFS else None  # from the re-verified proof, not from a flag in scan.json
     if dry:
         return outcome(it, "would-delete", backup=backup)
     if backup:
         why = make_backup(root, backup, it["sha"])
         if why:
             return skip(it, why)
-    r = git(root, "branch", "-D", it["name"])
+    r = delete_branch(root, it["name"], it["sha"])
     if r.rc != 0:
-        return skip(it, r.err.strip() or "git branch -D falhou")
+        return skip(it, r.err.strip() or "a branch mudou durante o apply")
     return outcome(it, "deleted", backup=backup)
 
 
@@ -726,12 +764,18 @@ def apply_worktree(root, scan, it, dry):
     head = git(path, "rev-parse", "--verify", "--quiet", "HEAD").out.strip()
     if head != it["sha"]:
         return skip(it, "o HEAD mudou desde o scan")
-    drop = it.get("branch") if it.get("drop_branch") else None
+    live = entry["branch"][len("refs/heads/"):] if entry.get("branch", "").startswith("refs/heads/") else None
+    if live != it.get("branch"):
+        return skip(it, "o worktree mudou de branch desde o scan")
+    # what to delete and what to back up come from the live state and the re-verified proof, never from scan.json flags
+    drop = live if (live and it["proof"] in SAFE_PROOFS and live not in base_branch_names(root, scan["base"])) else None
     if drop:
-        why = branch_blocker(root, scan, drop, it["sha"], it["proof"], held_ok=True)
+        why = branch_blocker(root, scan, drop, it["sha"], it["proof"], held_by=path)
         if why:
             return skip(it, f"a branch {drop}: {why}")
-    backup = backup_name(it) if it.get("backup") else None
+    risky_head = live is None and (it["proof"] in RISKY_PROOFS or
+                                   not any(is_ancestor(root, it["sha"], ref) for ref in base_refs(root, scan["base"])))
+    backup = backup_name(it) if risky_head else None
     if dry:
         return outcome(it, "would-delete", backup=backup)
     if backup:
@@ -742,15 +786,14 @@ def apply_worktree(root, scan, it, dry):
     if r.rc != 0:
         return skip(it, r.err.strip() or "git worktree remove falhou")
     if drop:
-        r = git(root, "branch", "-D", drop)
+        r = delete_branch(root, drop, it["sha"])
         if r.rc != 0:
             return outcome(it, "deleted", reason="worktree removido; a branch ficou: " + r.err.strip(), backup=backup)
     return outcome(it, "deleted", backup=backup)
 
 
 def apply_stash(root, it, dry):
-    shas = [s["sha"] for s in list_stashes(root)]
-    if it["sha"] not in shas:
+    if it["sha"] not in [st["sha"] for st in list_stashes(root)]:
         return skip(it, "o stash nao existe mais")
     backup = backup_name(it)
     if dry:
@@ -758,8 +801,10 @@ def apply_stash(root, it, dry):
     why = make_backup(root, backup, it["sha"])
     if why:
         return skip(it, why)
-    index = shas.index(it["sha"])  # found now: the index at scan time is stale once anything was stashed or dropped
-    r = git(root, "stash", "drop", f"stash@{{{index}}}")
+    shas = [st["sha"] for st in list_stashes(root)]  # read again right before the drop: a stash pushed meanwhile moved the indexes
+    if it["sha"] not in shas:
+        return skip(it, "o stash mudou durante o apply")
+    r = git(root, "stash", "drop", f"stash@{{{shas.index(it['sha'])}}}")
     if r.rc != 0:
         return skip(it, r.err.strip() or "git stash drop falhou")
     return outcome(it, "deleted", backup=backup)
@@ -837,9 +882,13 @@ def cmd_apply(a):
     if not todo:
         print("APPLY: nada aprovado; nada foi apagado")
         return 0
-    results = [apply_item(root, scan, it, a.dry_run) for it in todo]
-    if not a.dry_run:
-        save_applied(a.dir, results)
+    results = []
+    try:
+        for it in todo:
+            results.append(apply_item(root, scan, it, a.dry_run))
+    finally:  # an interrupt or a crash mid-run must not lose the record of what was already deleted
+        if results and not a.dry_run:
+            save_applied(a.dir, results)
     for r in results:
         line = f"{r['action']:<12} {r['id']} {r['kind']} {r['name']}"
         if r.get("backup"):
