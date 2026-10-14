@@ -30,6 +30,12 @@ Peça em linguagem natural — *"me dê 10 melhorias de arquitetura num AR board
 
 Tudo é salvo sozinho em `decisions.json`; **Concluir** avisa o agente. Segurar uma tecla nunca decide em rajada. Coloque `.ar-board/` no `.gitignore`: os comentários podem ter informação interna.
 
+## Segunda skill: question-board
+
+Quando o agente precisa de várias respostas independentes antes de continuar, ele pode reuni-las num formulário em vez de uma rodada longa no chat (`/ar-board:question-board`). Cada pergunta mostra o contexto e opções numeradas; você aperta `1`-`9`, escreve a sua própria resposta ("Outra resposta...") ou aperta `M` para pedir mais contexto. A opção recomendada leva uma estrela e o motivo, mas nunca vem selecionada. Uma tela de revisão lista todas as respostas antes de avisar o agente, e o que ficar sem resposta volta como pendente (o agente pergunta no chat; nunca assume a recomendada).
+
+Use o ar-board para *julgar propostas* (A/R/M) e o question-board para *responder perguntas*. Os dois usam o mesmo motor e painel locais. Atualize as duas skills juntas.
+
 ## Documentação
 
 - [Guia completo (pt-BR)](docs/pt-BR/guia-completo.md)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ar-board 1.1.0 - painel local de aprovar/rejeitar (somente stdlib, sem rede externa)
+# ar-board 1.2.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000

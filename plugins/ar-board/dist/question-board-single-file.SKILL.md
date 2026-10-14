@@ -18,7 +18,7 @@ Diferença para o ar-board: o ar-board pergunta "você aprova esta proposta?" (A
 ### 0. Instalar o script (uma vez por máquina)
 
 ```bash
-test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.1.0' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
+test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.2.0' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
 ```
 
 Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Os comandos abaixo usam esse caminho. Requer apenas `python3` (stdlib).
@@ -130,7 +130,7 @@ Grave este conteúdo, sem alterações, em `~/.claude/ar-board/ar_board.py`:
 
 ```python
 #!/usr/bin/env python3
-# ar-board 1.1.0 - painel local de aprovar/rejeitar (somente stdlib, sem rede externa)
+# ar-board 1.2.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -156,7 +156,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
