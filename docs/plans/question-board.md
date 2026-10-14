@@ -1915,7 +1915,7 @@ class QuestionBoardPackageTest(unittest.TestCase):
         self.assertNotIn("CLAUDE_SKILL_DIR", body)
         self.assertEqual(body.count('python3 -I "$HOME/.claude/ar-board/ar_board.py"'),
                          skill.count('python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py"'))
-        self.assertIn("```python", single)
+        self.assertIn("`" * 3 + "python", single)  # the embedded script block
 
     def test_example_batch_is_valid(self):
         import json
@@ -1987,7 +1987,7 @@ Expected: `AttributeError: module 'sync_tool' has no attribute 'QB_SINGLE'` (eve
 
 Replace the whole file with:
 
-```python
+````python
 #!/usr/bin/env python3
 """Keeps the ar-board plugin consistent from one source of truth: the script's VERSION.
 
@@ -2119,7 +2119,7 @@ def main(argv, root=ROOT):
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
-```
+````
 
 `read_text`/`write_text` use the platform newline handling like the old tool; the script copy is therefore a text copy. The byte-identity test compares bytes: both files are written as UTF-8 with LF on the supported platforms (`.gitattributes` forces `eol=lf`).
 
