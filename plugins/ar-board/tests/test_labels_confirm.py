@@ -1,3 +1,4 @@
+import re
 import unittest
 
 from helpers import ab
@@ -107,3 +108,42 @@ class LabelsSummaryTest(unittest.TestCase):
         out = ab.render_summary(b, self.STATE)
         self.assertIn("## Aprovados (1)", out)
         self.assertIn("## Rejeitados (1)", out)
+
+
+class LabelsPageGuardsTest(unittest.TestCase):
+    """String guards: the suite does not run the page's JavaScript. CI parses it with node --check and the
+    behaviour is verified by hand in a browser (docs/refinements/tidy-board-prototype.html is the reference)."""
+
+    def test_decision_colours_go_through_variables_that_labels_can_swap(self):
+        for var in ("--cA:var(--ok)", "--cR:var(--no)", "--cM:var(--mb)", "--cAb:var(--ok-bg)"):
+            self.assertIn(var, ab.PAGE)
+        self.assertIn(".state.approved{color:var(--cA);background:var(--cAb)}", ab.PAGE)
+        self.assertIn(".chips .approved{background:var(--cAb);color:var(--cA);border-color:var(--cA)}", ab.PAGE)
+
+    def test_the_variables_live_in_the_existing_dark_root_block(self):
+        # test_page.PageThemeTest expects exactly two :root blocks (dark and light)
+        self.assertEqual(len(re.findall(r":root\{", ab.PAGE)), 2)
+
+    def test_labels_are_applied_from_the_batch(self):
+        self.assertIn("const LB = B.labels || {}", ab.PAGE)
+        self.assertIn("(function applyLabels(){", ab.PAGE)
+        self.assertIn("TONE = {safe:['ok','--ok','--ok-bg'], danger:['no','--no','--no-bg'], caution:['mb','--mb','--mb-bg']}", ab.PAGE)
+
+    def test_default_wording_is_kept_when_there_are_no_labels(self):
+        self.assertIn("'&#10003; Aprovar'", ab.PAGE)
+        self.assertIn("'&#10007; Rejeitar'", ab.PAGE)
+        self.assertIn("'&asymp; Talvez'", ab.PAGE)
+        self.assertIn("maybe:'talvez'", ab.PAGE)
+
+    def test_the_key_bar_words_can_be_replaced(self):
+        for i in ("kA", "kR", "kM"):
+            self.assertIn(f'<i id="{i}">', ab.PAGE)
+
+    def test_a_confirm_item_needs_a_second_press_before_it_records_approval(self):
+        self.assertIn("if(d === 'approved' && it.confirm && e.decision !== 'approved' && armed !== it.id){armed = it.id;", ab.PAGE)
+        self.assertIn('class="armed" role="alert"', ab.PAGE)
+        self.assertIn("button.sure{", ab.PAGE)
+
+    def test_moving_or_pressing_escape_disarms_the_confirmation(self):
+        self.assertIn("function go(i){armed = null;", ab.PAGE)
+        self.assertIn("else if(armed){armed = null; showHint('Confirmacao cancelada.'); render();}", ab.PAGE)
