@@ -433,35 +433,90 @@ class Store:
             self.save()
 
 
+def recommended_taken(card, answer):
+    """True/False when the card recommended something and the answer is a choice; None otherwise."""
+    rec = card.get("recommended")
+    if not rec or answer["kind"] not in ("choice", "choices"):
+        return None
+    if answer.get("other"):
+        return False
+    chosen = [answer["id"]] if answer["kind"] == "choice" else answer["ids"]
+    return sorted(chosen) == sorted(rec)
+
+
+def answer_text(answer):
+    k = answer["kind"]
+    if k == "choice":
+        return answer["label"]
+    if k == "choices":
+        parts = list(answer["labels"])
+        if "other" in answer:
+            parts.append("Outra: " + answer["other"])
+        return " + ".join(parts)
+    if k == "other":
+        return "Outra: " + answer["text"]
+    return answer["text"]
+
+
 def render_summary(batch, state, as_json=False):
     groups = {"approved": [], "rejected": [], "maybe": [], "pending": []}
+    answered, unsure = [], []
+    has_questions = any(is_question(it) for it in batch["items"])
     for it in batch["items"]:
         e = state.get("items", {}).get(it["id"], {})
         row = {"id": it["id"], "title": it["title"], "comment": e.get("comment", "")}
+        if is_question(it):
+            a = answer_of(it, e)
+            if a is None:
+                groups["pending"].append(row)
+            elif a["kind"] == "unsure":
+                unsure.append(row)
+            else:
+                if a["kind"] in ("other", "open"):
+                    row["comment"] = ""  # the comment is the answer itself
+                answered.append({**row, "answer": a, "recommended_taken": recommended_taken(it, a)})
+            continue
         groups[e.get("decision", "pending")].append(row)
     if as_json:
+        extra = {"answered": answered, "unsure": unsure} if has_questions else {}
         return json.dumps(
             {
                 "batch_id": batch["batch_id"],
                 "round": state.get("round"),
                 "finished": state.get("finished", False),
                 "batch_note": state.get("batch_note", ""),
-                **groups,
+                **{k: v for k, v in groups.items() if k != "pending"},
+                **extra,
+                "pending": groups["pending"],
             },
             ensure_ascii=False,
             indent=2,
         )
-    names = [("approved", "Aprovados"), ("rejected", "Rejeitados"), ("maybe", "Talvez"), ("pending", "Sem decisao")]
+    names = [("approved", "Aprovados"), ("rejected", "Rejeitados"), ("maybe", "Talvez")]
     out = [f"# AR board - {batch['title']} (lote {batch['batch_id']}, rodada {state.get('round')})"]
     out.append(f"Concluido pelo usuario: {'sim' if state.get('finished') else 'NAO (parcial)'}")
-    for key, label in names:
-        rows = groups[key]
+
+    def section(label, rows, fmt):
         out.append(f"\n## {label} ({len(rows)})")
         for r in rows:
-            line = f"- {r['id']} - {r['title']}"
+            line = fmt(r)
             if r["comment"]:
                 line += f"\n    comentario do usuario: {r['comment']!r}"
             out.append(line)
+
+    def plain(r):
+        return f"- {r['id']} - {r['title']}"
+
+    def with_answer(r):
+        mark = " (recomendada)" if r["recommended_taken"] else ""
+        return f"- {r['id']} - {r['title']}\n    resposta: {answer_text(r['answer'])}{mark}"
+
+    for key, label in names:
+        section(label, groups[key], plain)
+    if has_questions:
+        section("Respondidas", answered, with_answer)
+        section("Precisam de contexto", unsure, plain)
+    section("Sem decisao", groups["pending"], plain)
     if state.get("batch_note"):
         out.append(f"\n## Nota geral do lote\n{state['batch_note']}")
     return "\n".join(out)
