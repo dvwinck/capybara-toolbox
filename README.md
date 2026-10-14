@@ -17,7 +17,7 @@ A small, carefully built collection of skills and plugins for [Claude Code](http
 
 | Plugin | What it does | Changes |
 | --- | --- | --- |
-| [**ar-board**](plugins/ar-board) | A local approve/reject board. The agent proposes N options, you judge them one by one with the keyboard (`A` approve, `R` reject, `M` maybe) and leave comments; the agent then acts only on what you approved and remembers your preferences for the next rounds. It also ships question-board, a form for a round of independent questions. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
+| [**ar-board**](plugins/ar-board) | A local approve/reject board. The agent proposes N options, you judge them one by one with the keyboard (`A` approve, `R` reject, `M` maybe) and leave comments; the agent then acts only on what you approved and remembers your preferences for the next rounds. Boards can use their own wording and colours for the three choices (for example Delete / Keep / Later) and ask for a second press on risky cards. It also ships question-board, a form for a round of independent questions. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
 | [**publish-check**](plugins/publish-check) | A read-only scan of a git repository, working tree and full history, for Claude conversation links, home paths, e-mail addresses and your own internal names, to run right before something goes public. Not a secret scanner. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
 | [**tidy-board**](plugins/tidy-board) | Stale git branches, worktrees and stashes as cards on a local board. Each card shows its proof of being merged; you choose delete, keep or later; a separate `apply` re-checks every approved item before deleting it, and anything that exists in one place only is backed up first. | [CHANGELOG](plugins/tidy-board/CHANGELOG.md) |
 
@@ -32,7 +32,13 @@ Inside Claude Code:
 /plugin install tidy-board@capybara-toolbox
 ```
 
-Install only the plugins you want. Restart Claude Code, then ask for a board in plain language, for example *"give me 10 improvements for this repo as an AR board"*. The skill is also available explicitly as `/ar-board:ar-board`.
+Install only the plugins you want, restart Claude Code, then ask in plain language or call the skill by name:
+
+| Plugin | Ask Claude | Or call |
+| --- | --- | --- |
+| ar-board | *"give me 10 improvements for this repo as an AR board"* | `/ar-board:ar-board`, `/ar-board:question-board` |
+| publish-check | *"scan this repo for leaks before I publish it"* | `/publish-check:publish-check` |
+| tidy-board | *"clean up my stale branches"* | `/tidy-board:tidy-board` |
 
 <details>
 <summary>Other ways to install</summary>
@@ -68,10 +74,12 @@ git clone https://github.com/dvwinck/capybara-toolbox.git
 .
 ├── .claude-plugin/marketplace.json   # the catalog (name: capybara-toolbox)
 ├── plugins/
-│   └── ar-board/                     # one self-contained plugin
+│   ├── ar-board/                     # each plugin is self-contained
+│   ├── publish-check/
+│   └── tidy-board/                   # vendors a generated copy of the ar-board engine
 │       ├── .claude-plugin/plugin.json
-│       ├── skills/ar-board/          # SKILL.md, scripts/, examples/
-│       ├── tests/  tools/  docs/  dist/
+│       ├── skills/tidy-board/        # SKILL.md, scripts/, examples/
+│       ├── tests/  tools/
 │       └── CHANGELOG.md
 ├── tools/marketplace.py              # keeps the catalog in sync with the plugins
 ├── tests/                            # catalog tests
