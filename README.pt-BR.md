@@ -32,7 +32,13 @@ Dentro do Claude Code:
 /plugin install tidy-board@capybara-toolbox
 ```
 
-Instale só os plugins que quiser. Reinicie o Claude Code e peça em linguagem natural, por exemplo *"me dê 10 melhorias para este repositório num AR board"*, *"varre este repositório atrás de vazamentos antes de eu publicar"* ou *"limpa meus branches velhos"*. Cada skill também pode ser chamada de forma explícita: `/ar-board:ar-board`, `/publish-check:publish-check` e `/tidy-board:tidy-board`.
+Instale só os plugins que quiser, reinicie o Claude Code e peça em linguagem natural ou chame a skill pelo nome:
+
+| Plugin | Peça ao Claude | Ou chame |
+| --- | --- | --- |
+| ar-board | *"me dê 10 melhorias para este repositório num AR board"* | `/ar-board:ar-board`, `/ar-board:question-board` |
+| publish-check | *"varre este repositório atrás de vazamentos antes de eu publicar"* | `/publish-check:publish-check` |
+| tidy-board | *"limpa meus branches velhos"* | `/tidy-board:tidy-board` |
 
 <details>
 <summary>Outras formas de instalar</summary>
