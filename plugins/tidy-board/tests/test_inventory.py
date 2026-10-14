@@ -232,3 +232,37 @@ class BaseDetectionTest(RepoCase):
     def test_not_a_repository_is_an_error(self):
         with self.assertRaises(tb.TidyError):
             tb.repo_root(self.tmp)
+
+
+class RepoConfigIsNotTrustedTest(RepoCase):
+    """The repository's own config can name programs for git to run: tidy-board must not run them."""
+
+    def trap(self, name):
+        """An executable that leaves a marker file when git runs it."""
+        marker = self.tmp / f"{name}.ran"
+        script = self.tmp / f"{name}.sh"
+        script.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 0\n", encoding="utf-8")
+        script.chmod(0o755)
+        return script, marker
+
+    def test_an_external_diff_program_never_runs(self):
+        script, marker = self.trap("extdiff")
+        self.work("feat/s", {"s.txt": "s1\n"}, message="s1")
+        git(self.repo, "checkout", "-q", "feat/s")
+        commit(self.repo, "s2", {"s.txt": "s1\ns2\n"})
+        git(self.repo, "checkout", "-q", "main")
+        commit(self.repo, "unrelated", {"u.txt": "u\n"})
+        git(self.repo, "merge", "-q", "--squash", "feat/s")
+        git(self.repo, "commit", "-q", "-m", "squash")
+        git(self.repo, "config", "diff.external", str(script))
+        # two commits squashed into one: `git cherry` cannot match, so the whole-diff path runs `git diff`
+        self.assertEqual(self.by_name()["feat/s"]["proof"], "P3")
+        self.assertFalse(marker.exists())
+
+    def test_a_filesystem_monitor_program_never_runs(self):
+        script, marker = self.trap("fsmonitor")
+        git(self.repo, "branch", "feat/w")
+        git(self.repo, "worktree", "add", "-q", str(self.tmp / "wt"), "feat/w")
+        git(self.repo, "config", "core.fsmonitor", str(script))
+        self.inv()  # reads the status of the worktree
+        self.assertFalse(marker.exists())

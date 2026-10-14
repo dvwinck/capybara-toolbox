@@ -33,10 +33,11 @@ PROOF_TEXT = {
     "P4": "trabalho unico: existe so aqui",
 }
 
-# Every git call is deaf to what the repository's own config asks git to run, never prompts, never
-# fetches lazily and never touches the network.
-GIT_FLAGS = ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "protocol.allow=never",
-             "-c", "log.showSignature=false", "-c", "i18n.logOutputEncoding=UTF-8"]
+# Every git call is deaf to what the repository's own config asks git to run (a filesystem monitor,
+# hooks; external diff programs are switched off per command below), never prompts, never fetches
+# lazily and never touches the network.
+GIT_FLAGS = ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull,
+             "-c", "protocol.allow=never", "-c", "log.showSignature=false", "-c", "i18n.logOutputEncoding=UTF-8"]
 GIT_ENV = {"GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1", "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
 
 Result = namedtuple("Result", "rc out err")
@@ -180,13 +181,14 @@ def patch_equivalent(root, sha, refs):
         if mb.rc != 0:
             continue
         fork = mb.out.strip()
-        whole = git(root, "diff", fork, sha)
+        whole = git(root, "diff", "--no-ext-diff", "--no-textconv", fork, sha)
         if whole.rc != 0 or not whole.out.strip():
             continue
         mine = git(root, "patch-id", "--stable", input=whole.out).out.split()
         if not mine:
             continue
-        log = git(root, "log", "-p", "--no-merges", "--format=commit %H", "-n", str(SQUASH_WINDOW), f"{fork}..{ref}")
+        log = git(root, "log", "-p", "--no-ext-diff", "--no-textconv", "--no-merges", "--format=commit %H", "-n", str(SQUASH_WINDOW),
+                  f"{fork}..{ref}")
         if log.rc != 0:
             continue
         seen = {line.split()[0] for line in git(root, "patch-id", "--stable", input=log.out).out.splitlines() if line.split()}
@@ -323,8 +325,8 @@ def inventory(root, base, gh_mode="auto"):
                       "size": dir_size(path), "backup": branch is None and proof in RISKY_PROOFS})
 
     for s in list_stashes(root):
-        files = git(root, "diff", "--name-only", s["sha"] + "^1", s["sha"]).out.splitlines()
-        stat = git(root, "diff", "--shortstat", s["sha"] + "^1", s["sha"]).out.strip()
+        files = git(root, "diff", "--no-ext-diff", "--name-only", s["sha"] + "^1", s["sha"]).out.splitlines()
+        stat = git(root, "diff", "--no-ext-diff", "--shortstat", s["sha"] + "^1", s["sha"]).out.strip()
         items.append({"kind": "stash", "name": s["subject"], "sha": s["sha"], "proof": "P4", "ts": s["ts"],
                       "author": "", "subject": s["subject"], "files": files[:5], "file_count": len(files),
                       "shortstat": stat, "backup": True})
