@@ -6,6 +6,17 @@ All notable changes to the **ar-board** plugin are documented here. The format f
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-14
+
+### Added
+- Optional batch-level **`labels`** (`approve`, `reject`, `maybe`, each `{text, tone}`): custom wording for the three decisions on the buttons, key bar, state chip, counters and in the text `summary`. `tone` (`safe`, `danger`, `caution`) sets the colour of that decision, so a board where approving deletes something can paint it red. `check` validates them (unknown keys, empty or over-long text and unknown tones are rejected).
+- Optional per-item **`confirm`**: the first approve press only arms the card (banner and a *Confirmar* button); a second press records the decision. Esc or navigating cancels it. Not allowed on question cards.
+- Decision colours in the page go through CSS variables (`--cA`, `--cR`, `--cM` and their `-b` backgrounds) that `labels` can swap.
+
+### Notes
+- Additive: batches without `labels` or `confirm` render and summarise exactly as in 1.2.0. `decisions.json` and `summary --json` are unchanged.
+- The wording and tone changes exist for the tidy-board plugin, which carries a generated copy of this engine.
+
 ## [1.2.0] - 2026-10-14
 
 ### Added

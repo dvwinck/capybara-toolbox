@@ -1,0 +1,61 @@
+{
+  "batch_id": "tidy-example-20261014-120000",
+  "title": "Limpeza de example",
+  "subtitle": "base: main - gh: sim - 3 itens",
+  "round": 1,
+  "labels": {
+    "approve": {"text": "Apagar", "tone": "danger"},
+    "reject": {"text": "Manter", "tone": "safe"},
+    "maybe": {"text": "Depois", "tone": "caution"}
+  },
+  "items": [
+    {
+      "id": "G",
+      "tag": "grupo P1/P2",
+      "title": "Apagar os 2 itens provados como mergeados?",
+      "fields": [
+        {"label": "Itens", "text": "`feat/login` (P1)\n`feat/search` (P2)"},
+        {"label": "Regra", "text": "Vale para os itens abaixo em que voce nao marcar Manter ou Depois. Nao inclui P3, P4 nem stashes."}
+      ],
+      "meta": {"Base": "main", "gh": "sim", "Nao tocar": "main (branch base do repositorio); feat/current (branch atual (em uso por este worktree))"}
+    },
+    {
+      "id": "T01",
+      "tag": "P1",
+      "title": "Apagar a branch feat/login?",
+      "fields": [
+        {"label": "Prova", "text": "P1 - provado: ancestral da base"},
+        {"label": "Ultimo", "text": "feat: login form (ha 12 dias, Alice Example)"},
+        {"label": "Vs base", "text": "0 a frente, 3 atras"},
+        {"label": "PR", "text": "#12 mergeado (a ponta confere)"},
+        {"label": "Remoto", "text": "origin/feat/login ja foi removida"},
+        {"label": "Efeito", "text": "Apaga a branch local."}
+      ]
+    },
+    {
+      "id": "T02",
+      "tag": "P2",
+      "title": "Apagar a branch feat/search?",
+      "fields": [
+        {"label": "Prova", "text": "P2 - provado: PR mergeado no GitHub"},
+        {"label": "Ultimo", "text": "feat: search box (ha 20 dias, Alice Example)"},
+        {"label": "Vs base", "text": "2 a frente, 9 atras"},
+        {"label": "PR", "text": "#15 mergeado (a ponta confere)"},
+        {"label": "Efeito", "text": "Apaga a branch local."}
+      ]
+    },
+    {
+      "id": "T03",
+      "tag": "P4",
+      "title": "Apagar a branch spike/toolbelt?",
+      "confirm": "Trabalho unico: estes commits nao existem em nenhuma outra branch, remoto ou tag. Um backup sera criado antes de apagar.",
+      "fields": [
+        {"label": "Prova", "text": "P4 - trabalho unico: existe so aqui"},
+        {"label": "Ultimo", "text": "wip: toolbelt panel (ha 47 dias, Alice Example)"},
+        {"label": "Vs base", "text": "3 a frente, 77 atras"},
+        {"label": "So aqui", "text": "`a1f03c2 wip: toolbelt panel`\n`5be7710 wip: session list`\n`90c2d4e wip: iterm2 hook`"},
+        {"label": "Efeito", "text": "Apaga a branch local. Antes, guarda `refs/tidy-board/backup/spike/toolbelt`."}
+      ]
+    }
+  ]
+}

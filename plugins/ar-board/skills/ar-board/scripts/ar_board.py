@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ar-board 1.2.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
+# ar-board 1.3.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
@@ -33,6 +33,9 @@ MAX_COMMENT = 5000
 MAX_CHOICES = 8  # keys 1-9: up to 8 options plus the automatic "Outra resposta..."
 MAX_QUESTIONS = 8  # per round: a skill rule, `check` only warns
 CHOICE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
+LABEL_KEYS = ("approve", "reject", "maybe")  # batch-level `labels`: custom wording for A / R / M
+TONES = ("safe", "danger", "caution")  # colour meaning of a label: green, red, amber
+MAX_LABEL = 24
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
 MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
@@ -135,6 +138,28 @@ def validate_question(i, it, errs):
         errs.append(f"item {i}: pergunta precisa de contexto (um item em 'fields' com texto)")
 
 
+def validate_labels(b, errs):
+    """Optional batch-level `labels`: {"approve": {"text": "Apagar", "tone": "danger"}, ...}."""
+    lb = b.get("labels")
+    if lb is None:
+        return
+    if not isinstance(lb, dict):
+        errs.append("campo 'labels' deve ser objeto")
+        return
+    for k, v in lb.items():
+        if k not in LABEL_KEYS:
+            errs.append(f"labels: chave desconhecida '{k}' (use approve, reject ou maybe)")
+            continue
+        if not isinstance(v, dict):
+            errs.append(f"labels.{k}: deve ser objeto com 'text' e, opcional, 'tone'")
+            continue
+        t = v.get("text")
+        if not isinstance(t, str) or not t.strip() or len(t) > MAX_LABEL:
+            errs.append(f"labels.{k}: 'text' obrigatorio (1 a {MAX_LABEL} caracteres)")
+        if v.get("tone") is not None and v["tone"] not in TONES:
+            errs.append(f"labels.{k}: 'tone' deve ser safe, danger ou caution")
+
+
 def validate(b):
     errs = []
     if not isinstance(b, dict):
@@ -144,6 +169,7 @@ def validate(b):
             errs.append(f"campo '{k}' e obrigatorio (string)")
     if "round" in b and (not isinstance(b["round"], int) or isinstance(b["round"], bool) or b["round"] < 1):
         errs.append("campo 'round' deve ser inteiro >= 1")
+    validate_labels(b, errs)
     items = b.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["'items' deve ser uma lista nao vazia"]
@@ -177,6 +203,12 @@ def validate(b):
             for x in f
         ):
             errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
+        cf = it.get("confirm")  # null counts as omitted
+        if cf is not None:
+            if not isinstance(cf, str) or not cf.strip():
+                errs.append(f"item {i}: 'confirm' deve ser texto nao vazio")
+            elif is_question(it):
+                errs.append(f"item {i}: 'confirm' nao vale em card de pergunta")
         validate_question(i, it, errs)
     return errs
 
@@ -492,7 +524,9 @@ def render_summary(batch, state, as_json=False):
             ensure_ascii=False,
             indent=2,
         )
-    names = [("approved", "Aprovados"), ("rejected", "Rejeitados"), ("maybe", "Talvez")]
+    lab = batch.get("labels") or {}
+    names = [(k, (lab.get(lk) or {}).get("text") or dflt) for k, lk, dflt in
+             (("approved", "approve", "Aprovados"), ("rejected", "reject", "Rejeitados"), ("maybe", "maybe", "Talvez"))]
     out = [f"# AR board - {batch['title']} (lote {batch['batch_id']}, rodada {state.get('round')})"]
     out.append(f"Concluido pelo usuario: {'sim' if state.get('finished') else 'NAO (parcial)'}")
 
@@ -530,7 +564,7 @@ PAGE = r"""<!doctype html>
 <title>__TITLE__</title>
 <link rel="icon" href="__FAVICON__">
 <style>
-:root{color-scheme:dark;accent-color:var(--acc);--bg:#1a1410;--panel:#241c15;--panel2:#2e241b;--line:#46382b;--fg:#f4ebdf;--mut:#b09c85;--ok:#8cc474;--ok-bg:#1d2b1a;--no:#ef8570;--no-bg:#34201a;--mb:#ecb856;--mb-bg:#342a14;--acc:#f29a45;--accfg:#2a1a0c}
+:root{color-scheme:dark;accent-color:var(--acc);--bg:#1a1410;--panel:#241c15;--panel2:#2e241b;--line:#46382b;--fg:#f4ebdf;--mut:#b09c85;--ok:#8cc474;--ok-bg:#1d2b1a;--no:#ef8570;--no-bg:#34201a;--mb:#ecb856;--mb-bg:#342a14;--acc:#f29a45;--accfg:#2a1a0c;--cA:var(--ok);--cAb:var(--ok-bg);--cR:var(--no);--cRb:var(--no-bg);--cM:var(--mb);--cMb:var(--mb-bg)}
 @media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f7f0e5;--panel:#fffaf2;--panel2:#f1e7d8;--line:#dccbb3;--fg:#2c2018;--mut:#6b5645;--ok:#2d6a1f;--ok-bg:#e3f0da;--no:#a8381f;--no-bg:#fbe4dd;--mb:#8a5a00;--mb-bg:#faecc8;--acc:#a24d0d;--accfg:#ffffff}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
@@ -550,7 +584,7 @@ kbd{font:600 11px ui-monospace,Menlo,monospace;background:var(--panel2);border:1
 .pill{display:inline-block;font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:2px 10px;margin-bottom:12px}
 .card h2{font-size:21px;margin:0 0 16px;line-height:1.3}
 .state{display:inline-block;margin-left:8px;font-size:12px;font-weight:600;padding:2px 10px;border-radius:99px}
-.state.approved{color:var(--ok);background:var(--ok-bg)}.state.rejected{color:var(--no);background:var(--no-bg)}.state.maybe{color:var(--mb);background:var(--mb-bg)}
+.state.approved{color:var(--cA);background:var(--cAb)}.state.rejected{color:var(--cR);background:var(--cRb)}.state.maybe{color:var(--cM);background:var(--cMb)}
 .box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .row{display:grid;grid-template-columns:86px 1fr;gap:12px;padding:6px 0}
 .row>b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);padding-top:3px}
@@ -568,7 +602,9 @@ button:hover{border-color:var(--mut)}button kbd{margin:0 0 0 6px}
 button.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}button.no{color:var(--no);border-color:var(--no);background:var(--no-bg)}button.mb{color:var(--mb);border-color:var(--mb);background:var(--mb-bg)}
 button.on{box-shadow:0 0 0 2px currentColor inset}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{width:34px;height:34px;padding:0;font-size:13px}
-.chips .approved{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}.chips .rejected{background:var(--no-bg);color:var(--no);border-color:var(--no)}.chips .maybe{background:var(--mb-bg);color:var(--mb);border-color:var(--mb)}.chips .cur{outline:2px solid var(--acc);outline-offset:1px}
+.chips .approved{background:var(--cAb);color:var(--cA);border-color:var(--cA)}.chips .rejected{background:var(--cRb);color:var(--cR);border-color:var(--cR)}.chips .maybe{background:var(--cMb);color:var(--cM);border-color:var(--cM)}
+.armed{background:var(--no-bg);color:var(--no);border:1px solid var(--no);border-radius:10px;padding:10px 14px;margin:12px 0 0}.armed b{display:block;margin-top:4px}
+button.sure{background:var(--cA);border-color:var(--cA);color:var(--accfg);font-weight:700}.keys i{font-style:normal}.chips .cur{outline:2px solid var(--acc);outline-offset:1px}
 .res{margin-top:16px;padding:18px}.res h3{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
 .counts{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-bottom:12px}
 .done{display:none;margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--ok-bg);border:1px solid var(--ok);color:var(--ok)}
@@ -599,7 +635,7 @@ button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-
 @media (prefers-reduced-motion:reduce){.opt{transition:none}}
 </style></head><body><div class="wrap">
 <header><div class="brand">__MASCOT__<div><h1 id="ttl"></h1><div class="sub" id="sub"></div></div></div><span class="badge" id="live"></span></header>
-<div class="keys"><span class="pronly"><kbd>A</kbd>aprovar</span><span class="pronly"><kbd>R</kbd>rejeitar</span><span class="pronly"><kbd>M</kbd>talvez</span><span class="qonly"><kbd>1-9</kbd>escolher</span><span class="qonly"><kbd>Enter</kbd>confirmar</span><span class="qonly"><kbd>M</kbd>mais contexto</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint" role="status" aria-live="polite"></span></div>
+<div class="keys"><span class="pronly"><kbd>A</kbd><i id="kA">aprovar</i></span><span class="pronly"><kbd>R</kbd><i id="kR">rejeitar</i></span><span class="pronly"><kbd>M</kbd><i id="kM">talvez</i></span><span class="qonly"><kbd>1-9</kbd>escolher</span><span class="qonly"><kbd>Enter</kbd>confirmar</span><span class="qonly"><kbd>M</kbd>mais contexto</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint" role="status" aria-live="polite"></span></div>
 <div class="bar"><i id="prog"></i></div>
 <div class="grid">
   <section class="card" id="card"></section>
@@ -639,6 +675,20 @@ S.items = S.items || {};
 const $ = s => document.querySelector(s);
 const CMT0 = $('#cmtlbl').innerHTML;
 const LBL = {approved:'Aprovado', rejected:'Rejeitado', maybe:'Talvez'};
+const LB = B.labels || {}, CNT = {approved:'aprovados', rejected:'rejeitados', maybe:'talvez'};
+const TONE = {safe:['ok','--ok','--ok-bg'], danger:['no','--no','--no-bg'], caution:['mb','--mb','--mb-bg']};
+let armed = null;
+(function applyLabels(){
+  [['approve','approved','A'], ['reject','rejected','R'], ['maybe','maybe','M']].forEach(p => {
+    const l = LB[p[0]]; if(!l) return;
+    LBL[p[1]] = l.text; CNT[p[1]] = l.text.toLowerCase();
+    $('#k' + p[2]).textContent = l.text.toLowerCase();
+    const t = TONE[l.tone]; if(!t) return;
+    $('#b' + p[2]).className = t[0];
+    document.documentElement.style.setProperty('--c' + p[2], 'var(' + t[1] + ')');
+    document.documentElement.style.setProperty('--c' + p[2] + 'b', 'var(' + t[2] + ')');
+  });
+})();
 const LS = 'ar-board:' + B.batch_id + ':r' + (B.round || 1);
 let idx = 0, timers = {};
 
@@ -831,7 +881,7 @@ function render(){
   $('#sub').textContent = (B.subtitle ? B.subtitle + ' · ' : '') + 'Lote: ' + B.batch_id + ' · ' + items.length + ' itens · rodada ' + (B.round || 1);
   $('.grid').hidden = reviewing; $('#rev').hidden = !reviewing; $('.res').hidden = reviewing;
   let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' · ' + esc(it.id) + (it.tag ? ' · ' + esc(it.tag) : '') + '</span>';
-  if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : LBL[st]) + '</span>';
+  if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : esc(LBL[st])) + '</span>';
   h += '<h2 id="qtitle">' + esc(it.title) + '</h2>';
   if(it.image) h += '<img alt="" src="' + esc(imgSrc(it.image)) + '">';
   h += '<div class="box">';
@@ -841,6 +891,7 @@ function render(){
     h += '<div class="row"><b>Risco</b><div><span class="risk ' + (['baixo','medio','alto'].includes(lvl) ? lvl : 'medio') + '">' + esc(it.risk.level || '') + (it.risk.text ? ' — ' + esc(it.risk.text) : '') + '</span></div></div>';
   }
   h += '</div>';
+  if(armed === it.id) h += '<div class="armed" role="alert">' + rich(it.confirm) + '<b>Aperte A de novo (ou clique em Confirmar) para confirmar; Esc cancela.</b></div>';
   if(q) h += questionHtml(it, e);
   $('#card').className = q ? 'card q' : 'card';
   $('#card').innerHTML = h;
@@ -848,12 +899,16 @@ function render(){
   $('#cmtlbl').innerHTML = q ? ((it.open === true || e.other) ? 'Sua resposta <span class="req">(obrigatoria)</span>' : 'Comentario (opcional, salva sozinho)') : CMT0;
   const cm = $('#cmt'); if(cm.value !== (e.comment || '')) cm.value = e.comment || '';
   $('#bA').style.display = $('#bR').style.display = q ? 'none' : '';
-  $('#bM').innerHTML = q ? 'Preciso de mais contexto<kbd>M</kbd>' : '&asymp; Talvez<kbd>M</kbd>';
+  const sure = armed === it.id;
+  $('#bM').innerHTML = q ? 'Preciso de mais contexto<kbd>M</kbd>' : (LB.maybe ? esc(LB.maybe.text) : '&asymp; Talvez') + '<kbd>M</kbd>';
+  $('#bA').innerHTML = (sure ? 'Confirmar: ' + esc((LB.approve ? LB.approve.text : 'Aprovar').toLowerCase()) : (LB.approve ? esc(LB.approve.text) : '&#10003; Aprovar')) + '<kbd>A</kbd>';
+  $('#bA').classList.toggle('sure', sure);
+  $('#bR').innerHTML = (LB.reject ? esc(LB.reject.text) : '&#10007; Rejeitar') + '<kbd>R</kbd>';
   ['A:approved','R:rejected','M:maybe'].forEach(p => { const [k,d] = p.split(':'); $('#b'+k).classList.toggle('on', e.decision === d); });
   $('#chips').innerHTML = items.map((x,i) => { const d = status(x); return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
   const c = counts();
   $('#prog').style.width = ((items.length - c.pending) / items.length * 100) + '%';
-  const base = '<span style="color:var(--ok)">✓ ' + c.approved + ' aprovados</span><span style="color:var(--no)">✗ ' + c.rejected + ' rejeitados</span><span style="color:var(--mb)">≈ ' + c.maybe + ' talvez</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  const base = '<span style="color:var(--cA)">✓ ' + c.approved + ' ' + esc(CNT.approved) + '</span><span style="color:var(--cR)">✗ ' + c.rejected + ' ' + esc(CNT.rejected) + '</span><span style="color:var(--cM)">≈ ' + c.maybe + ' ' + esc(CNT.maybe) + '</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
   $('#counts').innerHTML = onlyQ
     ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span><span style="color:var(--mb)">' + c.maybe + ' precisam de contexto</span><span style="color:var(--mut)">' + c.pending + ' sem resposta</span>'
     : base + (hasQ ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span>' : '');
@@ -864,9 +919,11 @@ function render(){
   if(reviewing) renderReview();
 }
 
-function go(i){idx = Math.max(0, Math.min(items.length-1, i)); render();}
+function go(i){armed = null; idx = Math.max(0, Math.min(items.length-1, i)); render();}
 function decide(d){
   const it = items[idx], e = ent(it.id);
+  if(d === 'approved' && it.confirm && e.decision !== 'approved' && armed !== it.id){armed = it.id; render(); return;}
+  armed = null;
   if(e.decision === d) delete e.decision; else e.decision = d;
   tidy(it.id); S.finished = false;
   post('/api/item', {id: it.id, decision: e.decision || null});
@@ -902,7 +959,7 @@ document.addEventListener('keydown', ev => {
   if(ev.repeat && ev.key === 'Enter' && ev.target.tagName === 'BUTTON'){ev.preventDefault(); return;}
   if(reviewing){if(ev.key === 'Escape') closeReview(); return;}
   const typing = (ev.target.tagName || '').toLowerCase() === 'textarea';
-  if(ev.key === 'Escape'){ if(typing) ev.target.blur(); return; }
+  if(ev.key === 'Escape'){ if(typing) ev.target.blur(); else if(armed){armed = null; showHint('Confirmacao cancelada.'); render();} return; }
   if(typing) return;
   const k = ev.key.toLowerCase();
   if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;

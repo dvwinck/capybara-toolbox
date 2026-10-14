@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "repo": "/path/to/example",
+  "base": "main",
+  "base_sha": "1111111111111111111111111111111111111111",
+  "gh": true,
+  "scanned_at": "2026-10-14T12:00:00+0000",
+  "group": {"id": "G", "members": ["T01", "T02"]},
+  "untouched": [
+    {"name": "main", "why": "branch base do repositorio"},
+    {"name": "feat/current", "why": "branch atual (em uso por este worktree)"}
+  ],
+  "items": [
+    {"id": "T01", "kind": "branch", "name": "feat/login", "sha": "2222222222222222222222222222222222222222", "proof": "P1", "branch": null, "path": null, "drop_branch": false, "backup": false},
+    {"id": "T02", "kind": "branch", "name": "feat/search", "sha": "3333333333333333333333333333333333333333", "proof": "P2", "branch": null, "path": null, "drop_branch": false, "backup": false},
+    {"id": "T03", "kind": "branch", "name": "spike/toolbelt", "sha": "4444444444444444444444444444444444444444", "proof": "P4", "branch": null, "path": null, "drop_branch": false, "backup": true}
+  ]
+}
