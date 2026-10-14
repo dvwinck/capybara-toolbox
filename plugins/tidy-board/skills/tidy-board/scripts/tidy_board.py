@@ -610,10 +610,283 @@ def parser():
     s.add_argument("--out", help="pasta do lote (padrao: <repo>/.tidy-board/<batch_id>)")
     c = sub.add_parser("check", help="valida batch.json + scan.json")
     c.add_argument("dir")
+    a = sub.add_parser("apply", help="reconfere cada item aprovado e apaga")
+    a.add_argument("dir")
+    a.add_argument("--dry-run", action="store_true", help="mostra o que faria, sem apagar nada")
+    r = sub.add_parser("restore", help="recria um item apagado a partir do backup ou do sha registrado")
+    r.add_argument("dir")
+    r.add_argument("id")
     return p
 
 
 COMMANDS = {"scan": cmd_scan, "check": cmd_check}
+
+
+# ---------------------------------------------------------------- apply: re-verify, then delete
+
+def outcome(it, action, reason=None, backup=None):
+    out = {"id": it["id"], "kind": it["kind"], "name": it["name"], "sha": it["sha"], "proof": it["proof"],
+           "action": action}
+    if reason:
+        out["reason"] = reason
+    if backup:
+        out["backup"] = backup
+    return out
+
+
+def skip(it, reason):
+    return outcome(it, "skipped", reason)
+
+
+def checked_out_branches(root):
+    return {wt["branch"][len("refs/heads/"):]: wt["worktree"] for wt in list_worktrees(root)
+            if wt.get("branch", "").startswith("refs/heads/")}
+
+
+def make_backup(root, refname, sha):
+    """Create the backup ref; None when it is in place, otherwise the reason it could not be made."""
+    current = git(root, "rev-parse", "--verify", "--quiet", refname).out.strip()
+    if current == sha:
+        return None
+    if current:
+        return "ja existe um backup com outro sha"
+    r = git(root, "update-ref", refname, sha, "")  # the empty old value means "must not exist yet"
+    return None if r.rc == 0 else "nao consegui criar o backup: " + r.err.strip()
+
+
+def merged_prs_once(root, scan):
+    """gh is asked at most once per apply run, and only when a P2 item needs it (None: gh unusable)."""
+    if "_prs" not in scan:
+        scan["_prs"] = load_merged_prs(root, "auto")
+    return scan["_prs"]
+
+
+def pr_blocker(root, scan, name, sha):
+    prs = merged_prs_once(root, scan)
+    if prs is None:
+        return "gh indisponivel: nao consegui reconferir o PR mergeado"
+    if not any(pr["oid"] == sha for pr in prs.get(name, [])):
+        return "o PR mergeado nao confere mais com a ponta da branch"
+    return None
+
+
+def branch_blocker(root, scan, name, sha, proof, held_ok=False):
+    """Why a branch must not be deleted now (None when it may): the scan is a photograph, this is the check."""
+    tip = rev(root, "refs/heads/" + name)
+    if tip is None:
+        return "a branch nao existe mais"
+    if tip != sha:
+        return "a ponta mudou desde o scan"
+    if name == scan["base"]:
+        return "e a branch base"
+    held = checked_out_branches(root).get(name)
+    if held and not held_ok:
+        return f"esta em uso em {held}"
+    merged = any(is_ancestor(root, sha, ref) for ref in base_refs(root, scan["base"]))
+    if proof == "P1" and not merged:
+        return "deixou de estar mesclada na base"
+    if proof == "P2" and not merged:  # P2 rested on gh at scan time: ask again, unless the history proves it now
+        return pr_blocker(root, scan, name, sha)
+    return None
+
+
+def apply_branch(root, scan, it, dry):
+    why = branch_blocker(root, scan, it["name"], it["sha"], it["proof"])
+    if why:
+        return skip(it, why)
+    backup = backup_name(it) if it.get("backup") else None
+    if dry:
+        return outcome(it, "would-delete", backup=backup)
+    if backup:
+        why = make_backup(root, backup, it["sha"])
+        if why:
+            return skip(it, why)
+    r = git(root, "branch", "-D", it["name"])
+    if r.rc != 0:
+        return skip(it, r.err.strip() or "git branch -D falhou")
+    return outcome(it, "deleted", backup=backup)
+
+
+def apply_worktree(root, scan, it, dry):
+    path = it["path"]
+    trees = list_worktrees(root)
+    real = os.path.realpath(path)
+    entry = next((wt for wt in trees if os.path.realpath(wt["worktree"]) == real), None)
+    if entry is None or not Path(path).is_dir():
+        return skip(it, "o worktree nao existe mais")
+    if real == os.path.realpath(trees[0]["worktree"]) or real == os.path.realpath(root):
+        return skip(it, "e o worktree principal ou o atual")
+    if "locked" in entry:
+        return skip(it, "o worktree esta bloqueado (locked)")
+    dirty = dirty_files(path)
+    if dirty is None:
+        return skip(it, "nao consegui ler o estado do worktree")
+    if dirty:
+        return skip(it, f"tem {len(dirty)} arquivo(s) alterado(s) ou nao rastreado(s)")
+    head = git(path, "rev-parse", "--verify", "--quiet", "HEAD").out.strip()
+    if head != it["sha"]:
+        return skip(it, "o HEAD mudou desde o scan")
+    drop = it.get("branch") if it.get("drop_branch") else None
+    if drop:
+        why = branch_blocker(root, scan, drop, it["sha"], it["proof"], held_ok=True)
+        if why:
+            return skip(it, f"a branch {drop}: {why}")
+    backup = backup_name(it) if it.get("backup") else None
+    if dry:
+        return outcome(it, "would-delete", backup=backup)
+    if backup:
+        why = make_backup(root, backup, it["sha"])
+        if why:
+            return skip(it, why)
+    r = git(root, "worktree", "remove", path)  # never --force: a dirty tree must stop here
+    if r.rc != 0:
+        return skip(it, r.err.strip() or "git worktree remove falhou")
+    if drop:
+        r = git(root, "branch", "-D", drop)
+        if r.rc != 0:
+            return outcome(it, "deleted", reason="worktree removido; a branch ficou: " + r.err.strip(), backup=backup)
+    return outcome(it, "deleted", backup=backup)
+
+
+def apply_stash(root, it, dry):
+    shas = [s["sha"] for s in list_stashes(root)]
+    if it["sha"] not in shas:
+        return skip(it, "o stash nao existe mais")
+    backup = backup_name(it)
+    if dry:
+        return outcome(it, "would-delete", backup=backup)
+    why = make_backup(root, backup, it["sha"])
+    if why:
+        return skip(it, why)
+    index = shas.index(it["sha"])  # found now: the index at scan time is stale once anything was stashed or dropped
+    r = git(root, "stash", "drop", f"stash@{{{index}}}")
+    if r.rc != 0:
+        return skip(it, r.err.strip() or "git stash drop falhou")
+    return outcome(it, "deleted", backup=backup)
+
+
+def apply_item(root, scan, it, dry):
+    if it["kind"] == "branch":
+        return apply_branch(root, scan, it, dry)
+    if it["kind"] == "worktree":
+        return apply_worktree(root, scan, it, dry)
+    return apply_stash(root, it, dry)
+
+
+def decision_of(decisions, iid):
+    entry = decisions.get(iid)
+    return entry.get("decision") if isinstance(entry, dict) else None
+
+
+def approved_items(scan, decisions):
+    """What to delete: an item's own decision first, else the group card (P1 and P2 members only).
+    Manter and Depois on an item always win over the group, and nothing is deleted by default."""
+    group = scan.get("group")
+    group_on = group is not None and decision_of(decisions, "G") == "approved"
+    members = set(group["members"]) if group else set()
+    out = []
+    for it in scan["items"]:
+        own = decision_of(decisions, it["id"])
+        if own == "approved" or (own is None and group_on and it["id"] in members):
+            out.append(it)
+    return out
+
+
+def read_decisions(d, batch):
+    try:
+        state = json.loads((Path(d) / "decisions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise TidyError("decisions.json ausente ou ilegivel: suba o painel e conclua antes do apply")
+    if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
+        raise TidyError("decisions.json com formato invalido")
+    if state.get("batch_id") != batch.get("batch_id") or state.get("round") != int(batch.get("round", 1)):
+        raise TidyError("decisions.json e de outro lote ou rodada: nao vou agir sobre decisoes antigas")
+    if state.get("finished") is not True:
+        raise TidyError("o painel nao foi concluido (clique em Concluir antes do apply)")
+    return state["items"]
+
+
+def read_applied(d):
+    try:
+        data = json.loads((Path(d) / "applied.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [e for e in data if isinstance(e, dict) and "id" in e] if isinstance(data, list) else []
+
+
+def save_applied(d, results):
+    """Merge into applied.json: what an earlier run deleted (and backed up) is never forgotten by a re-run."""
+    merged = {e["id"]: e for e in read_applied(d)}
+    for r in results:
+        if merged.get(r["id"], {}).get("action") == "deleted" and r["action"] != "deleted":
+            continue
+        merged[r["id"]] = {**r, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    write_private(Path(d) / "applied.json", dump_json(list(merged.values())))
+
+
+def cmd_apply(a):
+    batch, scan = load_dir(a.dir)
+    errs = scan_problems(batch, scan)
+    if errs:
+        raise TidyError("scan.json/batch.json invalidos: " + "; ".join(errs))
+    decisions = read_decisions(a.dir, batch)
+    root = Path(scan["repo"])
+    if not root.is_dir() or git(root, "rev-parse", "--git-dir").rc != 0:
+        raise TidyError(f"o repositorio do scan nao existe mais: {root}")
+    todo = approved_items(scan, decisions)
+    if not todo:
+        print("APPLY: nada aprovado; nada foi apagado")
+        return 0
+    results = [apply_item(root, scan, it, a.dry_run) for it in todo]
+    if not a.dry_run:
+        save_applied(a.dir, results)
+    for r in results:
+        line = f"{r['action']:<12} {r['id']} {r['kind']} {r['name']}"
+        if r.get("backup"):
+            line += f"  (backup {r['backup']})"
+        if r.get("reason"):
+            line += f"  - {r['reason']}"
+        print(line)
+    done = sum(1 for r in results if r["action"] in ("deleted", "would-delete"))
+    skipped = len(results) - done
+    print(f"APPLY{' (simulado)' if a.dry_run else ''}: {done} {'seriam apagados' if a.dry_run else 'apagados'}, {skipped} pulados")
+    return 1 if skipped else 0
+
+
+def cmd_restore(a):
+    batch, scan = load_dir(a.dir)
+    applied = read_applied(a.dir)
+    entry = next((e for e in applied if e["id"] == a.id), None)
+    if entry is None or entry.get("action") != "deleted":
+        raise TidyError(f"'{a.id}' nao foi apagado por este lote (veja applied.json)")
+    root = Path(scan["repo"])
+    sha = entry["sha"]
+    if git(root, "cat-file", "-e", sha + "^{commit}").rc != 0:
+        raise TidyError(f"o commit {sha[:12]} nao existe mais neste repositorio")
+    if not entry.get("backup"):  # P1/P2: the commits are in the base, there is nothing to bring back from a backup
+        item = next((i for i in scan["items"] if i["id"] == a.id), {})
+        target = entry["name"] if entry["kind"] == "branch" else (item.get("branch") or "<nome>")
+        raise TidyError(f"'{a.id}' nao tem backup (estava provado como mesclado e seus commits estao na base): "
+                        f"se precisar, recrie com `git branch {target} {sha}`")
+    if entry["kind"] == "stash":
+        r = git(root, "stash", "store", "-m", f"tidy-board restore {sha[:12]}", sha)
+        what = "stash recriado"
+    else:
+        name = entry["name"] if entry["kind"] == "branch" else f"tidy-board/restored-{sha[:12]}"
+        r = git(root, "branch", name, sha)
+        what = f"branch {name} recriada em {sha[:12]}"
+        if entry["kind"] == "worktree":
+            what += f" (o worktree nao e recriado: git worktree add {entry['name']} {name})"
+    if r.rc != 0:
+        raise TidyError(r.err.strip() or "git falhou ao restaurar")
+    git(root, "update-ref", "-d", entry["backup"])
+    entry["action"] = "restored"
+    write_private(Path(a.dir) / "applied.json", dump_json(applied))
+    print(f"RESTORE: {what}")
+    return 0
+
+
+COMMANDS.update({"apply": cmd_apply, "restore": cmd_restore})
 
 
 def main(argv=None):
