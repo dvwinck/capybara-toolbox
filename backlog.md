@@ -26,7 +26,7 @@ Effort: S = days, M = about a week, L = several weeks. "Filler" means score 18 o
 | 1 | diff-board | Approved | 6 | 8 | 48 | L | End-of-turn, cross-file review: the agent keeps or reverts only the hunks you approve, in edits already applied. |
 | 2 | publish-check | Approved | 5 | 9 | 45 | M | Read-only scan of the tree and `git log --all` (messages, trailers, author emails, patches) for session links, home paths, emails and internal names. |
 | 3 | question-board | Built (ar-board 1.2.0) | 4 | 9 | 36 | M (was S) | A round of clarifying questions answered in one form: one card per question, with the recommended answer. |
-| 4 | tidy-board | Approved (refined 2026-10-14, spec awaiting review) | 4 | 9 | 36 | M | Stale branches and worktrees as cards; approving means deleting. |
+| 4 | tidy-board | Built (0.1.0) | 4 | 9 | 36 | M | Stale branches and worktrees as cards; approving means deleting. |
 | 5 | commit-groups | Approved | 4 | 8 | 32 | M | Splits a dirty tree into atomic commit groups, approved one by one. |
 | 6 | handoff | Approved | 4 | 7 | 28 | S | End-of-session note whose branches, commits and paths are verified to exist before it is written. |
 | 7 | review-map | Rejected | 4 | 7 | 28 | S | Risk-ordered map of an agent diff, as a read-only CLI. |
@@ -75,7 +75,7 @@ Each approved skill is refined one at a time, with scope questions judged in an 
 | --- | --- | --- |
 | question-board | Built (ar-board 1.2.0) | [docs/refinements/question-board.md](docs/refinements/question-board.md) · [docs/plans/question-board.md](docs/plans/question-board.md) |
 | session-finder | Shelved 2026-10-14 (scope and implementation design kept; not built, reason: not useful enough) | [docs/refinements/session-finder.md](docs/refinements/session-finder.md) |
-| tidy-board | Refined 2026-10-14 (spec written, awaiting owner review; not built) | [docs/refinements/tidy-board.md](docs/refinements/tidy-board.md) · [prototype](docs/refinements/tidy-board-prototype.html) |
+| tidy-board | Built (0.1.0) | [docs/refinements/tidy-board.md](docs/refinements/tidy-board.md) · [prototype](docs/refinements/tidy-board-prototype.html) · [docs/plans/tidy-board.md](docs/plans/tidy-board.md) |
 | publish-check | Built (0.1.0) | [docs/refinements/publish-check.md](docs/refinements/publish-check.md) · [docs/plans/publish-check.md](docs/plans/publish-check.md) |
 
 ## Suggested build order

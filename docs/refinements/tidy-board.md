@@ -1,6 +1,6 @@
 # Refinement: tidy-board
 
-- **Status:** requirements, UX and design analysed on 2026-10-14; spec written, **awaiting owner review** before the implementation plan.
+- **Status:** spec approved by the owner on 2026-10-14; built as tidy-board 0.1.0 (see [the plan](../plans/tidy-board.md); its rulings record where the build differs from this spec).
 - **Date:** 2026-10-14
 - **Backlog entry:** #4, score 36 (U 4 x A 9), effort M.
 - **How it was refined:** twelve scope questions asked one round at a time (three rounds of four), then a design review in chat, then a clickable prototype ([tidy-board-prototype.html](tidy-board-prototype.html)) that was exercised in a browser and corrected twice (see section 7).
@@ -101,7 +101,7 @@ The first card is a summary, "Delete the N branches proved as merged", listing e
 - **Branch:** the ref exists; its tip still equals the scanned sha (otherwise skip: "changed since scan"); it is not the current branch nor checked out; P1 is recomputed. Delete with `git branch -D` only after the checks pass. P3/P4: create `refs/tidy-board/backup/<name>` first; if that fails, skip.
 - **Worktree:** the path exists, the tree is clean and HEAD equals the scanned sha; `git worktree remove` **without** `--force`; then its branch per the rule above.
 - **Stash:** find the commit sha in `git stash list`; back it up as `refs/tidy-board/backup/stash-<sha7>`; drop by the index found at that moment.
-- Nothing runs `--force` on a worktree, touches the network, or edits `origin`.
+- Nothing runs `--force` on a worktree or edits `origin`. The only network access is `gh`, read-only, asked again once per run for P2 items (decision Q04 below).
 
 ## 5. Engine changes (ar-board 1.3.0, additive)
 
@@ -162,6 +162,16 @@ Unit tests only, in the style of publish-check: temporary git repositories assem
 3. `scan`: base detection, classification, `batch.json` and `scan.json`.
 4. `apply`, `restore` and `check`, with the safety tests.
 5. Skill, example, EN and PT-BR docs, release 0.1.0, one real run on a scratch repository.
+
+## Decisions taken while planning (2026-10-14, answered in a question-board)
+
+| # | Question | Answer |
+| --- | --- | --- |
+| Q01 | How to execute the plan | Native: one session implements every task, then one fresh whole-branch review. |
+| Q02 | A worktree whose branch holds unique work | Remove only the folder; the branch stays (no backup needed). |
+| Q03 | The panel cannot show what the group card covers | Accept it; `apply --dry-run` is mandatory in the skill and shows the truth. |
+| Q04 | P2 at `apply` time | Ask `gh` again (once per run), unless the history already proves the branch merged; if `gh` is unavailable the item is skipped. This is the owner's choice against the recommendation, and it makes `apply` network-dependent for P2 items. |
+| Q05 | `restore` and merged branches | `restore` only works for items with a backup; P1/P2 items are recreated by hand from the sha in `applied.json` (the owner's choice against the recommendation). |
 
 ## Open doubts
 

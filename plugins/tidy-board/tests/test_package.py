@@ -103,3 +103,18 @@ class SyncToolTest(unittest.TestCase):
         rc, out = run_sync(["--check"], self.root)
         self.assertEqual(rc, 1)
         self.assertIn("header comment must say 'tidy-board 0.1.0'", out)
+
+
+class ManualInstallTest(unittest.TestCase):
+    def test_install_ships_both_scripts_and_uninstall_removes_them(self):
+        import os
+        with tempfile.TemporaryDirectory() as home:
+            env = {**os.environ, "HOME": home}
+            r = subprocess.run(["bash", str(REPO / "install.sh"), "tidy-board"], env=env, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            dest = Path(home, ".claude", "skills", "tidy-board")
+            self.assertEqual((dest / "scripts" / "tidy_board.py").read_bytes(), SCRIPT.read_bytes())
+            self.assertEqual((dest / "scripts" / "capy_board.py").read_bytes(), ENGINE.read_bytes())
+            r = subprocess.run(["bash", str(REPO / "install.sh"), "tidy-board", "--uninstall"], env=env, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertFalse(dest.exists())

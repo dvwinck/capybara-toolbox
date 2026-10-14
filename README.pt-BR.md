@@ -19,6 +19,7 @@ Uma coleção pequena e cuidadosa de skills e plugins para o [Claude Code](https
 | --- | --- | --- |
 | [**ar-board**](plugins/ar-board/README.pt-BR.md) | Painel local de aprovar/rejeitar. O agente propõe N opções, você julga uma a uma com o teclado (`A` aprova, `R` rejeita, `M` talvez) e comenta; depois o agente age só sobre o que você aprovou e guarda suas preferências para as próximas rodadas. Inclui também o question-board, um formulário para uma rodada de perguntas independentes. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
 | [**publish-check**](plugins/publish-check/README.pt-BR.md) | Varredura somente leitura de um repositório git, árvore e histórico completo, atrás de links de conversa do Claude, caminhos da sua máquina, e-mails e nomes internos seus, para rodar logo antes de algo ficar público. Não é um scanner de segredos. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
+| [**tidy-board**](plugins/tidy-board/README.pt-BR.md) | Branches, worktrees e stashes obsoletos do git como cards em um painel local. Cada card mostra a prova de que já foi mesclado; você escolhe apagar, manter ou depois; um `apply` separado reconfere cada item aprovado antes de apagar, e o que existe em um lugar só ganha backup antes. | [CHANGELOG](plugins/tidy-board/CHANGELOG.md) |
 
 ## Instalação
 
@@ -28,6 +29,7 @@ Dentro do Claude Code:
 /plugin marketplace add dvwinck/capybara-toolbox
 /plugin install ar-board@capybara-toolbox
 /plugin install publish-check@capybara-toolbox
+/plugin install tidy-board@capybara-toolbox
 ```
 
 Instale só os plugins que quiser. Reinicie o Claude Code e peça um painel em linguagem natural, por exemplo *"me dê 10 melhorias para este repositório num AR board"*. A skill também pode ser chamada de forma explícita: `/ar-board:ar-board`.
