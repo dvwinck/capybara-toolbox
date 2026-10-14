@@ -14,7 +14,7 @@ What the Capybara Toolbox may still build, and what has already been decided. De
 | --- | --- |
 | **Approved (14)** | diff-board, publish-check, question-board, tidy-board, commit-groups, handoff, memory-board, doc-truth, safety-net, todo-sweep, calm-mode, loadout-board, session-recall, issue-triage-board |
 | **Maybe (1)** | variant-board (undecided; revisit in the next round) |
-| **Proposed, scope approved (1)** | session-finder (added 2026-10-13 by the owner; scope refined and approved 2026-10-14; not yet scored) |
+| **Shelved (1)** | session-finder (added 2026-10-13; scope refined and approved 2026-10-14; shelved the same day, owner: "does not seem useful"; design kept in its refinement) |
 | **Rejected (5)** | review-map, skill-check, settings-doctor, changelog-keeper, guard-recipes |
 
 ## Full list
@@ -43,7 +43,7 @@ Effort: S = days, M = about a week, L = several weeks. "Filler" means score 18 o
 | 18 | variant-board | Maybe (filler) | 3 | 5 | 15 | M | Pick among N UI variants rendered as image cards. |
 | 19 | session-recall | Approved (filler) | 3 | 4 | 12 | M | Approve which snippets of old transcripts are re-injected into context. |
 | 20 | issue-triage-board | Approved (filler) | 4 | 3 | 12 | M | Approve per issue before applying `gh` labels/close/duplicate actions. |
-| 21 | session-finder | Approved scope, unscored | - | - | - | L (M for the CLI milestone) | Read-only finder of past Claude Code sessions across projects (title, last update, branch, running now; search by last prompt); opens the one found in a new iTerm2 tab with `claude --resume`; delivered as CLI, then local panel, then iTerm2 toolbelt. |
+| 21 | session-finder | Shelved (scope approved, not built) | - | - | - | L (M for the CLI milestone) | Read-only finder of past Claude Code sessions across projects (title, last update, branch, running now; search by last prompt); opens the one found in a new iTerm2 tab with `claude --resume`; delivered as CLI, then local panel, then iTerm2 toolbelt. |
 
 ## Evidence and main objection, per skill
 
@@ -74,7 +74,7 @@ Each approved skill is refined one at a time, with scope questions judged in an 
 | Skill | Status | Refinement |
 | --- | --- | --- |
 | question-board | Refined, 1 open point (effort S or M) | [docs/refinements/question-board.md](docs/refinements/question-board.md) |
-| session-finder | Refined (8 of 8 decisions approved 2026-10-14); M1 next | [docs/refinements/session-finder.md](docs/refinements/session-finder.md) |
+| session-finder | Shelved 2026-10-14 (scope and implementation design kept; not built, reason: not useful enough) | [docs/refinements/session-finder.md](docs/refinements/session-finder.md) |
 | publish-check | Built (0.1.0) | [docs/refinements/publish-check.md](docs/refinements/publish-check.md) · [docs/plans/publish-check.md](docs/plans/publish-check.md) |
 
 ## Suggested build order
@@ -96,4 +96,4 @@ Dependencies: commit-groups needs diff-board's hunk library; safety-net shares i
 
 ## Next round
 
-Decide variant-board and score session-finder (the `/resume` check is done: the native picker does not list `-p`/SDK sessions); rejected items stay out unless reopened.
+Decide variant-board; rejected items stay out unless reopened. session-finder is shelved: reopen it only on the conditions in its refinement.
