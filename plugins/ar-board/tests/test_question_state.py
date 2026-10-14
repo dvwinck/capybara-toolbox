@@ -166,6 +166,14 @@ class AnswerOfTest(unittest.TestCase):
         card["min"] = 2
         self.assertIsNone(ab.answer_of(card, {"choices": ["a"]}))
 
+    def test_null_min_and_max_count_as_omitted(self):
+        card = copy.deepcopy(self.Q2)
+        card["min"] = None
+        card["max"] = None
+        self.assertEqual(ab.validate({"batch_id": "t", "title": "T", "items": [card]}), [])
+        self.assertEqual(ab.answer_of(card, {"choices": ["a"]}), {"kind": "choices", "ids": ["a"], "labels": ["A"]})
+        self.assertIsNone(ab.answer_of(card, {"choices": []}))
+
     def test_more_context_wins_over_everything(self):
         self.assertEqual(ab.answer_of(self.Q1, {"decision": "maybe", "choice": "a"}), {"kind": "unsure"})
 

@@ -15,7 +15,7 @@ class PageGuardsTest(unittest.TestCase):
         self.assertIn("Object.keys(timers).forEach(k => clearTimeout(timers[k])); pend = {};", ab.PAGE)
 
     def test_opens_on_first_undecided_item(self):
-        self.assertIn("items.findIndex(it => !(S.items[it.id] || {}).decision)", ab.PAGE)
+        self.assertIn("items.findIndex(it => !status(it))", ab.PAGE)
 
     def test_held_enter_on_a_button_is_swallowed(self):
         self.assertIn("ev.repeat && ev.key === 'Enter' && ev.target.tagName === 'BUTTON'", ab.PAGE)
@@ -101,7 +101,7 @@ class QuestionPageGuardsTest(unittest.TestCase):
 
     def test_enter_never_advances_an_unanswered_question(self):
         self.assertIn("if(!st){showHint(", ab.PAGE)
-        self.assertIn("if(k === 'enter' && (ev.target === document.body))", ab.PAGE)
+        self.assertIn("if(k === 'enter' && (ev.target === document.body || ev.target.classList.contains('opt')))", ab.PAGE)
 
     def test_decision_letters_are_ignored_on_question_cards(self):
         self.assertIn("if(k === 'a' || k === 'r') return;", ab.PAGE)
@@ -128,6 +128,16 @@ class QuestionPageGuardsTest(unittest.TestCase):
         # and a keyboard user cannot toggle the next option of a multiple-choice card
         self.assertIn("const n = +b.dataset.n, kb = ev.detail === 0, before = idx;", ab.PAGE)
         self.assertIn("if(kb && document.activeElement !== $('#cmt'))", ab.PAGE)
+
+    def test_enter_on_a_focused_option_confirms_instead_of_toggling(self):
+        # a focused <button> fires click on Enter; the handler must take Enter first (preventDefault) so a
+        # keyboard user never accepts an option, recommended or not, by pressing Enter to confirm
+        self.assertIn("ev.target.classList.contains('opt')", ab.PAGE)
+        self.assertIn("{ev.preventDefault(); confirmCard(); return;}", ab.PAGE)
+
+    def test_a_stale_saved_option_id_is_dropped_when_the_selection_changes(self):
+        self.assertIn("const lab = qlabels(it), sel = (e.choices || []).filter(i => i in lab);", ab.PAGE)
+        self.assertIn("delete e.decision;\n    e.choices = sel;", ab.PAGE)
 
     def test_review_screen_and_offline_export_are_wired(self):
         self.assertIn("function renderReview(){", ab.PAGE)

@@ -86,6 +86,13 @@ class JsonSummaryTest(unittest.TestCase):
         self.assertEqual(set(data), {"batch_id", "round", "finished", "batch_note", "approved", "rejected", "maybe", "pending"})
 
 
+class NullLimitsTest(unittest.TestCase):
+    def test_summary_survives_a_card_with_null_min_and_max(self):
+        card = {**Q2, "min": None, "max": None}
+        data = as_json(batch(card), state(Q02={"choices": ["a"]}))
+        self.assertEqual([r["id"] for r in data["answered"]], ["Q02"])
+
+
 class TextSummaryTest(unittest.TestCase):
     def test_sections_and_lines(self):
         b = batch(Q1, Q3, Q4)

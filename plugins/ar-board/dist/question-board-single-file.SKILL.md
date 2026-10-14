@@ -387,7 +387,7 @@ def answer_of(card, entry):
         other = bool(e.get("other"))
         if other and not text:
             return None
-        if len(ids) + (1 if other else 0) < card.get("min", 1):
+        if len(ids) + (1 if other else 0) < (card.get("min") or 1):
             return None
         a = {"kind": "choices", "ids": ids, "labels": [labels[i] for i in ids]}
         if other:
@@ -847,15 +847,16 @@ function pick(n){
   if(n < 1 || n > total) return;
   const other = n === total, max = qmax(it);
   if(it.multiple){
-    const sel = e.choices || [];
+    const lab = qlabels(it), sel = (e.choices || []).filter(i => i in lab);
     if(other){
       if(!e.other && sel.length >= max){showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;}
     } else if(!sel.includes(it.choices[n-1].id) && sel.length + (e.other ? 1 : 0) >= max){
       showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;
     }
     delete e.decision;
+    e.choices = sel;
     if(other){e.other = !e.other;}
-    else {const id = it.choices[n-1].id, p = sel.indexOf(id); if(p >= 0) sel.splice(p, 1); else sel.push(id); e.choices = sel;}
+    else {const id = it.choices[n-1].id, p = sel.indexOf(id); if(p >= 0) sel.splice(p, 1); else sel.push(id);}
     qsave(it); render();
     if(other && e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
     return;
@@ -1038,7 +1039,7 @@ document.addEventListener('keydown', ev => {
   if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;
   if(isQ(items[idx])){
     if(/^[1-9]$/.test(k)){if(!ev.repeat) pick(+k); return;}
-    if(k === 'enter' && (ev.target === document.body)){ev.preventDefault(); confirmCard(); return;}
+    if(k === 'enter' && (ev.target === document.body || ev.target.classList.contains('opt'))){ev.preventDefault(); confirmCard(); return;}
     if(k === 'm'){if(!ev.repeat) askMore(); return;}
     if(k === 'a' || k === 'r') return;
   }
@@ -1094,7 +1095,7 @@ $('#rev').addEventListener('click', ev => {
 });
 $('#rev').addEventListener('keydown', ev => {if(ev.key === 'Enter' && ev.target.matches('a[data-i]')){ev.preventDefault(); ev.target.click();}});
 setLive(BOOT.live);
-const first = items.findIndex(it => !(S.items[it.id] || {}).decision);
+const first = items.findIndex(it => !status(it));
 idx = first < 0 ? 0 : first;
 render();
 })();

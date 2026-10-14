@@ -199,3 +199,24 @@ class CheckWarningTest(unittest.TestCase):
         path = ROOT / "skills" / "question-board" / "examples" / "batch.example.json"
         if path.exists():  # created in Task 5
             self.assertEqual(ab.validate(json.loads(path.read_text(encoding="utf-8"))), [])
+
+
+class DocumentedExamplesTest(unittest.TestCase):
+    def test_card_examples_in_the_docs_pass_check(self):
+        import re
+
+        from helpers import ROOT
+
+        found = 0
+        for rel in ("docs/reference.md", "docs/pt-BR/guia-completo.md"):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            for block in re.findall(r"```json\n(.*?)```", text, re.S):
+                try:
+                    data = json.loads(block)
+                except ValueError:
+                    continue
+                if isinstance(data, dict) and "choices" in data and "title" in data:
+                    found += 1
+                    with self.subTest(doc=rel):
+                        self.assertEqual(ab.validate(board(data)), [])
+        self.assertGreaterEqual(found, 2)

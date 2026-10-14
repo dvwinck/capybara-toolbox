@@ -151,7 +151,7 @@ Derived from these (not asked, flagged for review): a card is a question when it
     {"id": "patch",    "label": "Comparar patch-id", "effect": "reconhece squash simples"}
   ],
   "recommended": ["patch"], "why": "cobre o caso mais comum sem rede.",
-  "multiple": false, "min": 1, "max": 2, "open": false
+  "multiple": false, "open": false
 }
 ```
 
