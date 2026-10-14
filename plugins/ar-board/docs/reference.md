@@ -141,6 +141,14 @@ Behavior rules:
 - **Per-item timestamp:** `at` is updated on every decision or comment change for that item.
 - **Counters and progress** are recomputed on every render from local state.
 
+## Custom wording and confirmation (`labels`, `confirm`)
+
+Two optional, additive fields for boards where "approve" does not mean "yes, good", for example a board where approving **deletes** something (tidy-board). Boards that do not use them behave exactly as before.
+
+- **`labels`** (batch level): `{"approve": {"text": "Apagar", "tone": "danger"}, "reject": {"text": "Manter", "tone": "safe"}, "maybe": {"text": "Depois", "tone": "caution"}}`. Every key and every `tone` is optional. The text replaces *Aprovar / Rejeitar / Talvez* on the buttons, the key bar, the state chip and the counters, and the text `summary` prints in its section titles. The keys stay `A`, `R`, `M`, and `decisions.json` and `summary --json` keep `approved`, `rejected` and `maybe`, so nothing downstream changes.
+- **`tone`** decides the colour of that decision everywhere it appears: `safe` is green, `danger` is red, `caution` is amber. Without a tone the defaults apply (approve green, reject red, maybe amber). Setting `approve` to `danger` and `reject` to `safe` stops a destructive action from being painted as the friendly one.
+- **`confirm`** (item level, a non-empty string): the first press of the approve key (or click) does not record anything; it shows the string in a banner and turns the button into *Confirmar: <text>*. Only a second press records `approved`. Esc, moving to another card or any other decision cancels it. Pressing approve on an item that is already approved still just undoes it. It is a guard against a reflex, not a security boundary: the server records whatever it is sent.
+
 ## Question cards (question-board)
 
 A card is a **question** when it has `choices` or `"open": true`; every other card is a proposal judged with A/R/M exactly as before, and the two kinds can share a board. The `question-board` skill drives question cards; the engine, the panel and the files are the same as the ar-board's. Answers are never implied: an unanswered question, or one marked "Preciso de mais contexto", reaches the agent as pending and is never replaced by the recommended option.
@@ -504,6 +512,8 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 | `meta` (if present): object | `item <i>: 'meta' deve ser objeto` |
 | `risk` (if present): object whose `level`/`text`, when present, are strings | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
 | `fields` (if present): list of `{label, text}` with string label and text | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
+| `labels` (if present): object whose keys are `approve`, `reject`, `maybe`; each value is an object with a `text` of 1-24 characters and an optional `tone` (`safe`, `danger`, `caution`) | `campo 'labels' deve ser objeto` / `labels: chave desconhecida '<k>' (use approve, reject ou maybe)` / `labels.<k>: 'text' obrigatorio (1 a 24 caracteres)` / `labels.<k>: 'tone' deve ser safe, danger ou caution` |
+| `confirm` (if present): non-empty string, not allowed on question cards | `item <i>: 'confirm' deve ser texto nao vazio` / `item <i>: 'confirm' nao vale em card de pergunta` |
 
 Notes:
 
