@@ -82,3 +82,77 @@ class MascotTest(unittest.TestCase):
         body = svg.split("</title>", 1)[1].rsplit("</svg>", 1)[0]
         compact = " ".join(line.strip() for line in body.splitlines() if line.strip())
         self.assertEqual(ab.MASCOT_BODY, compact)
+
+
+class QuestionPageGuardsTest(unittest.TestCase):
+    """String guards for the question UI; the real behaviour is verified by hand in a browser
+    (the suite does not run JavaScript). The reference is docs/refinements/question-board-prototype.html."""
+
+    def test_a_card_is_a_question_when_it_has_choices_or_is_open(self):
+        self.assertIn("const isQ = it => (it.choices != null || it.open === true);", ab.PAGE)
+
+    def test_option_ids_are_looked_up_in_a_null_prototype_map(self):
+        self.assertIn("const m = Object.create(null);", ab.PAGE)
+        self.assertNotIn("in {}", ab.PAGE)
+
+    def test_other_counts_toward_the_maximum(self):
+        self.assertIn("if(!e.other && sel.length >= max)", ab.PAGE)
+        self.assertIn("sel.length + (e.other ? 1 : 0) >= max", ab.PAGE)
+
+    def test_enter_never_advances_an_unanswered_question(self):
+        self.assertIn("if(!st){showHint(", ab.PAGE)
+        self.assertIn("if(k === 'enter' && (ev.target === document.body))", ab.PAGE)
+
+    def test_decision_letters_are_ignored_on_question_cards(self):
+        self.assertIn("if(k === 'a' || k === 'r') return;", ab.PAGE)
+
+    def test_number_keys_choose_and_ignore_autorepeat(self):
+        self.assertIn("if(/^[1-9]$/.test(k)){if(!ev.repeat) pick(+k); return;}", ab.PAGE)
+
+    def test_options_expose_their_state_to_assistive_technology(self):
+        self.assertIn('aria-checked="', ab.PAGE)
+        self.assertIn("(it.multiple ? 'checkbox' : 'radio')", ab.PAGE)
+        self.assertIn("(it.multiple ? 'group' : 'radiogroup')", ab.PAGE)
+
+    def test_question_title_uses_the_system_serif(self):
+        self.assertIn("font:600 24px/1.3 ui-serif", ab.PAGE)
+
+    def test_hidden_attribute_wins_over_display_rules(self):
+        self.assertIn("[hidden]{display:none!important}", ab.PAGE)
+
+    def test_typing_an_answer_refreshes_the_card_state(self):
+        self.assertIn("if(S.finished || isQ(items[idx])){S.finished = false; render();}", ab.PAGE)
+
+    def test_review_screen_and_offline_export_are_wired(self):
+        self.assertIn("function renderReview(){", ab.PAGE)
+        self.assertIn("o.kind = 'question'", ab.PAGE)
+        self.assertIn("(BOOT.live || hasQ) ? '' : 'none'", ab.PAGE)
+
+    def test_question_labels_are_escaped_not_injected(self):
+        batch = {"batch_id": "t", "title": "T", "items": [{
+            "id": "Q01", "title": "x", "fields": [{"label": "C", "text": "t"}],
+            "choices": [{"id": "a", "label": "</script><img onerror=1>"}, {"id": "b", "label": "B"}]}]}
+        page = ab.render_page(batch, {"items": {}}, "tok", True).decode("utf-8")
+        self.assertNotIn("</script><img", page)  # the boot JSON cannot close the script tag
+        self.assertIn("esc(o.label)", ab.PAGE)  # and the DOM path escapes the label
+
+
+class QuestionContrastTest(PageThemeTest):
+    def test_accent_text_on_both_panels_meets_aa(self):
+        for name, theme in zip(("dark", "light"), self.theme_blocks()):
+            for fg, bg in (("acc", "panel"), ("acc", "panel2")):
+                with self.subTest(theme=name, pair=f"{fg}/{bg}"):
+                    self.assertGreaterEqual(contrast(theme[fg], theme[bg]), 4.5)
+
+    def test_control_boundaries_meet_3_to_1(self):
+        # WCAG 1.4.11: the border of an option row must stand out; --line (about 1.5:1) cannot do it
+        for name, theme in zip(("dark", "light"), self.theme_blocks()):
+            for fg, bg in (("mut", "panel"), ("mut", "panel2"), ("acc", "panel")):
+                with self.subTest(theme=name, pair=f"{fg}/{bg}"):
+                    self.assertGreaterEqual(contrast(theme[fg], theme[bg]), 3.0)
+
+    def test_option_rows_are_outlined_with_a_strong_token(self):
+        self.assertIn(".opt{", ab.PAGE)
+        opt_rule = re.search(r"\.opt\{[^}]*\}", ab.PAGE).group(0)
+        self.assertIn("border:1.5px solid var(--mut)", opt_rule)
+        self.assertNotIn("var(--line)", opt_rule)

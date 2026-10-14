@@ -704,15 +704,37 @@ button.on{box-shadow:0 0 0 2px currentColor inset}
 button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-weight:600}
 .brand{display:flex;align-items:center;gap:14px}.mascot{width:56px;height:56px;flex:none}
 .foot{margin-top:28px;text-align:center;font-size:12px;color:var(--mut)}
+[hidden]{display:none!important}
+.qonly{display:none}.hasq .qonly{display:inline}.onlyq .pronly{display:none}
+.state.answered{color:var(--acc);border:1px solid var(--acc)}
+.chips .answered{color:var(--acc);border-color:var(--acc)}
+.card.q h2{font:600 24px/1.3 ui-serif,"Iowan Old Style","Palatino Linotype",Georgia,serif}
+.how{font-size:13px;color:var(--mut);margin:18px 0 8px}
+.opts{display:grid;gap:8px}
+.opt{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start;text-align:left;width:100%;font:inherit;color:var(--fg);background:var(--panel2);border:1.5px solid var(--mut);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .12s,background .12s}
+.opt:hover{border-color:var(--fg)}.opt:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.opt .k{font:600 13px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--mut);border-radius:7px;text-align:center;padding:3px 0}
+.opt .lbl{font-weight:600}.opt .fx{display:block;font-size:13px;color:var(--mut);font-weight:400;margin-top:2px}
+.opt .rec{font-size:12px;color:var(--mb);border:1px solid var(--mb);border-radius:99px;padding:1px 9px;white-space:nowrap}
+.opt[aria-checked="true"]{border-color:var(--acc);background:var(--panel);box-shadow:0 0 0 2px var(--acc) inset}
+.opt[aria-checked="true"] .k{background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+.opt[aria-checked="true"] .lbl::after{content:" \2713";color:var(--acc)}
+.why{font-size:13px;color:var(--mut);margin:10px 2px 0}.why b{color:var(--mb)}
+.req{color:var(--acc);font-weight:600}
+.rev h2{font:600 24px/1.3 ui-serif,"Iowan Old Style","Palatino Linotype",Georgia,serif;margin:0 0 12px}
+.rev table{width:100%;border-collapse:collapse;font-size:14px}.rev td{padding:9px 6px;border-bottom:1px dashed var(--line);vertical-align:top}
+.rev td:first-child{color:var(--mut);width:46%}.rev .none{color:var(--mb);font-weight:600}
+.rev a{color:var(--acc);cursor:pointer;margin-left:8px;text-decoration:underline}
+@media (prefers-reduced-motion:reduce){.opt{transition:none}}
 </style></head><body><div class="wrap">
 <header><div class="brand">__MASCOT__<div><h1 id="ttl"></h1><div class="sub" id="sub"></div></div></div><span class="badge" id="live"></span></header>
-<div class="keys"><span><kbd>A</kbd>aprovar</span><span><kbd>R</kbd>rejeitar</span><span><kbd>M</kbd>talvez</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint"></span></div>
+<div class="keys"><span class="pronly"><kbd>A</kbd>aprovar</span><span class="pronly"><kbd>R</kbd>rejeitar</span><span class="pronly"><kbd>M</kbd>talvez</span><span class="qonly"><kbd>1-9</kbd>escolher</span><span class="qonly"><kbd>Enter</kbd>confirmar</span><span class="qonly"><kbd>M</kbd>mais contexto</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint" role="status" aria-live="polite"></span></div>
 <div class="bar"><i id="prog"></i></div>
 <div class="grid">
   <section class="card" id="card"></section>
   <aside class="side">
     <div class="meta" id="meta"></div>
-    <label for="cmt">Comentario deste item (C foca &middot; salva sozinho). Vale para qualquer decisao.</label>
+    <label for="cmt" id="cmtlbl">Comentario deste item (C foca &middot; salva sozinho). Vale para qualquer decisao.</label>
     <textarea id="cmt" placeholder="Por que aprovou, rejeitou ou ficou em duvida? Isso e o que mais treina o agente."></textarea>
     <div class="btns">
       <button class="ok" id="bA">&#10003; Aprovar<kbd>A</kbd></button>
@@ -724,6 +746,7 @@ button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-
     <div class="chips" id="chips"></div>
   </aside>
 </div>
+<section class="card rev" id="rev" hidden></section>
 <section class="res">
   <h3>Resultado</h3>
   <div class="counts" id="counts"></div>
@@ -743,6 +766,7 @@ const BOOT = __BOOT__;
 const B = BOOT.batch, items = B.items, S = BOOT.state;
 S.items = S.items || {};
 const $ = s => document.querySelector(s);
+const CMT0 = $('#cmtlbl').innerHTML;
 const LBL = {approved:'Aprovado', rejected:'Rejeitado', maybe:'Talvez'};
 const LS = 'ar-board:' + B.batch_id + ':r' + (B.round || 1);
 let idx = 0, timers = {};
@@ -751,7 +775,135 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 function rich(s){return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
 function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
 function ent(id){return S.items[id] || (S.items[id] = {});}
-function tidy(id){const e=S.items[id]; if(e && !e.decision && !e.comment) delete S.items[id];}
+function tidy(id){const e=S.items[id]; if(e && !e.decision && !e.comment && !e.choice && !(e.choices && e.choices.length) && !e.other) delete S.items[id];}
+
+const QLBL = {answered:'Respondida', maybe:'Precisa de contexto'};
+const isQ = it => (it.choices != null || it.open === true);
+const hasQ = items.some(isQ), onlyQ = hasQ && items.every(isQ);
+document.body.classList.toggle('hasq', hasQ);
+document.body.classList.toggle('onlyq', onlyQ);
+let reviewing = false;
+function cmtOf(e){return (e.comment || '').trim();}
+function qlabels(it){const m = Object.create(null); (it.choices || []).forEach(c => {m[c.id] = c.label;}); return m;}
+function qmax(it){return it.max || (it.choices || []).length;}
+function qstatus(it){
+  const e = S.items[it.id] || {};
+  if(e.decision === 'maybe') return 'maybe';
+  const text = cmtOf(e), lab = qlabels(it);
+  if(it.open === true) return text ? 'answered' : '';
+  if(it.multiple){
+    if(e.other && !text) return '';
+    const n = (e.choices || []).filter(i => i in lab).length + (e.other ? 1 : 0);
+    return n >= (it.min || 1) ? 'answered' : '';
+  }
+  if(e.choice && e.choice in lab) return 'answered';
+  return e.other && text ? 'answered' : '';
+}
+function qanswer(it){
+  const e = S.items[it.id] || {}, st = qstatus(it);
+  if(st === 'maybe') return 'Preciso de mais contexto';
+  if(st !== 'answered') return null;
+  const lab = qlabels(it);
+  if(it.open === true) return cmtOf(e);
+  if(it.multiple){const p = (e.choices || []).filter(i => i in lab).map(i => lab[i]); if(e.other) p.push('Outra: ' + cmtOf(e)); return p.join(' + ');}
+  return e.other ? 'Outra: ' + cmtOf(e) : lab[e.choice];
+}
+function status(it){return isQ(it) ? qstatus(it) : ((S.items[it.id] || {}).decision || '');}
+function answerText(it){
+  if(isQ(it)) return qanswer(it);
+  const d = (S.items[it.id] || {}).decision;
+  return d ? LBL[d] : null;
+}
+function qbody(it, e){
+  const dec = e.decision === 'maybe' ? 'maybe' : null;
+  if(it.open === true) return {id: it.id, decision: dec};
+  return {id: it.id, decision: dec, choice: it.multiple ? null : (e.choice || null), choices: it.multiple ? (e.choices || []) : null, other: !!e.other};
+}
+function qsave(it){
+  const body = qbody(it, S.items[it.id] || {});
+  tidy(it.id); S.finished = false;
+  post('/api/item', body);
+}
+function questionHtml(it, e){
+  if(it.open === true) return '<p class="how">Pergunta aberta: escreva a resposta ao lado (obrigatoria).</p>';
+  const opts = it.choices.concat([{id: null, label: 'Outra resposta...', effect: 'o texto do campo ao lado vira a resposta'}]);
+  const rec = it.recommended || [];
+  let h = '<p class="how">' + (it.multiple ? 'Escolha de ' + (it.min || 1) + ' ate ' + qmax(it) + '. Enter confirma.' : 'Escolha uma opcao.') + '</p>';
+  h += '<div class="opts" role="' + (it.multiple ? 'group' : 'radiogroup') + '" aria-labelledby="qtitle">';
+  opts.forEach((o, i) => {
+    const other = i === opts.length - 1;
+    const on = other ? !!e.other : (it.multiple ? (e.choices || []).includes(o.id) : e.choice === o.id);
+    h += '<button type="button" class="opt" role="' + (it.multiple ? 'checkbox' : 'radio') + '" aria-checked="' + on + '" data-n="' + (i+1) + '"><span class="k">' + (i+1) + '</span><span><span class="lbl">' + esc(o.label) + '</span>' + (o.effect ? '<span class="fx">' + (other ? '' : 'se escolher: ') + esc(o.effect) + '</span>' : '') + '</span>' + (!other && rec.includes(o.id) ? '<span class="rec">&#9733; recomendada</span>' : '<span></span>') + '</button>';
+  });
+  h += '</div>';
+  if(it.why) h += '<p class="why"><b>&#9733; Por que recomendamos:</b> ' + esc(it.why) + '</p>';
+  return h;
+}
+function pick(n){
+  const it = items[idx]; if(!isQ(it) || it.open === true) return;
+  const e = ent(it.id), total = it.choices.length + 1;
+  if(n < 1 || n > total) return;
+  const other = n === total, max = qmax(it);
+  if(it.multiple){
+    const sel = e.choices || [];
+    if(other){
+      if(!e.other && sel.length >= max){showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;}
+    } else if(!sel.includes(it.choices[n-1].id) && sel.length + (e.other ? 1 : 0) >= max){
+      showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;
+    }
+    delete e.decision;
+    if(other){e.other = !e.other;}
+    else {const id = it.choices[n-1].id, p = sel.indexOf(id); if(p >= 0) sel.splice(p, 1); else sel.push(id); e.choices = sel;}
+    qsave(it); render();
+    if(other && e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
+    return;
+  }
+  delete e.decision;
+  if(other){
+    e.other = !e.other; if(e.other) delete e.choice;
+    qsave(it); render();
+    if(e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
+    return;
+  }
+  const id = it.choices[n-1].id;
+  if(e.choice === id) delete e.choice; else {e.choice = id; delete e.other;}
+  qsave(it);
+  if(auto && e.choice && idx < items.length - 1){idx++; showHint('Respondida: ' + it.id + ' — use ← para voltar e mudar');}
+  render();
+}
+function askMore(){
+  const it = items[idx]; if(!isQ(it)) return;
+  const e = ent(it.id);
+  if(e.decision === 'maybe') delete e.decision;
+  else {delete e.choice; delete e.choices; delete e.other; e.decision = 'maybe';}
+  qsave(it); render();
+  if(e.decision === 'maybe') showHint('Marcada: precisa de mais contexto. O agente volta a explicar na proxima rodada.');
+}
+function confirmCard(){
+  const it = items[idx], st = qstatus(it);
+  if(!st){showHint(it.open === true ? 'Escreva a resposta no campo ao lado (ou use M).' : it.multiple ? 'Escolha pelo menos ' + (it.min || 1) + ' opcao (ou use M).' : 'Escolha uma opcao primeiro (ou M para pedir contexto).'); return;}
+  if(idx < items.length - 1) go(idx + 1); else openReview();
+}
+function openReview(){reviewing = true; render();}
+function closeReview(){reviewing = false; render();}
+function renderReview(){
+  const miss = items.filter(it => answerText(it) === null).length;
+  let h = '<h2>Revise suas respostas (' + (items.length - miss) + ' de ' + items.length + ')</h2><table>';
+  items.forEach((it, i) => {
+    const a = answerText(it);
+    h += '<tr><td>' + (i+1) + '. ' + esc(it.title) + '</td><td>' + (a === null ? '<span class="none">(sem resposta)</span>' : esc(a)) + '<a data-i="' + i + '" role="button" tabindex="0">' + (a === null ? 'responder' : 'alterar') + '</a></td></tr>';
+  });
+  h += '</table>';
+  if(miss) h += '<p class="sub">' + miss + ' sem resposta: o agente vai perguntar no chat e nunca assume a opcao recomendada.</p>';
+  h += '<div class="btns"><button id="rB" type="button">Voltar e corrigir</button><button class="go" id="rC" type="button">' + (BOOT.live ? 'Confirmar e avisar o agente' : 'Copiar resultado') + '</button></div>';
+  $('#rev').innerHTML = h;
+}
+function finishNow(){
+  flushAll().then(() => post('/api/finish', {finished: true})).then(ok => {
+    S.finished = ok; if(ok) reviewing = false; render();
+    if(!ok) alert('Sem conexao com o servidor. Use Copiar e cole o resultado no chat.');
+  });
+}
 
 function persistLocal(){try{localStorage.setItem(LS, JSON.stringify(S));}catch(e){}}
 function setLive(ok){
@@ -787,44 +939,57 @@ document.addEventListener('visibilitychange', () => {if(document.visibilityState
 if(!BOOT.live){try{const raw=localStorage.getItem(LS); if(raw){const o=JSON.parse(raw); S.items=o.items||{}; S.batch_note=o.batch_note||'';}}catch(e){}}
 
 function counts(){
-  const c={approved:0,rejected:0,maybe:0};
-  items.forEach(it=>{const d=(S.items[it.id]||{}).decision; if(d) c[d]++;});
-  c.pending = items.length - c.approved - c.rejected - c.maybe;
+  const c={approved:0,rejected:0,maybe:0,answered:0};
+  items.forEach(it=>{const d=status(it); if(d) c[d]++;});
+  c.pending = items.length - c.approved - c.rejected - c.maybe - c.answered;
   return c;
 }
 function exportObj(){
   return {batch_id:B.batch_id, round:B.round||1, finished:!!S.finished, batch_note:S.batch_note||'',
-    items: items.map(it=>{const e=S.items[it.id]||{}; return {id:it.id,title:it.title,decision:e.decision||null,comment:e.comment||''};})};
+    items: items.map(it=>{const e=S.items[it.id]||{};
+      const o={id:it.id,title:it.title,decision:e.decision||null,comment:e.comment||''};
+      if(isQ(it)){o.kind = 'question'; o.choice = e.choice||null; o.choices = e.choices||[]; o.other = !!e.other;}
+      return o;})};
 }
 function imgSrc(p){return /^data:/.test(p) ? p : '/files/' + p.split('/').map(encodeURIComponent).join('/') + '?t=' + encodeURIComponent(BOOT.token);}
 
 function render(){
-  const it = items[idx], e = S.items[it.id] || {};
+  const it = items[idx], e = S.items[it.id] || {}, q = isQ(it), st = status(it);
   $('#ttl').textContent = B.title;
-  $('#sub').textContent = (B.subtitle ? B.subtitle + ' \u00B7 ' : '') + 'Lote: ' + B.batch_id + ' \u00B7 ' + items.length + ' itens \u00B7 rodada ' + (B.round || 1);
-  let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' \u00B7 ' + esc(it.id) + (it.tag ? ' \u00B7 ' + esc(it.tag) : '') + '</span>';
-  if(e.decision) h += '<span class="state ' + e.decision + '">' + LBL[e.decision] + '</span>';
-  h += '<h2>' + esc(it.title) + '</h2>';
+  $('#sub').textContent = (B.subtitle ? B.subtitle + ' · ' : '') + 'Lote: ' + B.batch_id + ' · ' + items.length + ' itens · rodada ' + (B.round || 1);
+  $('.grid').hidden = reviewing; $('#rev').hidden = !reviewing; $('.res').hidden = reviewing;
+  let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' · ' + esc(it.id) + (it.tag ? ' · ' + esc(it.tag) : '') + '</span>';
+  if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : LBL[st]) + '</span>';
+  h += '<h2 id="qtitle">' + esc(it.title) + '</h2>';
   if(it.image) h += '<img alt="" src="' + esc(imgSrc(it.image)) + '">';
   h += '<div class="box">';
   (it.fields || []).forEach(f => { h += '<div class="row"><b>' + esc(f.label) + '</b><div>' + rich(f.text) + '</div></div>'; });
   if(it.risk){
     const lvl = norm(it.risk.level);
-    h += '<div class="row"><b>Risco</b><div><span class="risk ' + (['baixo','medio','alto'].includes(lvl) ? lvl : 'medio') + '">' + esc(it.risk.level || '') + (it.risk.text ? ' \u2014 ' + esc(it.risk.text) : '') + '</span></div></div>';
+    h += '<div class="row"><b>Risco</b><div><span class="risk ' + (['baixo','medio','alto'].includes(lvl) ? lvl : 'medio') + '">' + esc(it.risk.level || '') + (it.risk.text ? ' — ' + esc(it.risk.text) : '') + '</span></div></div>';
   }
   h += '</div>';
+  if(q) h += questionHtml(it, e);
+  $('#card').className = q ? 'card q' : 'card';
   $('#card').innerHTML = h;
   $('#meta').innerHTML = Object.entries(it.meta || {}).map(([k,v]) => '<div><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>').join('');
+  $('#cmtlbl').innerHTML = q ? ((it.open === true || e.other) ? 'Sua resposta <span class="req">(obrigatoria)</span>' : 'Comentario (opcional, salva sozinho)') : CMT0;
   const cm = $('#cmt'); if(cm.value !== (e.comment || '')) cm.value = e.comment || '';
+  $('#bA').style.display = $('#bR').style.display = q ? 'none' : '';
+  $('#bM').innerHTML = q ? 'Preciso de mais contexto<kbd>M</kbd>' : '&asymp; Talvez<kbd>M</kbd>';
   ['A:approved','R:rejected','M:maybe'].forEach(p => { const [k,d] = p.split(':'); $('#b'+k).classList.toggle('on', e.decision === d); });
-  $('#chips').innerHTML = items.map((x,i) => { const d=(S.items[x.id]||{}).decision||''; return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
+  $('#chips').innerHTML = items.map((x,i) => { const d = status(x); return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
   const c = counts();
   $('#prog').style.width = ((items.length - c.pending) / items.length * 100) + '%';
-  $('#counts').innerHTML = '<span style="color:var(--ok)">\u2713 ' + c.approved + ' aprovados</span><span style="color:var(--no)">\u2717 ' + c.rejected + ' rejeitados</span><span style="color:var(--mb)">\u2248 ' + c.maybe + ' talvez</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  const base = '<span style="color:var(--ok)">✓ ' + c.approved + ' aprovados</span><span style="color:var(--no)">✗ ' + c.rejected + ' rejeitados</span><span style="color:var(--mb)">≈ ' + c.maybe + ' talvez</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  $('#counts').innerHTML = onlyQ
+    ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span><span style="color:var(--mb)">' + c.maybe + ' precisam de contexto</span><span style="color:var(--mut)">' + c.pending + ' sem resposta</span>'
+    : base + (hasQ ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span>' : '');
   const n = $('#note'); if(n.value !== (S.batch_note || '')) n.value = S.batch_note || '';
-  $('#bF').style.display = BOOT.live ? '' : 'none';
+  $('#bF').style.display = (BOOT.live || hasQ) ? '' : 'none';
   const dn = $('#done');
-  if(S.finished){dn.style.display='block';dn.textContent='Concluido. Volte ao Claude Code e diga "terminei" \u2014 o agente le as decisoes sozinho.';} else dn.style.display='none';
+  if(S.finished){dn.style.display='block';dn.textContent='Concluido. Volte ao Claude Code e diga "terminei" — o agente le as decisoes sozinho.';} else dn.style.display='none';
+  if(reviewing) renderReview();
 }
 
 function go(i){idx = Math.max(0, Math.min(items.length-1, i)); render();}
@@ -850,24 +1015,31 @@ $('#cmt').addEventListener('input', ev => {
   const id = items[idx].id, v = ev.target.value;
   const e = ent(id); if(v.trim()) e.comment = v; else delete e.comment; tidy(id);
   queue('c:' + id, '/api/item', {id: id, comment: v});
-  if(S.finished){S.finished = false; render();}
+  if(S.finished || isQ(items[idx])){S.finished = false; render();}
 });
 $('#note').addEventListener('input', ev => {
   S.batch_note = ev.target.value;
   queue('note', '/api/note', {text: S.batch_note});
 });
 $('#chips').addEventListener('click', ev => {const b = ev.target.closest('button'); if(b) go(+b.dataset.i);});
-$('#bA').onclick = () => decide('approved'); $('#bR').onclick = () => decide('rejected'); $('#bM').onclick = () => decide('maybe');
+$('#bA').onclick = () => decide('approved'); $('#bR').onclick = () => decide('rejected'); $('#bM').onclick = () => (isQ(items[idx]) ? askMore() : decide('maybe'));
 $('#bS').onclick = () => go(idx+1); $('#bN').onclick = () => go(idx+1); $('#bP').onclick = () => go(idx-1);
 
 document.addEventListener('keydown', ev => {
   if(ev.ctrlKey || ev.metaKey || ev.altKey) return;
   if(ev.repeat && ev.key === 'Enter' && ev.target.tagName === 'BUTTON'){ev.preventDefault(); return;}
+  if(reviewing){if(ev.key === 'Escape') closeReview(); return;}
   const typing = (ev.target.tagName || '').toLowerCase() === 'textarea';
   if(ev.key === 'Escape'){ if(typing) ev.target.blur(); return; }
   if(typing) return;
   const k = ev.key.toLowerCase();
   if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;
+  if(isQ(items[idx])){
+    if(/^[1-9]$/.test(k)){if(!ev.repeat) pick(+k); return;}
+    if(k === 'enter' && (ev.target === document.body)){ev.preventDefault(); confirmCard(); return;}
+    if(k === 'm'){if(!ev.repeat) askMore(); return;}
+    if(k === 'a' || k === 'r') return;
+  }
   if(k === 'a') decide('approved');
   else if(k === 'r') decide('rejected');
   else if(k === 'm') decide('maybe');
@@ -902,6 +1074,18 @@ $('#bF').onclick = () => {
   });
 };
 
+if(hasQ){
+  $('#bF').textContent = 'Revisar e concluir';
+  $('#bF').onclick = openReview;
+}
+$('#card').addEventListener('click', ev => {const b = ev.target.closest('.opt'); if(b) pick(+b.dataset.n);});
+$('#rev').addEventListener('click', ev => {
+  const a = ev.target.closest('a[data-i]');
+  if(a){reviewing = false; go(+a.dataset.i); return;}
+  if(ev.target.closest('#rB')) closeReview();
+  else if(ev.target.closest('#rC')) (BOOT.live ? finishNow() : $('#bC').click());
+});
+$('#rev').addEventListener('keydown', ev => {if(ev.key === 'Enter' && ev.target.matches('a[data-i]')){ev.preventDefault(); ev.target.click();}});
 setLive(BOOT.live);
 const first = items.findIndex(it => !(S.items[it.id] || {}).decision);
 idx = first < 0 ? 0 : first;
