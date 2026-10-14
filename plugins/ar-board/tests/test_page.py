@@ -123,6 +123,12 @@ class QuestionPageGuardsTest(unittest.TestCase):
     def test_typing_an_answer_refreshes_the_card_state(self):
         self.assertIn("if(S.finished || isQ(items[idx])){S.finished = false; render();}", ab.PAGE)
 
+    def test_keyboard_activation_keeps_the_focus_on_the_option(self):
+        # Enter/Space on a focused option re-renders the card; without this the focus drops to <body>
+        # and a keyboard user cannot toggle the next option of a multiple-choice card
+        self.assertIn("const n = +b.dataset.n, kb = ev.detail === 0, before = idx;", ab.PAGE)
+        self.assertIn("if(kb && document.activeElement !== $('#cmt'))", ab.PAGE)
+
     def test_review_screen_and_offline_export_are_wired(self):
         self.assertIn("function renderReview(){", ab.PAGE)
         self.assertIn("o.kind = 'question'", ab.PAGE)

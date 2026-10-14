@@ -949,7 +949,12 @@ if(hasQ){
   $('#bF').textContent = 'Revisar e concluir';
   $('#bF').onclick = openReview;
 }
-$('#card').addEventListener('click', ev => {const b = ev.target.closest('.opt'); if(b) pick(+b.dataset.n);});
+$('#card').addEventListener('click', ev => {
+  const b = ev.target.closest('.opt'); if(!b) return;
+  const n = +b.dataset.n, kb = ev.detail === 0, before = idx;
+  pick(n);
+  if(kb && document.activeElement !== $('#cmt')){const t = $('#card .opt[data-n="' + (idx === before ? n : 1) + '"]'); if(t) t.focus();}
+});
 $('#rev').addEventListener('click', ev => {
   const a = ev.target.closest('a[data-i]');
   if(a){reviewing = false; go(+a.dataset.i); return;}
