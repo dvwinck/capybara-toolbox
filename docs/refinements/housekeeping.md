@@ -1,6 +1,6 @@
 # Refinement: housekeeping (doc-truth, handoff, todo-sweep)
 
-- **Status:** refined, awaiting the owner's review of this written spec (no plan yet)
+- **Status:** built (housekeeping 0.3.0); the plan is [docs/plans/housekeeping.md](../plans/housekeeping.md)
 - **Date:** 2026-10-14
 - **Backlog entries:** #12 doc-truth (score 24, M), #6 handoff (score 28, S), #15 todo-sweep (score 18, S, filler).
 - **How it was refined:** two rounds of the question-board, 16 questions, each with context, numbered options and a recommendation, answered in a panel. Round 1 had 8 questions, round 2 had 8 that depended on it. Of the 15 questions that had a recommendation, the owner took it in 12; the three that differed are marked below (the other, Q09, was a free-text question with no options). One free-text comment was cut off in the panel (round 1, Q02) and the owner's answer to the follow-up was to ignore it, so the plugin shape below stands.
@@ -142,3 +142,22 @@ The owner decided H01 to H14. Everything marked R above is a ruling by the autho
 - Whether `/doctor` in Claude Code audits documents (see *Evidence and its limits*); it does not change the decisions, only how new doc-truth is.
 - Whether the handoff note format should anticipate a future `/handoff` in Claude Code itself.
 - `git blame` cost on large repositories; the cap is the only guard.
+
+## Amendments made while planning and building
+
+- **Noise rules for paths (R5).** A token is also not a path when it is a MIME type (`text/html`), a bare extension (`.svg`) or a choice written with single letters (`A/R/M`); a `NAME=value` assignment exposes its value; in code fences a line that starts with `#` or `/` (a comment, a Claude Code command), whatever follows ` #`, and tree diagrams are skipped. The first run on this repository found 594 findings; with these rules and the repository's `.doc-truth.json` it finds none.
+- **Globs (R9).** A pattern with a trailing `/` also matches the folder itself, so a document may cite `.ar-board/`; a pattern with no other `/` matches a name in any folder.
+- **Symlinks are never followed.** doc-truth reads only regular tracked files (a symlinked document or manifest is skipped), handoff refuses a `.handoff` folder that is a symlink and counts a `file:` citation that leaves the repository as unverified, todo-sweep refuses a `.todo-sweep` symlink and skips symlinked sources. An automatic security review of the first commits asked for this.
+- **A note is untrusted text (R11-R13).** `resume` uses a note's data block only when it has exactly the shape `collect` writes, and detects the base again when the recorded one is gone or is not a ref.
+- **`collect` leaves `.handoff/` out of the facts**, otherwise writing a note would change the state it records and `resume` would always report drift.
+- **Blame boundary (R16).** `git blame` calls a repository's root commit a boundary too, and its age is real: only a shallow clone's boundary has no age.
+- **TODO identity (R17).** The id also carries which of several identical texts in a file it is (`sha256(file|text|n)`), so empty or repeated TODOs stay distinct.
+- **Real drift fixed (R10).** The Portuguese README of the repository and the one of ar-board had fewer sections than the English ones and were completed; paths written as shorthand relative to a plugin (about thirty) and the names of files the tools write at run time are in `ignore_paths`.
+- **No CI change was needed**: `ci.yml` already loops over `plugins/*`.
+- **The git helper ignores the caller's repository location.** The helper of all three scripts drops the repository-location `GIT_*` variables from the child environment, so a `GIT_DIR` set by a hook cannot redirect the tool to another repository's tree, and a missing `git` becomes the tool's own error with exit 2 instead of a traceback.
+- **Hostile input is bounded in time.** The heading and link patterns of doc-truth are linear (a 4 KB line of `#` took about a minute with the first pattern), todo-sweep cleans the text after a marker in linear time and numbers lines by `\n` only, so its line numbers match `git blame` (form feed, U+2028 and a lone carriage return no longer shift them), and a control character or NUL in a citation is reported as unverified instead of crashing.
+- **Handoff citations are checked strictly.** A commit id resolves only through object ids, so a branch or tag named like a hex id never stands in for it; a branch is verified by an exact ref lookup, so revision expressions such as `main~1` do not pass; `resume` and `verify` check only the agent's part of a note, not the git section and data block the tool wrote itself (otherwise a commit subject with backticks made `resume` fail right after a clean `write`).
+- **One failure contract for the CLI.** Every failure path ends in an accent-free `erro: ...` on stderr and exit 2, never a traceback and never 1 (1 means drift or findings). Notes and todo-sweep outputs are encoded and staged before anything is created, with rollback, so a failed write leaves nothing partial (a 0-byte note would otherwise have become the newest one). A deeply nested JSON in a planted note, decisions file or ledger is refused (a `RecursionError` on Python 3.9).
+- **todo-sweep refuses before it writes.** A scan into an `--out` folder that already holds decisions is refused (a stale `decisions.json` with the same batch and round would have made the ledger record TODOs nobody judged); `--limit` and `--max-blame` below 1 are refused; `report` refuses a sidecar whose `repo` is not the repository toplevel, so a hand-edited `scan.json` cannot send the ledger to another repository, a subfolder or the working directory. Residual, documented: a batch placed with `--out` outside any `.todo-sweep` folder can still name another repository in its sidecar; closing it needs a repository fingerprint recorded at scan time.
+
+Residual minors: the minor findings of the build review that were deferred rather than fixed are listed in the final review notes of the branch.
