@@ -17,13 +17,15 @@ Difference from ar-board: ar-board asks "do you approve this proposal?" (A/R/M).
 - With fewer than 4 questions, ask in the chat. Offer the panel. NEVER start one without the user knowing.
 - Do NOT use it to judge proposals (use ar-board), for a single question, or when an answer depends on another answer. Dependent questions wait for the next round.
 
-### 0. Instalar o script (uma vez por máquina)
+### 0. Install the script (once per machine)
 
 ```bash
 test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.3.1' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
 ```
 
-Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Os comandos abaixo usam esse caminho. Requer apenas `python3` (stdlib).
+`OK` means the script is installed and its version matches. `FALTA` means "missing".
+
+If the output is `FALTA` (or the installed version is older), run `mkdir -p ~/.claude/ar-board`. Then write the content of the **Script** section at the end of this file to `~/.claude/ar-board/ar_board.py` (a literal copy, no changes). The commands below use that path. It needs only `python3` (stdlib).
 
 ### 1. Define the round
 
@@ -131,7 +133,7 @@ Required fields of a question: `id`, `title`, at least one non-empty `fields[].t
 
 ## Script
 
-Grave este conteúdo, sem alterações, em `~/.claude/ar-board/ar_board.py`:
+Write this content, unchanged, to `~/.claude/ar-board/ar_board.py`:
 
 ```python
 #!/usr/bin/env python3
