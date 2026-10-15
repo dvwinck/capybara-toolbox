@@ -30,9 +30,18 @@ class DocTruthError(Exception):
     """Something the person must fix before the check can run (exit code 2)."""
 
 
+# where git looks for the repository: inherited from a hook or a wrapper, these would make `-C path` judge another tree
+GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+                     "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")
+
+
 def git(root, *args):
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
-    return subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, env=env)
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    try:
+        return subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, env=env)
+    except OSError as e:
+        raise DocTruthError(f"git nao encontrado ({e.strerror or e})")
 
 
 def repo_root(path):

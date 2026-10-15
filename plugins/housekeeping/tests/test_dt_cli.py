@@ -147,6 +147,34 @@ class ErrorTest(CliCase):
         self.assertEqual(run_main([str(self.repo), "--config", str(self.tmp / "none.json")])[0], 2)
 
 
+class EnvironmentTest(CliCase):
+    def run_cli(self, target, env):
+        return subprocess.run([sys.executable, "-I", str(DOC_TRUTH), str(target), "--json"], capture_output=True, text=True,
+                              cwd=str(self.tmp), env=env)
+
+    def test_a_missing_git_binary_exits_two_with_a_message_and_no_traceback(self):
+        empty = self.tmp / "empty-path"
+        empty.mkdir()
+        self.docs({"README.md": "# T\n", "README.pt-BR.md": "# T\n"})
+        r = self.run_cli(self.repo, dict(os.environ, PATH=str(empty)))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("git nao encontrado", r.stderr)
+        self.assertNotIn("Traceback", r.stderr + r.stdout)
+
+    def test_repository_location_variables_of_the_environment_are_ignored(self):
+        self.docs({"README.md": "# T\n`gone.md`\n", "README.pt-BR.md": "# T\n"})
+        other = init_repo(self.tmp / "b")
+        commit(other, "docs", {"README.md": "# T\n", "README.pt-BR.md": "# T\n", "extra.md": "x\n"})
+        clean = self.run_cli(other, dict(os.environ))
+        env = dict(os.environ, GIT_DIR=str(self.repo / ".git"), GIT_WORK_TREE=str(self.repo),
+                   GIT_INDEX_FILE=str(self.repo / ".git" / "index"))
+        hooked = self.run_cli(other, env)
+        self.assertEqual((clean.returncode, json.loads(clean.stdout)["documents"]), (0, 3), clean.stdout + clean.stderr)
+        self.assertEqual((hooked.returncode, hooked.stdout), (clean.returncode, clean.stdout))
+        self.assertEqual(json.loads(hooked.stdout)["findings"], [])
+        self.assertEqual(json.loads(hooked.stdout)["documents"], 3)
+
+
 class ScriptTest(CliCase):
     def test_the_script_runs_in_isolated_mode_from_any_folder(self):
         self.docs({"README.md": "# T\n`gone.md`\n", "README.pt-BR.md": "# T\n"})
