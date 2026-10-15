@@ -50,6 +50,28 @@ class CommitTest(CitationCase):
             with self.subTest(bad=bad):
                 self.assertFalse(self.check("commit", bad)[0])
 
+    def test_a_ref_named_like_a_hex_id_never_stands_in_for_a_commit_id(self):
+        git(self.repo, "branch", "deadbeef")
+        git(self.repo, "tag", "abcdef1")
+        for name in ("deadbeef", "abcdef1"):
+            with self.subTest(name=name):
+                ok, sha, _why = self.check("commit", name)
+                self.assertEqual((ok, sha), (False, None))
+
+    def test_a_branch_named_like_a_real_commit_prefix_does_not_hide_the_commit(self):
+        second = commit(self.repo, "second", {"b.txt": "b\n"})
+        git(self.repo, "branch", self.first[:7], second)  # a branch whose name is the first commit's abbreviation
+        git(self.repo, "tag", self.first[:8], second)
+        self.assertEqual(self.check("commit", self.first[:7]), (True, self.first, ""))
+        self.assertEqual(self.check("commit", self.first[:8]), (True, self.first, ""))
+        self.assertEqual(self.check("commit", self.first), (True, self.first, ""))
+
+    def test_upper_case_hex_resolves_to_the_same_commit(self):
+        self.assertEqual(self.check("commit", self.first[:9].upper()), (True, self.first, ""))
+
+    def test_an_embedded_nul_is_just_an_invalid_commit(self):
+        self.assertFalse(self.check("commit", self.first[:7] + "\x00" + "ab")[0])
+
     def test_a_tree_or_blob_id_is_not_a_commit(self):
         tree = git(self.repo, "rev-parse", "HEAD^{tree}").strip()
         self.assertFalse(self.check("commit", tree[:10])[0])
@@ -82,6 +104,19 @@ class BranchTest(CitationCase):
     def test_option_looking_names_are_just_missing_branches(self):
         self.assertFalse(self.check("branch", "--all")[0])
 
+    def test_revision_expressions_are_not_branch_names(self):
+        commit(self.repo, "second", {"b.txt": "b\n"})
+        for expr in ("main~1", "main^", "main@{0}", "main^{tree}", "main^{commit}", "main..main", "HEAD", "@{-1}", "main:a.txt"):
+            with self.subTest(expr=expr):
+                ok, sha, _why = self.check("branch", expr)
+                self.assertEqual((ok, sha), (False, None))
+        self.assertTrue(self.check("branch", "main")[0])
+
+    def test_an_embedded_nul_or_control_character_is_an_unverified_branch(self):
+        for value in ("a\x00b", "main\x00", "ma\x01in", "main\x7f"):
+            with self.subTest(value=value):
+                self.assertFalse(self.check("branch", value)[0])
+
 
 class FileTest(CitationCase):
     def test_an_existing_file_with_or_without_a_line_suffix(self):
@@ -113,6 +148,13 @@ class FileTest(CitationCase):
         self.assertFalse(ok)
         self.assertIn("sai do repositorio", why)
 
+    def test_an_embedded_nul_or_control_character_is_an_unverified_file(self):
+        for value in ("a\x00b", "src/a.py\x00", "src/a.py\x01"):
+            with self.subTest(value=value):
+                ok, _sha, why = self.check("file", value)
+                self.assertFalse(ok)
+                self.assertTrue(why)
+
     def test_a_symlink_inside_the_repository_is_fine(self):
         os.symlink(self.repo / "README.md", self.repo / "alias.md")
         self.assertTrue(self.check("file", "alias.md")[0])
@@ -136,6 +178,18 @@ class MarkTest(CitationCase):
     def test_results_carry_the_line_of_each_citation(self):
         text = "a\n`file:README.md`\n\n`file:nope.md`\n"
         self.assertEqual([(r["line"], r["verified"]) for r in ho.check_text(self.repo, text)], [(2, True), (4, False)])
+
+    def test_a_citation_with_a_nul_is_unverified_and_marked_once_without_crashing(self):
+        text = "x `file:a\x00b` y `branch:a\x00b` z `commit:abcdef1\x00` w `branch:main~1` v\n"
+        results = ho.check_text(self.repo, text)
+        self.assertEqual([r["verified"] for r in results], [False, False, False, False])
+        marked = ho.mark_unverified(text, results)
+        self.assertEqual(marked.count(ho.UNVERIFIED), 4)
+        self.assertEqual(ho.mark_unverified(marked, ho.check_text(self.repo, marked)), marked)
+
+    def test_the_git_helper_survives_a_nul_in_an_argument(self):
+        rc, out = ho.git(self.repo, "show-ref", "--verify", "a\x00b")
+        self.assertNotEqual(rc, 0)
 
     def test_text_with_no_citations_has_no_results(self):
         self.assertEqual(ho.check_text(self.repo, "just prose with `code`\n"), [])

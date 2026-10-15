@@ -44,6 +44,8 @@ def git(root, *args):
         r = subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, env=env)
     except OSError as e:
         raise HandoffError(f"git nao encontrado ({e.strerror or e})")
+    except ValueError:  # an embedded NUL in an argument: git is never run, the answer is "no"
+        return 1, ""
     return r.returncode, r.stdout.decode("utf-8", "replace")
 
 
@@ -140,6 +142,7 @@ CITATION = re.compile(r"`(commit|branch|file):([^`\s]+)`")
 HEX_ID = re.compile(r"[0-9a-fA-F]{7,40}")
 LINE_SUFFIX = re.compile(r":\d+(?::\d+)?$")
 UNVERIFIED = " [nao verificado]"
+BAD_BRANCH_CHARS = re.compile(r"[~^:?*\[\\\s\x00-\x1f\x7f]")
 
 
 def find_citations(text):
@@ -148,18 +151,37 @@ def find_citations(text):
     return [(m.group(1), m.group(2), m.start(), m.end()) for m in CITATION.finditer(text)]
 
 
+def commit_by_id(root, hex_id):
+    """The commit whose id starts with `hex_id`, or (None, why). Only object ids are looked at (git's
+    --disambiguate lists ids, never refs), so a branch or tag named like a hex id cannot stand in for one."""
+    rc, out = git(root, "rev-parse", "--disambiguate=" + hex_id.lower())
+    commits = []
+    for oid in out.split():
+        rc, kind = git(root, "cat-file", "-t", oid)
+        if rc == 0 and kind.strip() == "commit" and oid.startswith(hex_id.lower()):
+            commits.append(oid)
+    if len(commits) == 1:
+        return commits[0], ""
+    return None, ("o id de commit e ambiguo" if commits else "o commit nao existe")
+
+
 def check_citation(root, kind, value):
     """(verified, sha, why): `sha` is what the citation pointed at (commits and branches), `why` explains a failure."""
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        return False, None, "a citacao tem caracteres de controle"
     if kind == "commit":
         if not HEX_ID.fullmatch(value):
             return False, None, "id de commit invalido (7 a 40 caracteres hexadecimais)"
-        sha = resolve(root, value)
-        return (True, sha, "") if sha else (False, None, "o commit nao existe")
+        sha, why = commit_by_id(root, value)
+        return (True, sha, "") if sha else (False, None, why)
     if kind == "branch":
+        # a plain branch name only: no revision expression (main~1, main^, main@{0}, a..b, a:b) and no option
+        if BAD_BRANCH_CHARS.search(value) or "@{" in value or ".." in value or value.startswith("-"):
+            return False, None, "nome de branch invalido (nao pode ser uma expressao de revisao)"
         for ref in ("refs/heads/" + value, "refs/remotes/" + value):
-            sha = resolve(root, ref)
-            if sha:
-                return True, sha, ""
+            rc, out = git(root, "show-ref", "--verify", "--hash", ref)  # exact ref, no revision parsing
+            if rc == 0 and out.strip():
+                return True, resolve(root, ref), ""
         return False, None, "a branch nao existe (local ou remota)"
     path = LINE_SUFFIX.sub("", value)
     parts = path.split("/")
@@ -168,7 +190,7 @@ def check_citation(root, kind, value):
     target = Path(root) / path
     try:  # a symlink that leads outside the repository is not a file of the repository
         inside = target.resolve().is_relative_to(Path(root).resolve())
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         inside = False
     if not inside:
         return False, None, "o caminho sai do repositorio"
