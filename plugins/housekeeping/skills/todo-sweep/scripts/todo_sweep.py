@@ -404,7 +404,16 @@ def refuse_old_decisions(out):
         raise SweepError(f"{out} ja tem decisions.json de um lote anterior: escolha outra pasta com --out ou apague as decisoes")
 
 
+def check_counts(a):
+    """--limit and --max-blame are whole numbers of at least 1: a negative one would slice from the end of the list."""
+    for name, flag in (("limit", "--limit"), ("max_blame", "--max-blame")):
+        value = getattr(a, name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise SweepError(f"{flag} deve ser um numero inteiro >= 1 (recebi {value!r})")
+
+
 def cmd_scan(a):
+    check_counts(a)
     root = repo_root(a.repo)
     if a.out:
         refuse_old_decisions(Path(a.out))
@@ -457,6 +466,10 @@ def load_dir(d):
     return out
 
 
+def is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def scan_problems(batch, scan):
     errs = []
     if not isinstance(scan, dict) or scan.get("tool") != "todo-sweep" or scan.get("schema") != SCHEMA:
@@ -465,6 +478,8 @@ def scan_problems(batch, scan):
         return ["scan.json sem 'items' ou 'repo'"]
     if not isinstance(batch, dict) or not isinstance(batch.get("items"), list):
         return ["batch.json sem 'items'"]
+    if not isinstance(scan.get("batch_id"), str) or not is_int(scan.get("round")) or not is_int(batch.get("round", 1)):
+        return ["scan.json sem 'batch_id' (texto) ou 'round' (inteiro), ou batch.json com 'round' invalido"]
     if batch.get("batch_id") != scan.get("batch_id"):
         errs.append("batch.json e scan.json sao de lotes diferentes")
     ids = [i.get("id") for i in batch["items"] if isinstance(i, dict)]
@@ -487,3 +502,153 @@ def cmd_check(a):
     if not errs:
         print(f"ok: {len(scan['items'])} itens, lote {scan['batch_id']}")
     return 1 if errs else 0
+
+
+# ---------------------------------------------------------------- the report
+
+DECISIONS = {"approved": "resolver", "rejected": "descartar", "maybe": "manter"}  # the panel's A, R and M
+SECTIONS = (("resolver", "Resolver"), ("descartar", "Descartar"), ("manter", "Manter"), ("sem_decisao", "Sem decisao"))
+
+
+def read_decisions(d, batch):
+    """The panel's decisions.json, or a SweepError. The file is whatever a board (or a hand) left there: unreadable,
+    not UTF-8, not JSON, nested too deep, a folder, the wrong shape, another batch or round, or not concluded."""
+    path = Path(d) / "decisions.json"
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, RecursionError):
+        raise SweepError("decisions.json ausente ou ilegivel: suba o painel e conclua antes do report")
+    if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
+        raise SweepError("decisions.json com formato invalido")
+    if state.get("batch_id") != batch.get("batch_id") or not is_int(state.get("round")) or state["round"] != batch.get("round", 1):
+        raise SweepError("decisions.json e de outro lote ou rodada: nao vou usar decisoes antigas")
+    if state.get("finished") is not True:
+        raise SweepError("o painel nao foi concluido (clique em Concluir antes do report)")
+    return state["items"]
+
+
+def group_items(scan, decisions):
+    groups = {key: [] for key, _title in SECTIONS}
+    for it in scan["items"]:
+        entry = decisions.get(it["id"])
+        entry = entry if isinstance(entry, dict) else {}
+        word = entry.get("decision")
+        key = DECISIONS.get(word, "sem_decisao") if isinstance(word, str) else "sem_decisao"
+        comment = entry.get("comment")
+        age = it.get("age_days")
+        groups[key].append({"id": it["id"], "todo_id": it["todo_id"], "file": it["file"], "line": it["line"],
+                            "marker": it["marker"], "text": it["text"], "age_days": age if is_int(age) else None,
+                            "comment": comment if isinstance(comment, str) else ""})
+    return groups
+
+
+def md_line(text):
+    """Text as one line of the report: a newline (a comment, or a file name git allows to hold one) could start a
+    heading or a list item of its own, and a backtick would open a code span."""
+    return shown(" ".join(text.split()))
+
+
+def report_markdown(scan, groups):
+    lines = [f"# Relatorio do todo-sweep - {md_line(scan['batch_id'])}", "",
+             "As linhas sao as do momento do scan. Nenhum arquivo foi editado por esta ferramenta.", ""]
+    for key, title in SECTIONS:
+        lines += [f"## {title} ({len(groups[key])})", ""]
+        for h in groups[key]:
+            age = f"{h['age_days']} dias" if h["age_days"] is not None else "sem idade"
+            lines.append(f"- `{md_line(h['file'])}:{h['line']}` {md_line(h['marker'])} {md_line(h['text']) or '(sem texto)'} ({age})"
+                         + (f" - {md_line(h['comment'])}" if md_line(h["comment"]) else ""))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def cmd_report(a):
+    batch, scan = load_dir(a.dir)
+    errs = scan_problems(batch, scan)
+    if errs:
+        raise SweepError("scan.json/batch.json invalidos: " + "; ".join(errs))
+    groups = group_items(scan, read_decisions(a.dir, batch))
+    root = Path(scan["repo"])
+    if not root.is_dir() or git(root, "rev-parse", "--git-dir")[0] != 0:
+        raise SweepError(f"o repositorio do scan nao existe mais: {root}")
+    decided = load_ledger(root)  # read first: a bad ledger (or a symlinked folder) stops the run before anything is written
+    ledger = ledger_path(root)
+    now_text = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    data = {"schema": SCHEMA, "tool": "todo-sweep", "batch_id": scan["batch_id"], "round": batch.get("round", 1),
+            "created": now_text, "counts": {key: len(groups[key]) for key, _t in SECTIONS}, **groups}
+    for key, word in (("descartar", "discard"), ("manter", "keep")):
+        for h in groups[key]:
+            decided[h["todo_id"]] = {"decision": word, "at": now_text, "file": h["file"], "text": h["text"]}
+    out = Path(a.dir)
+    made = make_folder(ledger.parent)
+    try:  # the two report files and the ledger go together: all of them, or (rolled back) none
+        write_all({out / "report.json": dump_json(data), out / "report.md": report_markdown(scan, groups),
+                   ledger: dump_json({"schema": SCHEMA, "decided": decided})})
+    except SweepError:
+        for folder in made:
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
+        raise
+    c = data["counts"]
+    print(f"REPORT: {c['resolver']} resolver, {c['descartar']} descartar, {c['manter']} manter, {c['sem_decisao']} sem decisao")
+    print(f"relatorio: {out / 'report.md'}")
+    print(f"{c['descartar'] + c['manter']} decisoes lembradas em {ledger}; o proximo scan oferece os proximos")
+    return 0
+
+
+# ---------------------------------------------------------------- the command line
+
+USAGE_WORDS = ((r"^argument ", "argumento "), (r"the following arguments are required: ", "faltam argumentos obrigatorios: "),
+               (r"unrecognized arguments: ", "argumentos desconhecidos: "), (r"expected one argument", "falta o valor"),
+               (r"invalid choice: ", "comando invalido: "))
+
+
+class Parser(argparse.ArgumentParser):
+    """Usage mistakes end the way every other failure does: an `erro:` line on stderr and exit code 2."""
+
+    def error(self, message):
+        for pattern, text in USAGE_WORDS:
+            message = re.sub(pattern, text, message)
+        self.print_usage(sys.stderr)
+        self.exit(2, f"erro: {message}\n")
+
+
+def count(text):
+    """A count as typed: a whole number, or the text itself, which check_counts refuses with its own message."""
+    try:
+        return int(text)
+    except ValueError:
+        return text
+
+
+def parser():
+    p = Parser(prog="todo_sweep.py", description="TODO e FIXME como cards num painel local; o resultado e um relatorio somente leitura.")
+    p.add_argument("--version", action="version", version=f"todo-sweep {VERSION}")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("scan", help="acha os TODO/FIXME e escreve batch.json + scan.json")
+    s.add_argument("repo", nargs="?", default=".")
+    s.add_argument("--limit", type=count, default=20, help="cards por lote (padrao 20)")
+    s.add_argument("--max-blame", type=count, default=300, help="quantos medir com git blame (padrao 300)")
+    s.add_argument("--out", help=f"pasta do lote (padrao: {WORK_DIR}/todo-sweep-AAAA-MM-DD)")
+    c = sub.add_parser("check", help="valida batch.json + scan.json")
+    c.add_argument("dir")
+    r = sub.add_parser("report", help="grava report.md e report.json a partir das decisoes")
+    r.add_argument("dir")
+    return p
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        return {"scan": cmd_scan, "check": cmd_check, "report": cmd_report}[args.cmd](args)
+    except SweepError as e:
+        print(f"erro: {e}", file=sys.stderr)
+        return 2
+    except (OSError, UnicodeError, RecursionError) as e:  # whatever a hostile folder or a full disk still throws
+        print(f"erro: falha inesperada ({type(e).__name__}: {e})", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

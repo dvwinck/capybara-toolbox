@@ -1,6 +1,6 @@
 # housekeeping
 
-Ferramentas pequenas que mantêm um repositório e uma sessão de trabalho honestos. Um plugin, várias skills, acrescentadas uma por versão: o **doc-truth** confere se o que os documentos de um repositório dizem existe de verdade, e o **handoff** escreve uma nota de fim de sessão com os fatos do git e as citações conferidos; outras virão. Tudo é somente leitura, sem rede, com a biblioteca padrão do Python e `git`.
+Ferramentas pequenas que mantêm um repositório e uma sessão de trabalho honestos. Um plugin, várias skills, acrescentadas uma por versão: o **doc-truth** confere se o que os documentos de um repositório dizem existe de verdade, o **handoff** escreve uma nota de fim de sessão com os fatos do git e as citações conferidos, e o **todo-sweep** faz a triagem de comentários `TODO` e `FIXME` num painel local. Tudo é somente leitura, sem rede, com a biblioteca padrão do Python e `git`.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (somente biblioteca padrão) e `git`.
 - **Idiomas:** as skills estão em português; a documentação está em inglês e este arquivo é a versão em português ([README.md](README.md)).
@@ -67,9 +67,24 @@ Os fatos do git (branch, ponta, commits a frente e atrás da base, arquivos modi
 
 Saída `0` quando toda citação está verificada (e, no `resume`, nada mudou), `1` caso contrário, `2` em erro; `--json` tem o campo `schema`. O `.handoff/` não é acrescentado ao `.gitignore` por você: as notas podem citar caminhos internos, então mantenha-as fora do git. Retomar só acontece quando você pede; não há hook nem oferta automática.
 
+### todo-sweep
+
+Comentários `TODO` e `FIXME` como cards num painel local, do mais antigo ao mais novo. Peça ao Claude *"faz a triagem dos TODOs"* ou chame `/housekeeping:todo-sweep`, ou rode você mesmo:
+
+```bash
+S=plugins/housekeeping/skills/todo-sweep/scripts
+python3 -I $S/todo_sweep.py scan                                  # acha, mede a idade e escreve .todo-sweep/<lote>/
+python3 -I $S/capy_board.py serve .todo-sweep/<lote> --open       # o painel: A Resolver, R Descartar, M Manter
+python3 -I $S/todo_sweep.py report .todo-sweep/<lote>             # report.md e report.json a partir das suas decisões
+```
+
+O `scan` procura, dentro dos comentários dos arquivos de texto rastreados (markdown, binários, arquivos maiores que 1 MB e links simbólicos ficam de fora), `TODO` e `FIXME` em maiúsculas, como palavra inteira: um comentário que começa a linha (`#`, `//`, `--`, `/*`, `*`, `;`) ou que segue código. É uma heurística: um `# TODO` dentro de uma string também conta. A idade vem do `git blame` da linha (horário do autor, ou seja, a idade da última mudança da linha: um reformat a zera); linhas não commitadas e o limite de um clone raso ficam sem idade e dizem o motivo, e o `--max-blame` (padrão 300) limita quantos são medidos. Os cards vão do mais antigo ao mais novo, 20 por lote (`--limit`).
+
+A decisão só é registrada: o `report` exige um painel concluído na rodada atual e grava um relatório somente leitura, e **nenhum arquivo-fonte é editado**. Descartar e Manter também ficam lembrados em `.todo-sweep/ledger.json` por um hash do arquivo e do texto (nunca da linha), então o próximo scan oferece os próximos TODOs e não os mesmos; Resolver não é lembrado, então esse TODO continua na lista até sumir do código. O painel é uma cópia gerada, byte a byte, do motor do ar-board (`capy_board.py`), e a skill continua instalável sozinha.
+
 ## Segurança
 
-Todas as ferramentas deste plugin deixam os seus arquivos rastreados em paz, nenhuma usa a rede e nenhuma roda um comando citado num documento. O handoff escreve só as suas notas, em `.handoff/` (mantenha fora do git: as notas podem citar caminhos internos, e um `.handoff` que seja link simbólico é recusado). Elas confiam na configuração do próprio git do repositório (o git a lê), então não as rode num repositório em que você não confia.
+Todas as ferramentas deste plugin deixam os seus arquivos rastreados em paz, nenhuma usa a rede e nenhuma roda um comando citado num documento. O handoff escreve só as suas notas, em `.handoff/`, e o todo-sweep só os seus lotes, relatórios e registro, em `.todo-sweep/` (mantenha as duas fora do git: podem citar caminhos internos e código, e uma pasta que seja link simbólico é recusada). Elas confiam na configuração do próprio git do repositório (o git a lê), então não as rode num repositório em que você não confia.
 
 ## Desenvolvimento
 

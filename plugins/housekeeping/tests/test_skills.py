@@ -5,9 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import REPO, ROOT, SKILLS, load_doc_truth
+from helpers import REPO, ROOT, SKILLS, load_doc_truth, load_engine, load_todo_sweep
 
 dt = load_doc_truth()
+ts = load_todo_sweep()
+engine = load_engine()
 
 
 def frontmatter(text):
@@ -39,6 +41,24 @@ class SkillFilesTest(unittest.TestCase):
             self.assertEqual(set(json.loads(cfg.read_text(encoding="utf-8"))), set(dt.CONFIG_KEYS))
             loaded = dt.load_config(tmp, str(cfg))
             self.assertIn("docs/plans/**", loaded["exclude"])
+
+
+    def test_the_todo_sweep_examples_agree_with_each_other_and_the_real_engine(self):
+        examples = SKILLS / "todo-sweep" / "examples"
+        batch = json.loads((examples / "batch.example.json").read_text(encoding="utf-8"))
+        scan = json.loads((examples / "scan.example.json").read_text(encoding="utf-8"))
+        self.assertEqual(engine.validate(batch), [])
+        self.assertEqual(ts.scan_problems(batch, scan), [])
+        self.assertEqual(batch["labels"], ts.LABELS)
+
+    def test_the_handoff_example_note_has_a_valid_data_block_and_its_own_citations(self):
+        from helpers import load_handoff
+        ho = load_handoff()
+        text = (SKILLS / "handoff" / "examples" / "note.example.md").read_text(encoding="utf-8")
+        self.assertIsNotNone(ho.parse_data(text))
+        self.assertEqual([c[0] for c in ho.find_citations(text)], ["file", "commit", "branch", "file", "branch", "file"])
+        for section in ho.SECTIONS:
+            self.assertIn(f"## {section}", text)
 
 
 class ManualInstallTest(unittest.TestCase):

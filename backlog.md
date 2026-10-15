@@ -37,7 +37,7 @@ Effort: S = days, M = about a week, L = several weeks. "Filler" means score 18 o
 | 12 | doc-truth | Built (housekeeping 0.1.0) | 3 | 8 | 24 | M | Static check that paths, commands and links in README/docs exist, plus EN/PT-BR section parity. |
 | 13 | guard-recipes | Rejected | 3 | 7 | 21 | M | Tested PreToolUse hook recipes and `.env`/key deny rules. |
 | 14 | safety-net | Approved | 4 | 5 | 20 | M | Git-ref snapshots before risky Bash, restored only on approval. |
-| 15 | todo-sweep | Approved (filler) | 2 | 9 | 18 | S | TODO/FIXME triage by area and age. |
+| 15 | todo-sweep | Built (housekeeping 0.3.0) | 2 | 9 | 18 | S | TODO/FIXME triage by area and age. |
 | 16 | calm-mode | Approved (filler) | 3 | 5 | 15 | S | A brief, kind "capybara voice" output style. |
 | 17 | loadout-board | Approved (filler) | 3 | 5 | 15 | M | What loads at session start, with its estimated cost; approved trims are applied. |
 | 18 | variant-board | Maybe (filler) | 3 | 5 | 15 | M | Pick among N UI variants rendered as image cards. |
@@ -77,7 +77,7 @@ Each approved skill is refined one at a time, with scope questions judged in an 
 | session-finder | Shelved 2026-10-14 (scope and implementation design kept; not built, reason: not useful enough) | [docs/refinements/session-finder.md](docs/refinements/session-finder.md) |
 | tidy-board | Built (0.1.0) | [docs/refinements/tidy-board.md](docs/refinements/tidy-board.md) · [prototype](docs/refinements/tidy-board-prototype.html) · [docs/plans/tidy-board.md](docs/plans/tidy-board.md) |
 | publish-check | Built (0.1.0) | [docs/refinements/publish-check.md](docs/refinements/publish-check.md) · [docs/plans/publish-check.md](docs/plans/publish-check.md) |
-| housekeeping (doc-truth, handoff, todo-sweep) | doc-truth and handoff built (housekeeping 0.2.0); todo-sweep refined, not built | [docs/refinements/housekeeping.md](docs/refinements/housekeeping.md) · [docs/plans/housekeeping.md](docs/plans/housekeeping.md) |
+| housekeeping (doc-truth, handoff, todo-sweep) | Built (housekeeping 0.3.0: doc-truth, handoff, todo-sweep) | [docs/refinements/housekeeping.md](docs/refinements/housekeeping.md) · [docs/plans/housekeeping.md](docs/plans/housekeeping.md) |
 
 ## Suggested build order
 

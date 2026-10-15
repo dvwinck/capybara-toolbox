@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import DOC_TRUTH, HANDOFF, ROOT, TODO_SWEEP, load_sync
+from helpers import CAPY, DOC_TRUTH, ENGINE, HANDOFF, ROOT, TODO_SWEEP, load_sync
 
 sync = load_sync()
 SCRIPT_FILES = [p for p in (DOC_TRUTH, HANDOFF, TODO_SWEEP) if p.exists()]
@@ -49,6 +49,9 @@ class RepositoryStateTest(unittest.TestCase):
                 self.assertTrue(head[1].startswith("# "), head[1])
                 self.assertIn("# SPDX-License-Identifier: MIT", head)
                 self.assertIn("# Copyright (c) 2026 Diogo Winck", head)
+
+    def test_the_vendored_engine_is_a_byte_copy_of_the_ar_board_engine(self):
+        self.assertEqual(CAPY.read_bytes(), ENGINE.read_bytes())
 
     def test_manifest_points_to_the_repository(self):
         manifest = json.loads((ROOT / sync.PLUGIN).read_text(encoding="utf-8"))
@@ -105,6 +108,47 @@ class SyncToolTest(unittest.TestCase):
     def test_a_skill_that_is_not_there_yet_is_simply_absent(self):
         self.assertEqual(sorted(sync.present(self.root)), ["doc-truth"])
         self.assertEqual(sync.inputs(self.root), [sync.SCRIPTS["doc-truth"], sync.PLUGIN, sync.CHANGELOG])
+
+
+class VendoredEngineTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = fake_plugin(tmp.name)
+        self.engine = (self.root / sync.ENGINE).resolve()
+        self.engine.parent.mkdir(parents=True)
+        self.engine.write_text("# engine one\n", encoding="utf-8")
+        todo = self.root / sync.SCRIPTS["todo-sweep"]
+        todo.parent.mkdir(parents=True)
+        todo.write_text('#!/usr/bin/env python3\n# todo-sweep 0.1.0 - x\nVERSION = "0.1.0"\n', encoding="utf-8")
+
+    def test_the_copy_is_created_and_then_in_sync(self):
+        rc, out = run_sync(["--check"], self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn(f"out of sync: {sync.CAPY}", out)
+        run_sync([], self.root)
+        self.assertEqual((self.root / sync.CAPY).read_bytes(), self.engine.read_bytes())
+        self.assertEqual(run_sync(["--check"], self.root), (0, ""))
+
+    def test_drift_in_the_copy_is_detected_and_repaired(self):
+        run_sync([], self.root)
+        (self.root / sync.CAPY).write_text("# tampered\n", encoding="utf-8")
+        rc, out = run_sync(["--check"], self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn(f"out of sync: {sync.CAPY}", out)
+        run_sync([], self.root)
+        self.assertEqual((self.root / sync.CAPY).read_bytes(), self.engine.read_bytes())
+
+    def test_a_new_engine_version_reaches_the_copy(self):
+        run_sync([], self.root)
+        self.engine.write_text("# engine two\n", encoding="utf-8")
+        self.assertEqual(run_sync(["--check"], self.root)[0], 1)
+        run_sync([], self.root)
+        self.assertEqual((self.root / sync.CAPY).read_text(encoding="utf-8"), "# engine two\n")
+
+    def test_without_todo_sweep_there_is_no_copy(self):
+        (self.root / sync.SCRIPTS["todo-sweep"]).unlink()
+        self.assertNotIn(sync.CAPY, sync.build(self.root))
 
 
 if __name__ == "__main__":
