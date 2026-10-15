@@ -5,7 +5,7 @@ description: Starts a local approve/reject web panel (AR board) where the user j
 
 # AR board (approval/rejection board)
 
-The agent proposes N things. This skill turns that into one fast, informed decision. You write the items as JSON and start a local web panel. The user approves (A), rejects (R) or marks "maybe" (M) item by item, and comments why. When the user says "done", you read the decisions straight from disk. The user never repeats anything. The comments are the most valuable output: they become reusable preferences.
+You propose N things. This skill turns that into one fast, informed decision. You write the items as JSON and start a local web panel. The user approves (A), rejects (R) or marks "maybe" (M) item by item, and comments why. When the user says "done" (the panel tells them to say "terminei"), you read the decisions straight from disk. The user never repeats anything. The comments are the most valuable output: they become reusable preferences.
 
 Reply to the user in the user's language. Write card content (titles, fields, risks, concepts) in that language too. The panel's own buttons and labels are in Portuguese.
 
@@ -69,7 +69,7 @@ Optional: run `python3 -I "$HOME/.claude/ar-board/ar_board.py" wait .ar-board/<b
 
 ### 4. Read the result
 
-When the user says "done" (or `wait` returns), run:
+When the user says "done" (the panel tells them to say "terminei") or `wait` returns, run:
 
 ```bash
 python3 -I "$HOME/.claude/ar-board/ar_board.py" summary .ar-board/<batch_id>
@@ -90,7 +90,7 @@ python3 -I "$HOME/.claude/ar-board/ar_board.py" summary .ar-board/<batch_id>
    - Regras inferidas (a confirmar): <regra curta, no imperativo>
    ```
 
-   Keep these Portuguese line prefixes exactly as written: they are the file format (`AAAA-MM-DD` is YYYY-MM-DD, `rodada N` is "round N", `Aprovado` is "Approved", `Rejeitado` is "Rejected", `Regras inferidas (a confirmar)` is "Inferred rules (to confirm)"). Write the text after each prefix in the user's language.
+   Keep the fixed Portuguese words exactly as written. They are the file format: the heading pattern `## AAAA-MM-DD · <batch_id> · rodada N` (`AAAA-MM-DD` is YYYY-MM-DD, `rodada N` is "round N") and the line prefixes `Aprovado` ("Approved"), `Rejeitado` ("Rejected"), `Regras inferidas (a confirmar)` ("Inferred rules (to confirm)") and `Motivo dito pelo usuário` ("Reason stated by the user"). Replace each `<...>` placeholder with text in the user's language: `<padrão>` is the pattern, `<trecho do comentário>` and `<trecho>` are an excerpt of the comment, `<regra curta, no imperativo>` is a short rule in the imperative. Write the pattern, the excerpt and the rule in the user's language.
 
    Always separate what the user **said** from what you **inferred**. Never invent a reason when there was no comment.
 
