@@ -7,7 +7,7 @@ description: Writes an end-of-session note so the next session can resume the wo
 
 Writes a note that lets a new session, without your memory, continue the work. Two things set it apart from a note written from memory. First, the **git facts** (branch, tip, commits ahead of the base, modified files, stashes, worktrees) come from git, not from you. Second, every **citation** you write (commit, branch, file) is checked before the note is saved, and a citation that does not exist is marked `[nao verificado]` ("not verified"), without deleting anything. It needs `python3` (stdlib) and `git`; it does not use the network.
 
-Reply to the user in the user's language. Write the content of the note in the user's language too. The headings, the citation prefixes and the `[nao verificado]` mark are fixed Portuguese text that the tool matches: keep them exactly as given below.
+Reply to the user in the user's language. Write the content of the note in the user's language too. Keep these fixed texts exactly as given below: the four section headings and the `[nao verificado]` mark are Portuguese without accents, and the citation prefixes `commit:`, `branch:` and `file:` are English. The tool relies on them.
 
 ## When to use
 
@@ -31,7 +31,7 @@ In the commands below, `<repositório>` is the repository path ("repository").
 
 ### 1. Write the draft
 
-Write the draft with **these four headings**, in this order, without accents (the tool warns if one is missing, and never invents the content):
+Write the draft with **these four headings**, in this order, without accents (the tool only warns if one is missing; it never adds or invents a section):
 
 ```markdown
 ## O que foi feito
@@ -50,7 +50,7 @@ Do not put the git state in the draft: the tool adds it at the top of the note (
 - `` `branch:nome` ``: a local or remote branch (`origin/main`); `nome` is the branch name ("name");
 - `` `file:caminho/do/arquivo.py:42` ``: a file relative to the repository root, with an optional line number; `caminho/do/arquivo.py` is "path/to/file.py".
 
-Cite only what you saw exist in this session. If the note has no typed citation, nothing is checked: tell the user so.
+Cite only what you have seen exist in this session. If the note has no typed citation, nothing is checked: tell the user so.
 
 ### 2. Save
 
@@ -61,7 +61,7 @@ python3 -I "${CLAUDE_SKILL_DIR}/scripts/handoff.py" write <repositório> --draft
 EOF
 ```
 
-The note goes to `.handoff/AAAA-MM-DD-hhmmss.md` (`AAAA-MM-DD` is YYYY-MM-DD; the file is private, one per run, and never overwrites another). Exit codes: `0` everything checked, `1` some citation not verified (the note was saved with the mark), `2` error. The tool prints `nota gravada em <path>` ("note saved to <path>"), then `<N> citacoes, <M> nao verificadas` ("N citations, M not verified"). Read that output. If there are unverified citations, say which ones and **propose a fix** (a new `write` creates another note). If it prints `aviso: falta a secao '<name>'` ("warning: section '<name>' is missing"), say which section.
+The note goes to `.handoff/AAAA-MM-DD-hhmmss.md` (`AAAA-MM-DD` is YYYY-MM-DD and `hhmmss` is the time; the file is private, one per run, and never overwrites another). Exit codes: `0` everything checked (every citation verified; a missing section is only a warning and does not change the exit code), `1` some citation not verified (the note was saved with the mark), `2` error. The tool prints `nota gravada em <path>` ("note saved to <path>"), then `<N> citacoes, <M> nao verificadas` ("N citations, M not verified"). Read that output. If there are unverified citations, say which ones and **propose a fix** (a new `write` creates another note). If it prints `aviso: falta a secao '<name>'` ("warning: section '<name>' is missing"), say which section.
 
 `collect` shows only the git facts. `verify <arquivo>` checks the citations of any note or draft without changing the file (`<arquivo>` is "file").
 

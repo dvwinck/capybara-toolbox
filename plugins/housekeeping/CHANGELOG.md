@@ -9,7 +9,8 @@ All notable changes to the **housekeeping** plugin are documented here. The form
 ## [0.3.1] - 2026-10-15
 
 ### Changed
-- The three skills (doc-truth, handoff, todo-sweep) were rewritten in English for LLM use; the examples were reviewed and keep the strings the scripts write (Portuguese). The panel and script output stay in Portuguese. Behaviour and scripts are unchanged apart from the version.
+- The three skills (doc-truth, handoff, todo-sweep) were rewritten in English for LLM use; the examples were reviewed and left unchanged: they mirror what the tools write. The panel and script output stay in Portuguese. Behaviour and scripts are unchanged apart from the version.
+- The vendored engine copy `capy_board.py` was refreshed to ar-board 1.3.1 (header and version only).
 
 ## [0.3.0] - 2026-10-14
 
