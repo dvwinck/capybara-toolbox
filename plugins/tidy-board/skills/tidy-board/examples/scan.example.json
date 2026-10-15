@@ -7,8 +7,8 @@
   "scanned_at": "2026-10-14T12:00:00+0000",
   "group": {"id": "G", "members": ["T01", "T02"]},
   "untouched": [
-    {"name": "main", "why": "branch base do repositorio"},
-    {"name": "feat/current", "why": "branch atual (em uso por este worktree)"}
+    {"name": "main", "why": "base branch of the repository"},
+    {"name": "feat/current", "why": "current branch (in use by this worktree)"}
   ],
   "items": [
     {"id": "T01", "kind": "branch", "name": "feat/login", "sha": "2222222222222222222222222222222222222222", "proof": "P1", "branch": null, "path": null, "drop_branch": false, "backup": false},

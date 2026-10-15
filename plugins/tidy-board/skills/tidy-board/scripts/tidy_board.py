@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# tidy-board 0.1.0 - cards para limpar branches, worktrees e stashes; o apply reconfere e apaga (somente stdlib e git)
+# tidy-board 0.1.1 - cards para limpar branches, worktrees e stashes; o apply reconfere e apaga (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -18,7 +18,7 @@ import time
 from collections import namedtuple
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 BACKUP = "refs/tidy-board/backup/"  # where apply keeps what could not be recreated from another ref

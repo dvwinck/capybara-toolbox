@@ -27,16 +27,16 @@ class SkillTest(unittest.TestCase):
     def test_the_skill_documents_every_subcommand_and_never_tells_the_agent_to_delete_by_hand(self):
         for sub in ("scan", "check", "apply", "restore", "--dry-run"):
             self.assertIn(sub, SKILL)
-        self.assertIn("Nunca** rode `git branch -D`", SKILL)
+        self.assertIn("Never** run `git branch -D`", SKILL)
 
     def test_the_skill_always_simulates_before_applying(self):
         # the panel's counters cannot show what the group card covers: only the dry run can
-        self.assertIn("**sempre** simule primeiro", SKILL)
+        self.assertIn("**always** simulate first", SKILL)
         self.assertLess(SKILL.index("--dry-run"), SKILL.rindex("tidy_board.py\" apply <pasta>"))
 
     def test_the_skill_says_restore_needs_a_backup_and_apply_asks_gh_again_for_p2(self):
-        self.assertIn("**para itens com backup**", SKILL)
-        self.assertIn("P2 é reconsultado no `gh`", SKILL)
+        self.assertIn("**only for items with a backup**", SKILL)
+        self.assertIn("P2 is checked again with `gh`", SKILL)
 
     def test_the_skill_prepares_the_user_for_the_conclude_dialog(self):
         self.assertIn("Concluir mesmo assim?", SKILL)
@@ -44,7 +44,7 @@ class SkillTest(unittest.TestCase):
     def test_the_skill_names_the_proof_levels_and_what_is_never_offered(self):
         for level in ("P1", "P2", "P3", "P4"):
             self.assertIn(f"**{level}**", SKILL)
-        self.assertIn("Nunca são oferecidos", SKILL)
+        self.assertIn("Never offered", SKILL)
 
     def test_every_script_option_the_skill_mentions_exists(self):
         parser_help = tb.parser().format_help()

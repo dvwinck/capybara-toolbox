@@ -90,7 +90,7 @@ class SyncToolTest(unittest.TestCase):
 
     def test_version_bump_propagates_to_the_manifest_and_requires_changelog(self):
         script = self.root / sync.SCRIPT
-        script.write_text(script.read_text(encoding="utf-8").replace('VERSION = "0.1.0"', 'VERSION = "9.9.9"'), encoding="utf-8")
+        script.write_text(script.read_text(encoding="utf-8").replace('VERSION = "0.1.1"', 'VERSION = "9.9.9"'), encoding="utf-8")
         rc, out = run_sync([], self.root)
         self.assertEqual(rc, 1)
         self.assertIn("problem:", out)
@@ -99,10 +99,10 @@ class SyncToolTest(unittest.TestCase):
 
     def test_stale_header_comment_is_reported(self):
         script = self.root / sync.SCRIPT
-        script.write_text(script.read_text(encoding="utf-8").replace("# tidy-board 0.1.0 - ", "# tidy-board 0.0.1 - "), encoding="utf-8")
+        script.write_text(script.read_text(encoding="utf-8").replace("# tidy-board 0.1.1 - ", "# tidy-board 0.0.1 - "), encoding="utf-8")
         rc, out = run_sync(["--check"], self.root)
         self.assertEqual(rc, 1)
-        self.assertIn("header comment must say 'tidy-board 0.1.0'", out)
+        self.assertIn("header comment must say 'tidy-board 0.1.1'", out)
 
 
 class ManualInstallTest(unittest.TestCase):
