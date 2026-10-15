@@ -221,7 +221,8 @@ def mark_unverified(text, results):
 
 
 SECTIONS = ("O que foi feito", "Decisoes e por que", "Proximos passos", "O que falhou ou travou")
-DATA_BLOCK = re.compile(r"<!-- handoff:data (\{.*?\}) -->")
+DATA_OPEN = "<!-- handoff:data "
+DATA_CLOSE = "} -->"
 NOTE_NAME = re.compile(r"(\d{4}-\d{2}-\d{2}-\d{6})(?:-(\d+))?\.md")
 SHOWN = 8  # file names listed per group in the git section
 NOW = time.localtime  # a function: the tests replace it
@@ -249,12 +250,33 @@ def valid_facts(facts):
     return all(isinstance(facts.get(k), list) and all(isinstance(x, str) for x in facts[k]) for k in ("modified", "untracked"))
 
 
+def last_data_block(text):
+    """The last data block of a note as (start, end, json text), or None, found in linear time. A block is
+    `<!-- handoff:data {` up to the first `} -->` on the same line. A regex with a lazy run is quadratic on a line
+    that repeats the opener (a planted note can hold a megabyte of it), so the text is walked backwards by opener:
+    an opener with no closer after it on its line is skipped together with every earlier opener of that line (their
+    closer would also be after it), so each line is looked at once."""
+    opener = DATA_OPEN + "{"
+    limit = len(text)
+    while True:
+        i = text.rfind(opener, 0, limit)
+        if i < 0:
+            return None
+        line_end = text.find("\n", i)
+        if line_end < 0:
+            line_end = len(text)
+        j = text.find(DATA_CLOSE, i + len(opener), line_end)
+        if j >= 0:
+            return i, j + len(DATA_CLOSE), text[i + len(DATA_OPEN):j + 1]
+        limit = text.rfind("\n", 0, i) + 1  # the start of this line: its earlier openers fail too, so go to the line before
+
+
 def parse_data(text):
-    found = DATA_BLOCK.findall(text)
+    found = last_data_block(text)
     if not found:
         return None
     try:
-        data = json.loads(found[-1])
+        data = json.loads(found[2])
     except (ValueError, RecursionError):  # not JSON, or nested so deep that reading it overflows: no usable block
         return None
     return data if isinstance(data, dict) and valid_facts(data.get("facts")) else None
@@ -371,9 +393,9 @@ def tool_spans(text):
             part = GIT_PART.match(text, title.end())
             end = part.end() if part else title.end()
         spans.append((0, end))
-    blocks = list(DATA_BLOCK.finditer(text))
-    if blocks:
-        spans.append((blocks[-1].start(), blocks[-1].end()))
+    block = last_data_block(text)
+    if block:
+        spans.append((block[0], block[1]))
     return spans
 
 

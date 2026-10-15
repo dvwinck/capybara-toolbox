@@ -317,6 +317,67 @@ class UnreadableNoteTest(NoteCase):
         self.assertIn("nao consegui ler", str(ctx.exception))
 
 
+class HostileDataBlockTest(NoteCase):
+    """A note is planted data: a line of repeated openers must not make resume, verify or the citation check slow."""
+    BOUND = 3.0  # the lazy regex took 9 s for 150 KB, 36 s for 300 KB and minutes for a megabyte; the scan takes well under a second
+    OPEN = "<!-- handoff:data {"
+
+    def timed(self, fn, *args):
+        start = time.monotonic()
+        result = fn(*args)
+        return result, time.monotonic() - start
+
+    def plant(self, text):
+        folder = self.repo / ".handoff"
+        folder.mkdir(exist_ok=True)
+        (folder / "9999-12-31-235959.md").write_text(text, encoding="utf-8")
+
+    def real_block(self):
+        return ho.data_block({"schema": 1, "facts": ho.collect(self.repo), "citations": []})
+
+    def test_a_long_line_of_unclosed_openers_is_fast_for_every_reader(self):
+        text = "# n\n`file:src/a.py`\n" + self.OPEN * 12000 + "\n"  # about 230 KB (20 s with the lazy regex)
+        for name, fn in [("parse_data", ho.parse_data), ("tool_spans", ho.tool_spans), ("check_note", lambda t: ho.check_note(self.repo, t))]:
+            with self.subTest(name):
+                _result, seconds = self.timed(fn, text)
+                self.assertLess(seconds, self.BOUND, f"{name}: {seconds:.2f}s")
+        self.assertIsNone(ho.parse_data(text))
+
+    def test_a_planted_newest_note_of_openers_does_not_stall_resume(self):
+        self.plant("# n\n`file:src/a.py`\n" + self.OPEN * 12000 + "\n")
+        res, seconds = self.timed(ho.resume, self.repo)
+        self.assertLess(seconds, self.BOUND, f"resume: {seconds:.2f}s")
+        self.assertFalse(res["has_data"])
+        self.assertTrue(res["citations"][0]["verified"])
+
+    def test_a_long_run_of_openers_followed_by_a_real_block_still_finds_the_block(self):
+        for opener in ("<!-- handoff:data ", self.OPEN):
+            with self.subTest(opener=opener):
+                text = "# n\n`file:src/a.py`\n" + opener * 12000 + self.real_block() + "\n"
+                data, seconds = self.timed(ho.parse_data, text)
+                self.assertLess(seconds, self.BOUND, f"{seconds:.2f}s")
+                self.assertEqual(data["facts"]["branch"], "main")
+                _spans, seconds = self.timed(ho.tool_spans, text)
+                self.assertLess(seconds, self.BOUND, f"{seconds:.2f}s")
+
+    def test_many_closed_blocks_on_one_line_are_fast_and_the_last_one_wins(self):
+        text = "# n\n" + "<!-- handoff:data {} -->" * 40000 + self.real_block() + "\n"
+        data, seconds = self.timed(ho.parse_data, text)
+        self.assertLess(seconds, self.BOUND, f"{seconds:.2f}s")
+        self.assertEqual(data["facts"]["branch"], "main")
+
+    def test_the_last_block_on_a_line_of_its_own_is_found_as_before(self):
+        a, b = '{"x":1}', '{"y":2}'
+        text = f"t\n<!-- handoff:data {a} -->\nmid\n<!-- handoff:data {b} --> tail\n<!-- handoff:data {{ unclosed\n"
+        start, end, body = ho.last_data_block(text)
+        self.assertEqual((body, text[start:end]), (b, f"<!-- handoff:data {b} -->"))
+        # a closer on the next line does not close an opener, and the block must hold at least `{}`
+        self.assertIsNone(ho.last_data_block("<!-- handoff:data {\n} -->\n"))
+        self.assertIsNone(ho.last_data_block("no block here\n"))
+        self.assertEqual(ho.last_data_block("<!-- handoff:data {} -->")[2], "{}")
+        self.assertEqual(ho.last_data_block("<!-- handoff:data {} -->\r\n")[2], "{}")
+
+
 class DeepDataBlockTest(NoteCase):
     def plant(self, body):
         folder = self.repo / ".handoff"
