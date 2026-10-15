@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Keeps the housekeeping plugin consistent from one source of truth: the VERSION of its scripts.
+
+The plugin has one version and every script (doc_truth.py, handoff.py, todo_sweep.py) carries it as `VERSION`;
+a release bumps them together. This tool propagates that version into .claude-plugin/plugin.json and reports
+what it cannot fix by itself (scripts that disagree, a stale header comment, a missing CHANGELOG entry).
+
+Usage (from the plugin directory or anywhere):
+  python3 tools/sync.py           # write whatever is out of sync
+  python3 tools/sync.py --check   # only verify (exit 1 if anything differs or is wrong)
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS = {  # skill name -> script; only the ones that exist are part of the plugin yet
+    "doc-truth": "skills/doc-truth/scripts/doc_truth.py",
+    "handoff": "skills/handoff/scripts/handoff.py",
+    "todo-sweep": "skills/todo-sweep/scripts/todo_sweep.py",
+}
+PLUGIN = ".claude-plugin/plugin.json"
+CHANGELOG = "CHANGELOG.md"
+
+
+def read(root, rel):
+    return (root / rel).read_text(encoding="utf-8")
+
+
+def dump_json(obj):
+    return json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+
+
+def script_version(script):
+    return re.search(r'^VERSION = "(\d+\.\d+\.\d+)"', script, re.M).group(1)
+
+
+def present(root):
+    return {name: rel for name, rel in SCRIPTS.items() if (root / rel).exists()}
+
+
+def versions(root):
+    return {name: script_version(read(root, rel)) for name, rel in present(root).items()}
+
+
+def plugin_version(root):
+    return max(versions(root).values(), key=lambda v: tuple(int(n) for n in v.split(".")))
+
+
+def inputs(root):
+    return list(present(root).values()) + [PLUGIN, CHANGELOG]
+
+
+def build(root):
+    """Return {relative path: expected content} for every generated file."""
+    plugin = json.loads(read(root, PLUGIN))
+    plugin["version"] = plugin_version(root)
+    return {PLUGIN: dump_json(plugin)}
+
+
+def problems(root):
+    """Things the tool cannot fix by itself; each one is a message."""
+    out = []
+    found = versions(root)
+    if len(set(found.values())) > 1:
+        out.append("the scripts disagree on VERSION: " + ", ".join(f"{n} {v}" for n, v in sorted(found.items())))
+    version = plugin_version(root)
+    for name, rel in present(root).items():
+        if not re.search(rf"^# {re.escape(name)} {re.escape(version)} - ", read(root, rel), re.M):
+            out.append(f"{rel}: header comment must say '{name} {version}' (the plugin version is {version})")
+    if not re.search(rf"^## \[{re.escape(version)}\]", read(root, CHANGELOG), re.M):
+        out.append(f"{CHANGELOG}: no '## [{version}]' entry")
+    return out
+
+
+def main(argv, root=ROOT):
+    files = build(root)
+    found = problems(root)
+    stale = [rel for rel, text in files.items() if not (root / rel).exists() or read(root, rel) != text]
+    if "--check" in argv:
+        for rel in stale:
+            print(f"out of sync: {rel}")
+        for msg in found:
+            print(f"problem: {msg}")
+        return 1 if (stale or found) else 0
+    for rel in stale:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(files[rel], encoding="utf-8")
+        print(f"updated: {rel}")
+    for msg in found:
+        print(f"problem: {msg}")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
