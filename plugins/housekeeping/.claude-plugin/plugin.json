@@ -1,0 +1,18 @@
+{
+  "name": "housekeeping",
+  "description": "Small read-only tools that keep a repository and a work session honest: doc-truth checks that what the documents say exists, handoff writes an end-of-session note whose citations are verified, todo-sweep triages TODO and FIXME comments on a local board. Python standard library and git only.",
+  "version": "0.3.0",
+  "author": {
+    "name": "Diogo Winck",
+    "email": "diogo.winck@gmail.com"
+  },
+  "homepage": "https://github.com/dvwinck/capybara-toolbox",
+  "repository": "https://github.com/dvwinck/capybara-toolbox",
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "handoff",
+    "todo",
+    "skill"
+  ]
+}

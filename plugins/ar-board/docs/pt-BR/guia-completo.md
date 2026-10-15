@@ -587,7 +587,7 @@ plugins/ar-board/
     └── *.png                         # imagens opcionais dos cards
 ```
 
-`tools/sync.py` mantém o plugin coerente a partir da `VERSION` do script: propaga a versão para o `plugin.json`, gera uma variante de arquivo único por skill em `dist/` e mantém `skills/question-board/scripts/ar_board.py` como cópia gerada, byte a byte, do motor (o `--check` falha se divergirem).
+`tools/sync.py` mantém o plugin coerente a partir da `VERSION` do script: propaga a versão para o `plugin.json`, gera uma variante de arquivo único por skill em `dist/` e mantém `plugins/ar-board/skills/question-board/scripts/ar_board.py` como cópia gerada, byte a byte, do motor (o `--check` falha se divergirem).
 
 ## 24. Cartões de pergunta (question-board)
 

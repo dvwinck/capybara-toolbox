@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "tool": "todo-sweep",
+  "version": "0.3.0",
+  "batch_id": "todo-sweep-2026-10-14",
+  "repo": "/path/to/example",
+  "created": "2026-10-14T09:05:07-0300",
+  "round": 1,
+  "totals": {
+    "found": 3,
+    "decided_before": 0,
+    "new": 3,
+    "unaged": 0,
+    "shown": 3,
+    "shallow": false,
+    "max_blame": 300
+  },
+  "items": [
+    {
+      "id": "T01",
+      "todo_id": "d2d974878680fc32",
+      "file": "src/export.py",
+      "line": 2,
+      "marker": "TODO",
+      "text": "stream the rows instead of building a list",
+      "age_days": 412,
+      "commit": "1a2b3c4",
+      "age_reason": ""
+    },
+    {
+      "id": "T02",
+      "todo_id": "3434a7aa9ee46c5b",
+      "file": "src/report.py",
+      "line": 1,
+      "marker": "FIXME",
+      "text": "wrong for negative amounts",
+      "age_days": 95,
+      "commit": "5d6e7f8",
+      "age_reason": ""
+    },
+    {
+      "id": "T03",
+      "todo_id": "4fe20b8d1b72976c",
+      "file": "scripts/deploy.sh",
+      "line": 1,
+      "marker": "TODO",
+      "text": "ask before restarting the service",
+      "age_days": 8,
+      "commit": "9a0b1c2",
+      "age_reason": ""
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "batch_id": "todo-sweep-2026-10-14",
+  "title": "TODO e FIXME: 3 de 3",
+  "subtitle": "do mais antigo ao mais novo; Resolver, Descartar ou Manter, e o resultado e so um relatorio",
+  "round": 1,
+  "labels": {
+    "approve": {
+      "text": "Resolver",
+      "tone": "safe"
+    },
+    "reject": {
+      "text": "Descartar",
+      "tone": "danger"
+    },
+    "maybe": {
+      "text": "Manter",
+      "tone": "caution"
+    }
+  },
+  "items": [
+    {
+      "id": "T01",
+      "tag": "TODO - src",
+      "title": "TODO em src/export.py:2: stream the rows instead of building a list",
+      "fields": [
+        {
+          "label": "Onde",
+          "text": "`src/export.py:2`"
+        },
+        {
+          "label": "Texto",
+          "text": "stream the rows instead of building a list"
+        },
+        {
+          "label": "Idade",
+          "text": "412 dias (a linha mudou pela ultima vez em 2025-08-28, commit 1a2b3c4)"
+        },
+        {
+          "label": "Trecho",
+          "text": "   1  def export(rows):\n   2      # TODO: stream the rows instead of building a list\n   3      return list(rows)"
+        }
+      ],
+      "meta": {
+        "Area": "src",
+        "Idade": "412 dias"
+      }
+    },
+    {
+      "id": "T02",
+      "tag": "FIXME - src",
+      "title": "FIXME em src/report.py:1: wrong for negative amounts",
+      "fields": [
+        {
+          "label": "Onde",
+          "text": "`src/report.py:1`"
+        },
+        {
+          "label": "Texto",
+          "text": "wrong for negative amounts"
+        },
+        {
+          "label": "Idade",
+          "text": "95 dias (a linha mudou pela ultima vez em 2026-07-11, commit 5d6e7f8)"
+        },
+        {
+          "label": "Trecho",
+          "text": "   1  total = 0  # FIXME: wrong for negative amounts"
+        }
+      ],
+      "meta": {
+        "Area": "src",
+        "Idade": "95 dias"
+      }
+    },
+    {
+      "id": "T03",
+      "tag": "TODO - scripts",
+      "title": "TODO em scripts/deploy.sh:1: ask before restarting the service",
+      "fields": [
+        {
+          "label": "Onde",
+          "text": "`scripts/deploy.sh:1`"
+        },
+        {
+          "label": "Texto",
+          "text": "ask before restarting the service"
+        },
+        {
+          "label": "Idade",
+          "text": "8 dias (a linha mudou pela ultima vez em 2026-10-06, commit 9a0b1c2)"
+        },
+        {
+          "label": "Trecho",
+          "text": "   1  # TODO: ask before restarting the service\n   2  systemctl restart app"
+        }
+      ],
+      "meta": {
+        "Area": "scripts",
+        "Idade": "8 dias"
+      }
+    }
+  ]
+}
