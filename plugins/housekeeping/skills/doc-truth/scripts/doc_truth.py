@@ -357,3 +357,164 @@ def check_links(ctx, document):
                 value = f"{cand}#{fragment}"
                 out.append(finding("anchor", document, line, value, f"nao ha titulo para a ancora: {value}"))
     return out
+
+
+MANIFEST = re.compile(r"plugins/[^/]+/\.claude-plugin/plugin\.json")
+CATALOG = ".claude-plugin/marketplace.json"
+VERSION_IN_TEXT = re.compile(r"(?<![\d.])v?(\d+\.\d+\.\d+)(?!\.?\d)")
+VERSION_DOCS = (re.compile(r"README(?:\.pt-BR)?\.md"), re.compile(r"plugins/[^/]+/README(?:\.pt-BR)?\.md"),
+                re.compile(r"plugins/[^/]+/skills/[^/]+/SKILL\.md"))
+ROOT_READMES = ("README.md", "README.pt-BR.md")
+
+
+def read_json(ctx, rel):
+    text = read_text(ctx.root, rel)
+    try:
+        data = json.loads(text) if text is not None else None
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def plugin_versions(ctx):
+    """{plugin name: version} from every tracked plugin.json."""
+    out = {}
+    for rel in ctx.files:
+        if MANIFEST.fullmatch(rel):
+            data = read_json(ctx, rel)
+            if data and isinstance(data.get("name"), str) and isinstance(data.get("version"), str):
+                out[data["name"]] = data["version"]
+    return out
+
+
+def check_parity(ctx, documents):
+    """X.md and X.pt-BR.md must have the same sequence of heading levels (the text is translated, so it is not
+    compared). A README.md with no README.pt-BR.md next to it is a finding; any other document without a pair is not."""
+    present = set(documents)
+    out = []
+    for rel in sorted(present):
+        if rel.endswith(".pt-BR.md"):
+            continue
+        pt = rel[:-3] + ".pt-BR.md"
+        if pt not in ctx.files:
+            if posixpath.basename(rel) == "README.md":
+                out.append(finding("parity", rel, 1, "falta " + posixpath.basename(pt),
+                                   f"{rel} nao tem a versao em portugues ({posixpath.basename(pt)})"))
+            continue
+        if pt not in present:
+            continue
+        en, br = ctx.doc(rel), ctx.doc(pt)
+        a, b = [h[0] for h in en.headings], [h[0] for h in br.headings]
+        if a == b:
+            continue
+        i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
+        where = f"o titulo {i + 1} difere" if i < min(len(a), len(b)) else f"{len(a)} titulos contra {len(b)}"
+        out.append(finding("parity", rel, 1, ",".join(map(str, a)) + "|" + ",".join(map(str, b)),
+                           f"os niveis de titulo de {rel} e {pt} diferem ({where})"))
+    return out
+
+
+def check_versions(ctx, documents):
+    """A version X.Y.Z written on the same line as a plugin's name must be that plugin's version (or the version of
+    another plugin named on the line). Only the root README, plugin READMEs and SKILL.md are checked."""
+    versions = plugin_versions(ctx)
+    out = []
+    for rel in documents:
+        if not any(rx.fullmatch(rel) for rx in VERSION_DOCS):
+            continue
+        for line, text in ctx.doc(rel).prose:
+            named = [n for n in versions if re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", text)]
+            if not named:
+                continue
+            allowed = {versions[n] for n in named}
+            for v in VERSION_IN_TEXT.findall(text):
+                if v not in allowed:
+                    value = "/".join(named) + " " + v
+                    expected = ", ".join(f"{n} {versions[n]}" for n in named)
+                    out.append(finding("version", rel, line, value, f"a versao {v} nao bate com o manifesto ({expected})"))
+    return out
+
+
+def check_plugin_lists(ctx, documents):
+    """Every plugin of the catalog must be linked from the root README and its Portuguese counterpart."""
+    catalog = read_json(ctx, CATALOG) if CATALOG in ctx.files else None
+    names = [p["name"] for p in (catalog or {}).get("plugins", []) if isinstance(p, dict) and isinstance(p.get("name"), str)]
+    out = []
+    for rel in ROOT_READMES:
+        if rel not in documents:
+            continue
+        targets = [posixpath.normpath(t.partition("#")[0]) for _, t in ctx.doc(rel).links if t.partition("#")[0]]
+        for name in names:
+            if not any(t == f"plugins/{name}" or t.startswith(f"plugins/{name}/") for t in targets):
+                out.append(finding("plugins", rel, 1, name, f"o catalogo tem o plugin {name}, mas {rel} nao tem link para plugins/{name}"))
+    return out
+
+
+CATEGORIES = ("path", "link", "anchor", "parity", "version", "plugins")
+
+
+def fingerprint(f):
+    """Category, document and value; never the line, so an edit above an accepted finding does not revive it."""
+    return hashlib.sha256(f"{f['category']}|{f['document']}|{f['value']}".encode("utf-8")).hexdigest()[:16]
+
+
+def run(root, config):
+    files = tracked_files(root)
+    ctx = Context(root, files, config)
+    exclude = compile_globs(config["exclude"])
+    documents = [f for f in files if f.endswith(".md") and not matches_any(exclude, f) and ctx.doc(f) is not None]
+    found = []
+    for doc in documents:
+        found += check_paths(ctx, doc) + check_links(ctx, doc)
+    found += check_parity(ctx, documents) + check_versions(ctx, documents) + check_plugin_lists(ctx, documents)
+    for f in found:
+        f["fingerprint"] = fingerprint(f)
+    allow = set(config["allow"])
+    kept = [f for f in found if f["fingerprint"] not in allow]
+    kept.sort(key=lambda f: (CATEGORIES.index(f["category"]), f["document"], f["line"], f["value"]))
+    return {"schema": SCHEMA, "tool": "doc-truth", "version": VERSION, "root": str(root), "documents": len(documents),
+            "findings": kept, "accepted": len(found) - len(kept)}
+
+
+def report(result):
+    lines = [f"doc-truth {result['version']}: {result['documents']} documentos conferidos em {result['root']}"]
+    kept = result["findings"]
+    lines.append(f"{len(kept)} achados" if kept else "limpo: nenhum achado")
+    for cat in CATEGORIES:
+        group = [f for f in kept if f["category"] == cat]
+        if not group:
+            continue
+        lines += ["", f"[{cat}] {len(group)}"]
+        for f in group:
+            lines += [f"  {f['document']}:{f['line']}  {f['value']}", f"    {f['message']}", f"    fingerprint: {f['fingerprint']}"]
+    if result["accepted"]:
+        lines.append(f"({result['accepted']} aceitos pela lista allow)")
+    if kept:
+        lines += ["", f'Para aceitar um achado, ponha o fingerprint em "allow" em {CONFIG_NAME}.']
+    return "\n".join(lines)
+
+
+def parser():
+    p = argparse.ArgumentParser(prog="doc_truth.py", description="Confere se o que os documentos de um repositorio dizem existe (somente leitura).")
+    p.add_argument("path", nargs="?", default=".", help="o repositorio (padrao: a pasta atual)")
+    p.add_argument("--json", action="store_true", help="saida em JSON (campo schema)")
+    p.add_argument("--config", help=f"arquivo de configuracao (padrao: {CONFIG_NAME} na raiz do repositorio)")
+    p.add_argument("--version", action="version", version=f"doc-truth {VERSION}")
+    return p
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        root = repo_root(args.path)
+        config = load_config(root, args.config)
+        result = run(root, config)
+    except DocTruthError as e:
+        print(f"erro: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, indent=2, ensure_ascii=False) if args.json else report(result))
+    return 1 if result["findings"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
