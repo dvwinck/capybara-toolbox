@@ -120,9 +120,9 @@ class SkillTest(unittest.TestCase):
 
     def test_skill_is_read_only_and_never_blocks(self):
         text = self.SKILL.read_text(encoding="utf-8")
-        self.assertIn("somente leitura", text.lower())
-        self.assertIn("Nunca reescreva histórico", text)
-        self.assertIn("nunca bloqueie", text.lower())
+        self.assertIn("read-only", text.lower())
+        self.assertIn("Never rewrite history", text)
+        self.assertIn("never block", text.lower())
 
 
 class ExamplesTest(unittest.TestCase):

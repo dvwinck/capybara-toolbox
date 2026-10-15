@@ -45,7 +45,7 @@
         "skill"
       ],
       "category": "security",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Read-only scan of a git repository (working tree and full history) for session links, home paths, e-mail addresses and internal names before it goes public. Python standard library and git only.",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"
