@@ -46,7 +46,7 @@ A configuração é o `.doc-truth.json` na raiz do repositório (chave desconhec
 ```
 
 - `exclude`: documentos que não são conferidos (históricos, gerados). Continuam valendo como alvo de link.
-- `ignore_paths`: caminhos que não existem na árvore de propósito (criados em execução, ou escritos como abreviação). Um padrão sem `/` vale para o nome em qualquer pasta; com `/` no meio, parte da raiz; `**` atravessa pastas e `*` não.
+- `ignore_paths`: caminhos que não existem na árvore de propósito (criados em execução, ou escritos como abreviação). Um padrão sem `/` vale para o nome em qualquer pasta; com `/` no meio, parte da raiz, e o mesmo vale para um com `/` no início, que diz "só esta abreviação" (`/SKILL.md` cala uma citação escrita `SKILL.md`, nunca uma escrita com uma pasta na frente que não existe); `**` atravessa pastas e `*` não.
 - `allow`: fingerprints de achados aceitos. O fingerprint é um hash da categoria, do documento e do valor, nunca da linha: uma edição acima de um achado aceito não o traz de volta.
 
 É uma heurística: um caminho em texto corrido que é só um exemplo será reportado, e `ignore_paths` ou `allow` é como você diz isso.

@@ -109,12 +109,17 @@ def load_config(root, explicit=None):
 def glob_regex(pattern):
     """`*` is a name part (never crosses `/`), `**` is any depth. A pattern with no `/` except a trailing one
     matches a name anywhere (like .gitignore); a pattern with a `/` inside is anchored at the repository root;
-    a trailing `/` means the folder itself and everything under it."""
+    a leading `/` also anchors it (and is not part of the path), so `/SKILL.md` is the bare name `SKILL.md` as
+    written and the root file, never `plugins/x/SKILL.md`; a trailing `/` means the folder itself and everything
+    under it."""
     pat = pattern.strip()
     folder = pat.endswith("/")
     if folder:
         pat = pat[:-1]
-    anchored = "/" in pat
+    rooted = pat.startswith("/")
+    if rooted:
+        pat = pat[1:]
+    anchored = rooted or "/" in pat
     out, i = "", 0
     while i < len(pat):
         if pat.startswith("**/", i):

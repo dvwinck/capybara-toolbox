@@ -46,7 +46,7 @@ Configuration is `.doc-truth.json` at the repository root (an unknown key is an 
 ```
 
 - `exclude`: documents that are not checked (historical, generated). They stay valid link targets.
-- `ignore_paths`: paths that do not exist in the tree on purpose (created at run time, or written as shorthand). A pattern with no `/` matches a name in any folder; with a `/` inside it starts at the repository root; `**` crosses folders and `*` does not.
+- `ignore_paths`: paths that do not exist in the tree on purpose (created at run time, or written as shorthand). A pattern with no `/` matches a name in any folder; with a `/` inside it starts at the repository root, and so does one with a leading `/`, which says "only this shorthand" (`/SKILL.md` silences a citation written `SKILL.md`, never one written with a folder in front that does not exist); `**` crosses folders and `*` does not.
 - `allow`: fingerprints of accepted findings. A fingerprint is a hash of the category, the document and the value, never the line, so an edit above an accepted finding does not bring it back.
 
 It is a heuristic: a path in prose that is only an example will be reported, and `ignore_paths` or `allow` is how you say so.

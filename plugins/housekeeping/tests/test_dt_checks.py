@@ -51,6 +51,19 @@ class PathCheckTest(CheckCase):
                          {"ignore_paths": [".ar-board/", "decisions.json"]})
         self.assertEqual(self.values(dt.check_paths(ctx, "a.md")), ["src/missing.py"])
 
+    def test_an_anchored_entry_silences_the_bare_shorthand_but_not_a_broken_full_path(self):
+        text = ("`SKILL.md` and `./SKILL.md`\n`plugins/nope/skills/x/SKILL.md` and `skills/x/SKILL.md`\n"
+                "`plugins/nope/.claude-plugin/plugin.json` and `plugin.json` and `batch.json` and `x/batch.json`\n")
+        files = {"README.md": text, "plugins/y/README.md": text.replace("`./SKILL.md`", "`SKILL.md`")}
+        ctx = self.build(files, {"ignore_paths": ["/SKILL.md", "/plugin.json", "batch.json"]})
+        expected = ["plugins/nope/.claude-plugin/plugin.json", "plugins/nope/skills/x/SKILL.md", "skills/x/SKILL.md"]
+        self.assertEqual(self.values(dt.check_paths(ctx, "README.md")), expected)
+        self.assertEqual(self.values(dt.check_paths(ctx, "plugins/y/README.md")), expected)
+
+    def test_a_bare_entry_still_silences_that_name_in_any_folder(self):
+        ctx = self.build({"a.md": "`SKILL.md` and `plugins/nope/skills/x/SKILL.md`\n"}, {"ignore_paths": ["SKILL.md"]})
+        self.assertEqual(dt.check_paths(ctx, "a.md"), [])
+
     def test_placeholders_urls_and_absolute_paths_are_not_checked(self):
         ctx = self.build({"a.md": "`<name>/x.md` `PATH` `https://x.org/a.md` `/etc/hosts` `docs/*.md` `$HOME/a.md`\n"})
         self.assertEqual(dt.check_paths(ctx, "a.md"), [])

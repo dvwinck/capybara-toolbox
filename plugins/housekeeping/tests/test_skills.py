@@ -87,6 +87,19 @@ class RepositoryDocsTest(unittest.TestCase):
         self.assertEqual(result["findings"], [], report)
         self.assertGreater(result["documents"], 10)
 
+    def test_the_repository_config_is_not_blind_to_a_broken_full_path_with_a_shorthand_basename(self):
+        ctx = dt.Context(REPO, dt.tracked_files(REPO), dt.load_config(REPO))
+        for name in ("SKILL.md", "CHANGELOG.md", "plugin.json", "ar_board.py", "tidy_board.py", "capy_board.py"):
+            with self.subTest(name):
+                self.assertTrue(dt.is_ignored(ctx, "README.md", name), "the bare shorthand is accepted")
+                self.assertTrue(dt.is_ignored(ctx, "plugins/x/README.md", name), "from a nested document too")
+                self.assertFalse(dt.is_ignored(ctx, "README.md", f"plugins/nope/{name}"), "a full path is judged")
+                self.assertFalse(dt.is_ignored(ctx, "README.md", f"plugins/nope/skills/x/{name}"))
+        self.assertFalse(dt.is_ignored(ctx, "README.md", "plugins/nope/.claude-plugin/plugin.json"))
+        for name in ("batch.json", "decisions.json", "report.md", "ledger.json"):  # run-time files: any folder
+            with self.subTest(name):
+                self.assertTrue(dt.is_ignored(ctx, "README.md", f"out/{name}"))
+
     def test_the_repository_config_is_valid_and_keeps_history_out(self):
         cfg = dt.load_config(REPO)
         self.assertIn("docs/plans/**", cfg["exclude"])

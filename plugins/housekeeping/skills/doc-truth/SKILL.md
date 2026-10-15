@@ -59,7 +59,7 @@ A skill relata. Corrigir o texto de um documento é uma edição comum, que voc�
 ```
 
 - `exclude`: documentos que não são conferidos (históricos, gerados). Eles continuam valendo como alvo de link.
-- `ignore_paths`: caminhos que não existem na árvore de propósito (criados em execução). Um padrão sem `/` vale para o nome em qualquer pasta; com `/` no meio, parte da raiz; `**` atravessa pastas e `*` não.
+- `ignore_paths`: caminhos que não existem na árvore de propósito (criados em execução). Um padrão sem `/` vale para o nome em qualquer pasta; com `/` no meio, parte da raiz, e o mesmo vale para um com `/` no início (`/SKILL.md` cala só a abreviação `SKILL.md`, não um caminho completo com pasta que não existe); `**` atravessa pastas e `*` não.
 - `allow`: fingerprints de achados aceitos.
 - Chave desconhecida é erro (saída 2).
 

@@ -124,6 +124,17 @@ class GlobTest(unittest.TestCase):
         self.assertTrue(self.match("docs/a.md", "docs/a.md"))
         self.assertFalse(self.match("docs/a.md", "x/docs/a.md"))
 
+    def test_a_leading_slash_anchors_the_pattern_at_the_root_even_without_another_slash(self):
+        self.assertTrue(self.match("/SKILL.md", "SKILL.md"))
+        self.assertFalse(self.match("/SKILL.md", "plugins/nope/skills/x/SKILL.md"))
+        self.assertFalse(self.match("/SKILL.md", "x/SKILL.md"))
+        self.assertTrue(self.match("/docs/a.md", "docs/a.md"))
+        self.assertFalse(self.match("/docs/a.md", "x/docs/a.md"))
+        self.assertTrue(self.match("/.ar-board/", ".ar-board/x/decisions.json"))
+        self.assertFalse(self.match("/.ar-board/", "src/.ar-board/x"))
+        self.assertTrue(self.match("/*.md", "README.md"))
+        self.assertFalse(self.match("/*.md", "docs/README.md"))
+
     def test_regex_characters_are_literal(self):
         self.assertTrue(self.match("a.b+c.md", "a.b+c.md"))
         self.assertFalse(self.match("a.b+c.md", "aXb+c.md"))
