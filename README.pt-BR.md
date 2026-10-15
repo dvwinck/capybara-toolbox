@@ -20,6 +20,7 @@ Uma coleção pequena e cuidadosa de skills e plugins para o [Claude Code](https
 | [**ar-board**](plugins/ar-board/README.pt-BR.md) | Painel local de aprovar/rejeitar. O agente propõe N opções, você julga uma a uma com o teclado (`A` aprova, `R` rejeita, `M` talvez) e comenta; depois o agente age só sobre o que você aprovou e guarda suas preferências para as próximas rodadas. Os painéis podem usar palavras e cores próprias para as três escolhas (por exemplo Apagar / Manter / Depois) e pedir um segundo toque em cards arriscados. Inclui também o question-board, um formulário para uma rodada de perguntas independentes. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
 | [**publish-check**](plugins/publish-check/README.pt-BR.md) | Varredura somente leitura de um repositório git, árvore e histórico completo, atrás de links de conversa do Claude, caminhos da sua máquina, e-mails e nomes internos seus, para rodar logo antes de algo ficar público. Não é um scanner de segredos. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
 | [**tidy-board**](plugins/tidy-board/README.pt-BR.md) | Branches, worktrees e stashes obsoletos do git como cards em um painel local. Cada card mostra a prova de que já foi mesclado; você escolhe apagar, manter ou depois; um `apply` separado reconfere cada item aprovado antes de apagar, e o que existe em um lugar só ganha backup antes. | [CHANGELOG](plugins/tidy-board/CHANGELOG.md) |
+| [**housekeeping**](plugins/housekeeping/README.pt-BR.md) | Ferramentas pequenas e somente leitura que mantêm um repositório e uma sessão de trabalho honestos. A primeira skill, o doc-truth, confere se o que seus documentos markdown dizem existe: caminhos citados, links e âncoras, paridade de títulos EN/PT-BR, e versões e lista de plugins contra os manifestos. | [CHANGELOG](plugins/housekeeping/CHANGELOG.md) |
 
 ## Instalação
 
@@ -30,6 +31,7 @@ Dentro do Claude Code:
 /plugin install ar-board@capybara-toolbox
 /plugin install publish-check@capybara-toolbox
 /plugin install tidy-board@capybara-toolbox
+/plugin install housekeeping@capybara-toolbox
 ```
 
 Instale só os plugins que quiser, reinicie o Claude Code e peça em linguagem natural ou chame a skill pelo nome:
@@ -39,6 +41,7 @@ Instale só os plugins que quiser, reinicie o Claude Code e peça em linguagem n
 | ar-board | *"me dê 10 melhorias para este repositório num AR board"* | `/ar-board:ar-board`, `/ar-board:question-board` |
 | publish-check | *"varre este repositório atrás de vazamentos antes de eu publicar"* | `/publish-check:publish-check` |
 | tidy-board | *"limpa meus branches velhos"* | `/tidy-board:tidy-board` |
+| housekeeping | *"confere os docs"* | `/housekeeping:doc-truth` |
 
 <details>
 <summary>Outras formas de instalar</summary>
@@ -76,6 +79,7 @@ git clone https://github.com/dvwinck/capybara-toolbox.git
 ├── plugins/
 │   ├── ar-board/                     # cada plugin é autocontido
 │   ├── publish-check/
+│   ├── housekeeping/
 │   └── tidy-board/                   # embute uma cópia gerada do motor do ar-board
 │       ├── .claude-plugin/plugin.json
 │       ├── skills/tidy-board/        # SKILL.md, scripts/, examples/
@@ -87,6 +91,10 @@ git clone https://github.com/dvwinck/capybara-toolbox.git
 └── install.sh                        # instalador manual
 ```
 
-## Contribuir e segurança
+## Contribuir
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) (em inglês) e [SECURITY.md](SECURITY.md). Licença: [MIT](LICENSE).
+Veja [CONTRIBUTING.md](CONTRIBUTING.md) (em inglês). Segurança: [SECURITY.md](SECURITY.md).
+
+## Licença
+
+[MIT](LICENSE) © 2026 Diogo Winck

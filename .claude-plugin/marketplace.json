@@ -70,6 +70,26 @@
       "description": "Clean up stale git branches, worktrees and stashes from a local board: every candidate is a card with its proof of being merged, only what you approve is deleted, and anything that exists in one place only is backed up first. Python standard library and git only.",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"
+    },
+    {
+      "name": "housekeeping",
+      "source": "./plugins/housekeeping",
+      "author": {
+        "name": "Diogo Winck",
+        "email": "diogo.winck@gmail.com"
+      },
+      "license": "MIT",
+      "keywords": [
+        "documentation",
+        "handoff",
+        "todo",
+        "skill"
+      ],
+      "category": "productivity",
+      "version": "0.1.0",
+      "description": "Small read-only tools that keep a repository and a work session honest: doc-truth checks that what the documents say exists, handoff writes an end-of-session note whose citations are verified, todo-sweep triages TODO and FIXME comments on a local board. Python standard library and git only.",
+      "homepage": "https://github.com/dvwinck/capybara-toolbox",
+      "repository": "https://github.com/dvwinck/capybara-toolbox"
     }
   ]
 }

@@ -34,7 +34,7 @@ Effort: S = days, M = about a week, L = several weeks. "Filler" means score 18 o
 | 9 | settings-doctor | Rejected | 4 | 7 | 28 | M | Read-only lint of settings.json permission rules and hook/MCP config. |
 | 10 | changelog-keeper | Rejected | 3 | 9 | 27 | S | Keep-a-Changelog lines from commits since the last tag, approved before writing. |
 | 11 | memory-board | Approved | 3 | 8 | 24 | S | Keep / archive / edit verdicts for memory files, in one batch. |
-| 12 | doc-truth | Approved | 3 | 8 | 24 | M | Static check that paths, commands and links in README/docs exist, plus EN/PT-BR section parity. |
+| 12 | doc-truth | Built (housekeeping 0.1.0) | 3 | 8 | 24 | M | Static check that paths, commands and links in README/docs exist, plus EN/PT-BR section parity. |
 | 13 | guard-recipes | Rejected | 3 | 7 | 21 | M | Tested PreToolUse hook recipes and `.env`/key deny rules. |
 | 14 | safety-net | Approved | 4 | 5 | 20 | M | Git-ref snapshots before risky Bash, restored only on approval. |
 | 15 | todo-sweep | Approved (filler) | 2 | 9 | 18 | S | TODO/FIXME triage by area and age. |
@@ -77,6 +77,7 @@ Each approved skill is refined one at a time, with scope questions judged in an 
 | session-finder | Shelved 2026-10-14 (scope and implementation design kept; not built, reason: not useful enough) | [docs/refinements/session-finder.md](docs/refinements/session-finder.md) |
 | tidy-board | Built (0.1.0) | [docs/refinements/tidy-board.md](docs/refinements/tidy-board.md) · [prototype](docs/refinements/tidy-board-prototype.html) · [docs/plans/tidy-board.md](docs/plans/tidy-board.md) |
 | publish-check | Built (0.1.0) | [docs/refinements/publish-check.md](docs/refinements/publish-check.md) · [docs/plans/publish-check.md](docs/plans/publish-check.md) |
+| housekeeping (doc-truth, handoff, todo-sweep) | doc-truth built (housekeeping 0.1.0); handoff and todo-sweep refined, not built | [docs/refinements/housekeeping.md](docs/refinements/housekeeping.md) · [docs/plans/housekeeping.md](docs/plans/housekeeping.md) |
 
 ## Suggested build order
 

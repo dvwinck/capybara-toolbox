@@ -21,6 +21,8 @@ Outras formas (cópia manual com `install.sh`, variante autocontida de arquivo �
 
 Peça em linguagem natural — *"me dê 10 melhorias de arquitetura num AR board"* — ou chame `/ar-board:ar-board`. O Claude então lê suas preferências anteriores, escreve o `batch.json`, sobe o painel em `127.0.0.1` (porta aleatória, token por execução), espera você julgar os cards, lê o `summary`, age **só nos aprovados**, pede para você confirmar as regras de preferência que inferiu e pode abrir uma rodada de refinamento.
 
+### Teclado
+
 | Tecla | Ação |
 | --- | --- |
 | `A` / `R` / `M` | Aprova / rejeita / talvez (apertar de novo desfaz) |
@@ -28,7 +30,20 @@ Peça em linguagem natural — *"me dê 10 melhorias de arquitetura num AR board
 | `C` / `Esc` | Foca o campo de comentário / sai dele |
 | `←` / `→` | Card anterior / próximo |
 
-Tudo é salvo sozinho em `decisions.json`; **Concluir** avisa o agente. Segurar uma tecla nunca decide em rajada. Coloque `.ar-board/` no `.gitignore`: os comentários podem ter informação interna.
+Tudo é salvo sozinho em `decisions.json`; **Concluir** avisa o agente. Segurar uma tecla nunca decide em rajada.
+
+## O que ele escreve
+
+```text
+<seu projeto>/.ar-board/
+├── preferences.md          # gosto acumulado, lido nas próximas rodadas
+└── <batch_id>/
+    ├── batch.json          # escrito pelo agente
+    ├── decisions.json      # escrito pelo painel (privado, modo 0600)
+    └── decisions.r1.json   # rodadas anteriores arquivadas
+```
+
+Coloque `.ar-board/` no `.gitignore`: os comentários podem ter informação interna.
 
 ## Segunda skill: question-board
 
@@ -41,3 +56,12 @@ Use o ar-board para *julgar propostas* (A/R/M) e o question-board para *responde
 - [Guia completo (pt-BR)](docs/pt-BR/guia-completo.md)
 - [Reference (inglês)](docs/reference.md)
 - [Changelog](CHANGELOG.md)
+
+## Desenvolvimento
+
+```bash
+python3 -m unittest discover -s plugins/ar-board/tests   # na raiz do repositório
+python3 plugins/ar-board/tools/sync.py                    # depois de mudar o script: manifesto + variante de arquivo único
+```
+
+O script é `skills/ar-board/scripts/ar_board.py` e é a fonte da verdade do plugin; veja o [CONTRIBUTING](../../CONTRIBUTING.md).

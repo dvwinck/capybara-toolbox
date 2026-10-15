@@ -1,0 +1,5 @@
+{
+  "exclude": ["docs/plans/**", "docs/refinements/**", "**/CHANGELOG.md"],
+  "ignore_paths": [".ar-board/", "batch.json", "decisions.json"],
+  "allow": []
+}
