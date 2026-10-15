@@ -253,5 +253,145 @@ class ResumeTest(NoteCase):
             ho.resume(self.repo, str(self.tmp / "link.md"))
 
 
+def cannot_read_modes():
+    """True when file permissions do not stop this process (root): the chmod tests are meaningless there."""
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+class FailedWritesTest(NoteCase):
+    def folder_has_no_notes(self, folder):
+        self.assertEqual(list(Path(folder).glob("*")) if Path(folder).is_dir() else [], [])
+
+    def test_a_notes_folder_that_is_a_regular_file_is_an_error_not_a_traceback(self):
+        (self.repo / ".handoff").write_text("not a folder\n", encoding="utf-8")
+        with self.assertRaises(ho.HandoffError) as ctx:
+            self.write()
+        self.assertIn("pasta", str(ctx.exception))
+
+    def test_an_out_path_that_is_a_file_is_an_error(self):
+        target = self.tmp / "afile"
+        target.write_text("x\n", encoding="utf-8")
+        with self.assertRaises(ho.HandoffError):
+            self.write(out_dir=str(target))
+        with self.assertRaises(ho.HandoffError):
+            self.write(out_dir=str(target / "inside"))
+
+    def test_a_draft_that_cannot_be_encoded_leaves_no_file_behind(self):
+        with self.assertRaises(ho.HandoffError):
+            self.write(draft="## O que foi feito\nbad \udcff byte\n")
+        self.folder_has_no_notes(self.repo / ".handoff")
+
+    def test_a_write_that_fails_midway_removes_the_partial_note(self):
+        with mock.patch.object(ho.os, "write", side_effect=OSError(28, "No space left on device")):
+            with self.assertRaises(ho.HandoffError):
+                self.write()
+        self.folder_has_no_notes(self.repo / ".handoff")
+
+    def test_a_failed_write_does_not_shadow_the_last_good_note(self):
+        good = self.write()["path"]
+        with mock.patch.object(ho.os, "write", side_effect=OSError(28, "No space left on device")):
+            with self.assertRaises(ho.HandoffError):
+                self.write()
+        self.assertEqual(str(ho.newest_note(self.repo / ".handoff")), good)
+
+    def test_a_folder_that_cannot_be_created_is_an_error(self):
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        if cannot_read_modes():
+            self.skipTest("running as root")
+        os.chmod(locked, 0o500)
+        self.addCleanup(os.chmod, locked, 0o700)
+        with self.assertRaises(ho.HandoffError):
+            self.write(out_dir=str(locked / "sub"))
+
+
+class UnreadableNoteTest(NoteCase):
+    def test_an_unreadable_note_is_an_error_not_a_traceback(self):
+        note = Path(self.write()["path"])
+        if cannot_read_modes():
+            self.skipTest("running as root")
+        os.chmod(note, 0)
+        self.addCleanup(os.chmod, note, 0o600)
+        with self.assertRaises(ho.HandoffError) as ctx:
+            ho.resume(self.repo)
+        self.assertIn("nao consegui ler", str(ctx.exception))
+
+
+class DeepDataBlockTest(NoteCase):
+    def plant(self, body):
+        folder = self.repo / ".handoff"
+        folder.mkdir()
+        (folder / "2026-10-14-090507.md").write_text("# n\n`file:src/a.py`\n<!-- handoff:data %s -->\n" % body, encoding="utf-8")
+
+    def test_a_deeply_nested_data_block_is_no_data_block(self):
+        body = '{"a":' + "[" * 100000 + "]" * 100000 + "}"
+        self.assertIsNone(ho.parse_data("<!-- handoff:data %s -->" % body))
+        self.plant(body)
+        res = ho.resume(self.repo)
+        self.assertFalse(res["has_data"])
+        self.assertTrue(res["citations"][0]["verified"])
+
+    def test_planted_citations_of_the_wrong_shape_do_not_crash_resume(self):
+        facts = ho.collect(self.repo)
+        for citations in (5, "x", [1, "a"], [{"type": ["x"], "value": {}}], {"a": 1}, None):
+            with self.subTest(citations=repr(citations)):
+                data = {"schema": 1, "facts": facts, "citations": citations}
+                folder = self.repo / ".handoff"
+                folder.mkdir(exist_ok=True)
+                (folder / "2026-10-14-090507.md").write_text("# n\n`file:src/a.py`\n" + ho.data_block(data) + "\n", encoding="utf-8")
+                res = ho.resume(self.repo)
+                self.assertTrue(res["has_data"])
+                self.assertEqual(res["drift"], [])
+
+
+class ToolPartsAreNotCitationsTest(NoteCase):
+    """The git section and the data block quote commit subjects, branch and file names verbatim; only the agent's
+    own text is checked, by `write`, `resume` and `verify` alike."""
+
+    def setUp(self):
+        super().setUp()
+        commit(self.repo, "rename `file:old.py` to a.py and `branch:nope`", {"b.txt": "b\n"})
+
+    def test_resume_checks_only_the_agents_citations(self):
+        self.write(draft="## O que foi feito\n`file:src/a.py`\n")
+        res = ho.resume(self.repo)
+        self.assertEqual([(c["type"], c["value"]) for c in res["citations"]], [("file", "src/a.py")])
+        self.assertEqual(res["drift"], [])
+
+    def test_a_draft_without_headings_still_gets_checked_after_the_git_section(self):
+        self.write(draft="just `file:src/a.py` and `file:ghost.py`\n")
+        res = ho.resume(self.repo)
+        self.assertEqual([c["verified"] for c in res["citations"]], [True, False])
+
+    def test_a_file_named_like_a_citation_is_not_one(self):
+        (self.repo / "`file:yy.py`").write_text("x\n", encoding="utf-8")
+        (self.repo / "x\n\n`file:ww.py`").write_text("x\n", encoding="utf-8")
+        git(self.repo, "checkout", "-q", "-b", "`bq`")
+        self.write(draft="## O que foi feito\n`file:src/a.py`\n")
+        res = ho.resume(self.repo)
+        self.assertEqual([(c["type"], c["value"]) for c in res["citations"]], [("file", "src/a.py")])
+        self.assertEqual(res["drift"], [])
+
+    def test_a_note_without_a_usable_data_block_still_masks_the_git_section(self):
+        path = Path(self.write(draft="## O que foi feito\n`file:src/a.py`\n")["path"])
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text[:text.index("<!-- handoff:data")], encoding="utf-8")
+        res = ho.resume(self.repo)
+        self.assertFalse(res["has_data"])
+        self.assertEqual([(c["type"], c["value"]) for c in res["citations"]], [("file", "src/a.py")])
+
+    def test_a_hand_written_note_is_checked_in_full(self):
+        folder = self.repo / ".handoff"
+        folder.mkdir()
+        (folder / "2026-10-14-090507.md").write_text("# By hand\n\n## Estado do git\n\n- `file:nope.py`\n", encoding="utf-8")
+        self.assertEqual([c["verified"] for c in ho.resume(self.repo)["citations"]], [False])
+
+    def test_line_numbers_still_point_into_the_note(self):
+        res = self.write(draft="## O que foi feito\n\n`file:ghost.py`\n")
+        text = Path(res["path"]).read_text(encoding="utf-8")
+        shown = ho.resume(self.repo)["citations"][0]["line"]
+        self.assertEqual(text.splitlines()[shown - 1].strip(), "`file:ghost.py` [nao verificado]")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -255,7 +255,7 @@ def parse_data(text):
         return None
     try:
         data = json.loads(found[-1])
-    except ValueError:
+    except (ValueError, RecursionError):  # not JSON, or nested so deep that reading it overflows: no usable block
         return None
     return data if isinstance(data, dict) and valid_facts(data.get("facts")) else None
 
@@ -312,8 +312,15 @@ def write_note(root, draft, out_dir=None, base=None):
     facts = collect(root, base)
     results = check_text(root, draft)
     text = render_note(facts, mark_unverified(draft, results), results, time.strftime("%Y-%m-%d %H:%M", NOW()))
+    try:  # encoded before any file exists: a text that cannot be written must not leave an empty note behind
+        payload = text.encode("utf-8")
+    except UnicodeError:
+        raise HandoffError("o rascunho tem caracteres que nao cabem em UTF-8: nada foi gravado")
     folder = Path(out_dir) if out_dir else notes_folder(root)
-    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HandoffError(f"nao consegui criar a pasta das notas {folder}: {e.strerror or e}")
     stamp = time.strftime("%Y-%m-%d-%H%M%S", NOW())
     name, n = stamp + ".md", 2
     while True:
@@ -322,9 +329,64 @@ def write_note(root, draft, out_dir=None, base=None):
             break
         except FileExistsError:
             name, n = f"{stamp}-{n}.md", n + 1
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(text)
+        except OSError as e:
+            raise HandoffError(f"nao consegui criar a nota em {folder}: {e.strerror or e}")
+    try:
+        view = memoryview(payload)
+        while view:
+            view = view[os.write(fd, view):]
+    except OSError as e:  # never leave a partial note: it would be the newest one and shadow the last good note
+        try:
+            os.close(fd)
+        finally:
+            try:
+                os.unlink(str(folder / name))
+            except OSError:
+                pass
+        raise HandoffError(f"nao consegui gravar a nota {folder / name}: {e.strerror or e}")
+    os.close(fd)
     return {"path": str(folder / name), "facts": facts, "citations": results, "missing": missing_sections(draft)}
+
+
+TITLE = re.compile(r"# Handoff - [^\n]*\n\n")
+GIT_PART = re.compile(r"## Estado do git\n\n(?:[^\n]+\n)+")
+
+
+def tool_spans(text):
+    """The parts of a note the tool wrote itself: the title and the git section (commit subjects, branch and file
+    names, quoted verbatim) and the data block. They are not the agent's citations and are never checked."""
+    spans = []
+    title = TITLE.match(text)
+    if title:
+        end = None
+        data = parse_data(text)
+        if data:  # the exact rendering of the recorded facts, so even a file name with a blank line in it is covered
+            try:
+                section = git_section(data["facts"]) + "\n"
+                if text.startswith(section, title.end()):
+                    end = title.end() + len(section)
+            except (KeyError, TypeError, ValueError, AttributeError):
+                end = None
+        if end is None:
+            part = GIT_PART.match(text, title.end())
+            end = part.end() if part else title.end()
+        spans.append((0, end))
+    blocks = list(DATA_BLOCK.finditer(text))
+    if blocks:
+        spans.append((blocks[-1].start(), blocks[-1].end()))
+    return spans
+
+
+def check_note(root, text):
+    """The citations of a note or a draft: only the agent's own text. The tool's parts are blanked out (same length,
+    newlines kept) so positions and line numbers still point into the note. `write`, `resume` and `verify` all go
+    through here, so they agree on the set of citations."""
+    chars = list(text)
+    for start, end in tool_spans(text):
+        for i in range(start, end):
+            if chars[i] != "\n":
+                chars[i] = " "
+    return check_text(root, "".join(chars))
 
 
 def note_key(name):
@@ -368,6 +430,23 @@ def drift(root, then, now):
     return out
 
 
+def read_note(path):
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        raise HandoffError(f"nao consegui ler a nota {path}: {e.strerror or e}")
+
+
+def recorded_citations(data):
+    """The (type, value) -> commit a note recorded. The block is untrusted: whatever is not shaped right is skipped."""
+    out = {}
+    cites = (data or {}).get("citations")
+    for c in cites if isinstance(cites, list) else []:
+        if isinstance(c, dict) and isinstance(c.get("type"), str) and isinstance(c.get("value"), str):
+            out[(c["type"], c["value"])] = c.get("sha")
+    return out
+
+
 def resume(root, file=None):
     """The newest note, every citation checked again, and what drifted since it was written."""
     path = Path(file) if file else newest_note(notes_folder(root))
@@ -375,10 +454,10 @@ def resume(root, file=None):
         raise HandoffError(f"nao ha nota em {NOTE_DIR}/ (rode `write` primeiro)")
     if path.is_symlink() or not path.is_file():
         raise HandoffError(f"{path} nao e um arquivo de nota")
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_note(path)
     data = parse_data(text)
-    results = check_text(root, text)
-    recorded = {(c["type"], c["value"]): c.get("sha") for c in (data or {}).get("citations", [])}
+    results = check_note(root, text)
+    recorded = recorded_citations(data)
     for r in results:
         before = recorded.get((r["type"], r["value"]))
         r["moved"] = bool(r["verified"] and before and r["sha"] and before != r["sha"])
@@ -438,6 +517,8 @@ def parser():
 def read_draft(arg):
     try:
         return sys.stdin.read() if arg == "-" else Path(arg).read_text(encoding="utf-8", errors="replace")
+    except UnicodeError:
+        raise HandoffError("nao consegui ler o rascunho: nao e UTF-8 valido")
     except OSError as e:
         raise HandoffError(f"nao consegui ler o rascunho: {e}")
 
@@ -467,7 +548,7 @@ def main(argv=None):
             path = Path(args.file)
             if path.is_symlink() or not path.is_file():
                 raise HandoffError(f"{path} nao e um arquivo")
-            results = check_text(root, path.read_text(encoding="utf-8", errors="replace"))
+            results = check_note(root, read_note(path))
             bad = [c for c in results if not c["verified"]]
             emit(args, {"schema": SCHEMA, "citations": clean_result(results)},
                  "\n".join([f"{len(results)} citacoes, {len(bad)} nao verificadas"] + citation_lines(results)))
@@ -485,6 +566,15 @@ def main(argv=None):
         return 1 if (bad or changed) else 0
     except HandoffError as e:
         print(f"erro: {e}", file=sys.stderr)
+        return 2
+    except RecursionError:  # the safety net: a failure of the system or of the text is exit 2, never a traceback
+        print("erro: uma estrutura da nota e funda demais para ser lida", file=sys.stderr)
+        return 2
+    except UnicodeError as e:
+        print(f"erro: texto que nao cabe em UTF-8 ({e})", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"erro: falha de leitura ou escrita ({e.strerror or e})", file=sys.stderr)
         return 2
 
 

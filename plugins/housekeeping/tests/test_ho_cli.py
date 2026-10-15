@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -135,6 +136,64 @@ class ScriptTest(CliCase):
     def test_version_flag(self):
         r = subprocess.run([sys.executable, "-I", str(HANDOFF), "--version"], capture_output=True, text=True)
         self.assertEqual(r.stdout.strip(), "handoff " + ho.VERSION)
+
+
+class FailureExitCodesTest(CliCase):
+    def assert_clean_error(self, argv, stdin=None, needle="erro:"):
+        rc, out, err = run_main(argv, stdin=stdin)
+        self.assertEqual((rc, out), (2, ""), err)
+        self.assertIn(needle, err)
+        self.assertNotIn("Traceback", err)
+
+    def test_a_notes_folder_that_is_a_file(self):
+        (self.repo / ".handoff").write_text("x\n", encoding="utf-8")
+        self.assert_clean_error(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\nx\n")])
+
+    def test_an_out_that_is_a_file(self):
+        self.assert_clean_error(["write", str(self.repo), "--draft", self.draft_file("x\n"), "--out", self.draft_file("y\n")])
+
+    def test_a_draft_that_is_a_folder(self):
+        self.assert_clean_error(["write", str(self.repo), "--draft", str(self.tmp)])
+
+    def test_an_unreadable_note_for_verify_and_resume(self):
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("running as root")
+        run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`file:src/a.py`\n")])
+        note = next((self.repo / ".handoff").glob("*.md"))
+        os.chmod(note, 0)
+        self.addCleanup(os.chmod, note, 0o600)
+        self.assert_clean_error(["verify", str(note), str(self.repo)], needle="nao consegui ler")
+        self.assert_clean_error(["resume", str(self.repo)], needle="nao consegui ler")
+
+    def test_invalid_utf8_on_standard_input(self):
+        r = subprocess.run([sys.executable, "-I", str(HANDOFF), "write", str(self.repo), "--draft", "-"], input=b"## O que foi feito\n\xff\xfe\n",
+                           capture_output=True, env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1"))
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn(b"erro:", r.stderr)
+        self.assertNotIn(b"Traceback", r.stderr)
+        self.assertFalse((self.repo / ".handoff").exists() and list((self.repo / ".handoff").iterdir()))
+
+    def test_the_safety_net_turns_stray_os_unicode_and_recursion_errors_into_exit_two(self):
+        for exc in (OSError(13, "Permission denied"), UnicodeEncodeError("utf-8", "x", 0, 1, "bad"), RecursionError("deep")):
+            with self.subTest(exc=type(exc).__name__):
+                with mock.patch.object(ho, "collect", side_effect=exc):
+                    self.assert_clean_error(["collect", str(self.repo)])
+
+
+class AgreementTest(CliCase):
+    def test_write_then_resume_and_verify_agree_on_a_note_whose_git_section_quotes_citations(self):
+        commit(self.repo, "rename `file:old.py` to a.py and `branch:nope`", {"b.txt": "b\n"})
+        rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`file:src/a.py`\n")])
+        self.assertEqual(rc, 0)
+        self.assertIn("1 citacoes, 0 nao verificadas", out)
+        rc, out, _ = run_main(["resume", str(self.repo)])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("nada mudou no git desde a nota", out)
+        self.assertIn("1 citacoes, 0 com problema", out)
+        note = next((self.repo / ".handoff").glob("*.md"))
+        rc, out, _ = run_main(["verify", str(note), str(self.repo)])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("1 citacoes, 0 nao verificadas", out)
 
 
 if __name__ == "__main__":
