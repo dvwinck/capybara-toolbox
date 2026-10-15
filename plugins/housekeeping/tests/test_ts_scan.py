@@ -434,5 +434,106 @@ class FailedWriteTest(SweepCase):
         self.assertEqual(sorted(p.name for p in out.iterdir()), ["batch.json"])
 
 
+class GitLineNumberTest(SweepCase):
+    def test_the_reported_line_is_the_line_git_blames(self):
+        for i, sep in enumerate(["\x0c", "\u2028", "\x85", "\r", "\x1c"]):
+            name = f"f{i}.py"
+            self.commit({name: f"a{sep}b\n# TODO: after {i}\n"}, days_ago=40)
+        hits = ts.scan_files(self.repo)
+        self.assertEqual([h["line"] for h in hits], [2] * 5)
+        ts.blame_ages(self.repo, hits, 300)
+        self.assertEqual([h["age"]["days"] if h["age"] else h["age_reason"] for h in hits], [40] * 5)
+
+    def test_a_crlf_file_is_blamed_on_the_right_line(self):
+        self.commit({"w.py": "a\r\nb\r\n# TODO: crlf\r\n"}, days_ago=12)
+        hit, = ts.scan_files(self.repo)
+        ts.blame_ages(self.repo, [hit], 300)
+        self.assertEqual((hit["line"], hit["age"]["days"]), (3, 12))
+
+
+class ScanRefusalsTest(SweepCase):
+    """Refusals happen before anything is written (the ledger and the work folder stay as they were)."""
+
+    def snapshot(self):
+        folder = self.repo / ".todo-sweep"
+        return sorted((str(p.relative_to(self.repo)), p.read_bytes() if p.is_file() else None)
+                      for p in folder.rglob("*")) if folder.exists() else None
+
+    def test_a_corrupt_ledger_stops_the_scan_before_any_write(self):
+        self.commit({"a.py": "# TODO: x\n"}, days_ago=3)
+        (self.repo / ".todo-sweep").mkdir()
+        for bad in ("not json", "[" * 100000, '{"decided": ' + "[" * 100000):
+            ts.ledger_path(self.repo).write_text(bad, encoding="utf-8")
+            before = self.snapshot()
+            with self.subTest(bad=bad[:20]):
+                with self.assertRaises(ts.SweepError):
+                    ts.cmd_scan(self.args())
+                self.assertEqual(self.snapshot(), before)
+                self.assertEqual(list((self.repo / ".todo-sweep").glob("todo-sweep-*")), [])
+
+    def test_a_corrupt_ledger_stops_a_scan_into_a_custom_folder_too(self):
+        self.commit({"a.py": "# TODO: x\n"}, days_ago=3)
+        (self.repo / ".todo-sweep").mkdir()
+        ts.ledger_path(self.repo).write_text("[" * 100000, encoding="utf-8")
+        target = self.tmp / "board"
+        with self.assertRaises(ts.SweepError):
+            ts.cmd_scan(self.args(out=str(target)))
+        self.assertFalse(target.exists())
+
+    def test_a_path_that_does_not_exist_is_refused(self):
+        with self.assertRaises(ts.SweepError):
+            ts.cmd_scan(self.args(repo=str(self.tmp / "nowhere")))
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["r"])
+
+    def test_a_repository_that_vanished_after_a_scan_is_refused_and_nothing_is_written(self):
+        import shutil
+        self.commit({"a.py": "# TODO: x\n"}, days_ago=3)
+        _rc, out = self.scan()
+        self.assertTrue((out / "scan.json").exists())
+        shutil.rmtree(self.repo)
+        with self.assertRaises(ts.SweepError):
+            ts.cmd_scan(self.args())
+        with self.assertRaises(ts.SweepError):
+            ts.cmd_scan(self.args(out=str(self.tmp / "board")))
+        self.assertEqual([p.name for p in self.tmp.iterdir()], [])
+
+
+class StaleDecisionsTest(SweepCase):
+    """A decisions file left in an output folder belongs to other cards that used the same ids."""
+
+    def seed(self):
+        self.commit({"a.py": "# TODO: one\n"}, days_ago=3)
+        self.out = self.tmp / "board"
+        self.out.mkdir()
+
+    def test_an_output_folder_with_decisions_is_refused_and_left_untouched(self):
+        self.seed()
+        for name in ("decisions.json", "decisions.r1.json", "decisions.r2.3.json"):
+            with self.subTest(name):
+                (self.out / name).write_text("{}", encoding="utf-8")
+                with self.assertRaises(ts.SweepError) as ctx:
+                    ts.cmd_scan(self.args(out=str(self.out)))
+                self.assertIn("decisions", str(ctx.exception))
+                self.assertEqual(sorted(p.name for p in self.out.iterdir()), [name])
+                (self.out / name).unlink()
+
+    def test_an_existing_folder_without_decisions_is_still_used(self):
+        self.seed()
+        (self.out / "notes.txt").write_text("keep", encoding="utf-8")
+        self.assertEqual(ts.cmd_scan(self.args(out=str(self.out))), 0)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), ["batch.json", "notes.txt", "scan.json"])
+
+    def test_the_refusal_comes_before_the_ledger_is_touched_or_a_blame_is_run(self):
+        self.seed()
+        (self.out / "decisions.json").write_text("{}", encoding="utf-8")
+        real = ts.git
+        calls = []
+        with mock.patch.object(ts, "git", lambda root, *a: calls.append(a[0]) or real(root, *a)):
+            with self.assertRaises(ts.SweepError):
+                ts.cmd_scan(self.args(out=str(self.out)))
+        self.assertNotIn("blame", calls)
+        self.assertFalse((self.repo / ".todo-sweep").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

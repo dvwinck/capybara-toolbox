@@ -152,16 +152,33 @@ def find_todos(text):
     """Every TODO or FIXME inside a comment: (line number, marker, text, context). Upper case, whole word; the
     comment must start the line or trail some code. It is a heuristic (a `# TODO` inside a string after a space
     matches) and the README says so."""
-    lines = text.splitlines()
+    lines = text.split("\n")  # the way git counts lines: str.splitlines also splits on form feeds, U+2028 and a lone CR
+    if lines and lines[-1] == "":
+        lines.pop()  # the newline that ends the last line does not start another
+    lines = [line[:-1] if line.endswith("\r") else line for line in lines]
     out = []
     for i, line in enumerate(lines):
         m = LEAD.match(line) or TRAIL.match(line)
         if not m:
             continue
-        body = re.sub(r"\s*\*/\s*$", "", re.sub(r"^[:\s]+", "", m.group(2))).strip()[:TEXT_MAX]
-        lo, hi = max(0, i - CONTEXT), min(len(lines), i + CONTEXT + 1)
-        out.append((i + 1, m.group(1), body, [(n + 1, lines[n][:160]) for n in range(lo, hi)]))
+        out.append((i + 1, m.group(1), clean_text(m.group(2)), context_of(lines, i)))
     return out
+
+
+def clean_text(rest):
+    """What follows the marker, without its colon and a closing `*/`, capped. Only linear work is done on it (a
+    tracked file can hold one huge line): the leading run is skipped by position and the tail is cut before it is
+    stripped."""
+    start = re.match(r"[:\s]*", rest).end()
+    body = rest[start:start + TEXT_MAX + 64].rstrip()
+    if body.endswith("*/"):
+        body = body[:-2]
+    return body.strip()[:TEXT_MAX]
+
+
+def context_of(lines, i):
+    lo, hi = max(0, i - CONTEXT), min(len(lines), i + CONTEXT + 1)
+    return [(n + 1, lines[n][:160]) for n in range(lo, hi)]
 
 
 def read_source(root, rel):
@@ -376,8 +393,21 @@ def make_folder(out):
     return made
 
 
+def refuse_old_decisions(out):
+    """A decisions file in an existing output folder was written for other cards that used the same ids (the board
+    would resume it, and the ledger would record what nobody judged). Refused before anything is written."""
+    try:
+        names = os.listdir(str(out)) if out.is_dir() else []
+    except OSError as e:
+        raise SweepError(f"nao consegui ler a pasta {out}: {e.strerror or e}")
+    if any(n == "decisions.json" or (n.startswith("decisions.r") and n.endswith(".json")) for n in names):
+        raise SweepError(f"{out} ja tem decisions.json de um lote anterior: escolha outra pasta com --out ou apague as decisoes")
+
+
 def cmd_scan(a):
     root = repo_root(a.repo)
+    if a.out:
+        refuse_old_decisions(Path(a.out))
     decided = load_ledger(root)
     hits = scan_files(root)
     fresh = [h for h in hits if h["todo_id"] not in decided]
