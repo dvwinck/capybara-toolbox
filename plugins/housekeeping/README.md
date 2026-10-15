@@ -3,7 +3,7 @@
 Small tools that keep a repository and a work session honest. One plugin, several skills, added one release at a time: **doc-truth** checks that what a repository's documents say actually exists, **handoff** writes an end-of-session note whose git facts and citations are verified, and **todo-sweep** triages `TODO` and `FIXME` comments on a local board. Everything is read-only, offline, and Python standard library plus `git`.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only) and `git`.
-- **Languages:** the skills are in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
+- **Languages:** the skills are in English; the tools' output, the todo-sweep panel and its cards are in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
 
 ## Install
 

@@ -3,7 +3,7 @@
 A read-only scan of a git repository, **working tree and full history**, for what should not become public: Claude conversation links, absolute home paths, e-mail addresses and your own list of internal names. Run it right before a repository, branch or pull request goes public.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only) and `git`; no network.
-- **Languages:** the skill is in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
+- **Languages:** the skill is in English; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
 - **Not a secret scanner.** Keys and tokens are out of scope on purpose; use a dedicated tool such as [gitleaks](https://github.com/gitleaks/gitleaks). gitleaks does not read commit messages or author fields, which is the gap this tool fills.
 
 ## Install
