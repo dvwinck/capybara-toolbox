@@ -28,7 +28,7 @@ Effort: S = days, M = about a week, L = several weeks. "Filler" means score 18 o
 | 3 | question-board | Built (ar-board 1.2.0) | 4 | 9 | 36 | M (was S) | A round of clarifying questions answered in one form: one card per question, with the recommended answer. |
 | 4 | tidy-board | Built (0.1.0) | 4 | 9 | 36 | M | Stale branches and worktrees as cards; approving means deleting. |
 | 5 | commit-groups | Approved | 4 | 8 | 32 | M | Splits a dirty tree into atomic commit groups, approved one by one. |
-| 6 | handoff | Approved | 4 | 7 | 28 | S | End-of-session note whose branches, commits and paths are verified to exist before it is written. |
+| 6 | handoff | Built (housekeeping 0.2.0) | 4 | 7 | 28 | S | End-of-session note whose branches, commits and paths are verified to exist before it is written. |
 | 7 | review-map | Rejected | 4 | 7 | 28 | S | Risk-ordered map of an agent diff, as a read-only CLI. |
 | 8 | skill-check | Rejected | 4 | 7 | 28 | M | Offline lint of SKILL.md and plugin.json, plus an advisory pre-install check. |
 | 9 | settings-doctor | Rejected | 4 | 7 | 28 | M | Read-only lint of settings.json permission rules and hook/MCP config. |
@@ -77,7 +77,7 @@ Each approved skill is refined one at a time, with scope questions judged in an 
 | session-finder | Shelved 2026-10-14 (scope and implementation design kept; not built, reason: not useful enough) | [docs/refinements/session-finder.md](docs/refinements/session-finder.md) |
 | tidy-board | Built (0.1.0) | [docs/refinements/tidy-board.md](docs/refinements/tidy-board.md) · [prototype](docs/refinements/tidy-board-prototype.html) · [docs/plans/tidy-board.md](docs/plans/tidy-board.md) |
 | publish-check | Built (0.1.0) | [docs/refinements/publish-check.md](docs/refinements/publish-check.md) · [docs/plans/publish-check.md](docs/plans/publish-check.md) |
-| housekeeping (doc-truth, handoff, todo-sweep) | doc-truth built (housekeeping 0.1.0); handoff and todo-sweep refined, not built | [docs/refinements/housekeeping.md](docs/refinements/housekeeping.md) · [docs/plans/housekeeping.md](docs/plans/housekeeping.md) |
+| housekeeping (doc-truth, handoff, todo-sweep) | doc-truth and handoff built (housekeeping 0.2.0); todo-sweep refined, not built | [docs/refinements/housekeeping.md](docs/refinements/housekeeping.md) · [docs/plans/housekeeping.md](docs/plans/housekeeping.md) |
 
 ## Suggested build order
 

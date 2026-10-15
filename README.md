@@ -20,7 +20,7 @@ A small, carefully built collection of skills and plugins for [Claude Code](http
 | [**ar-board**](plugins/ar-board) | A local approve/reject board. The agent proposes N options, you judge them one by one with the keyboard (`A` approve, `R` reject, `M` maybe) and leave comments; the agent then acts only on what you approved and remembers your preferences for the next rounds. Boards can use their own wording and colours for the three choices (for example Delete / Keep / Later) and ask for a second press on risky cards. It also ships question-board, a form for a round of independent questions. | [CHANGELOG](plugins/ar-board/CHANGELOG.md) |
 | [**publish-check**](plugins/publish-check) | A read-only scan of a git repository, working tree and full history, for Claude conversation links, home paths, e-mail addresses and your own internal names, to run right before something goes public. Not a secret scanner. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
 | [**tidy-board**](plugins/tidy-board) | Stale git branches, worktrees and stashes as cards on a local board. Each card shows its proof of being merged; you choose delete, keep or later; a separate `apply` re-checks every approved item before deleting it, and anything that exists in one place only is backed up first. | [CHANGELOG](plugins/tidy-board/CHANGELOG.md) |
-| [**housekeeping**](plugins/housekeeping) | Small read-only tools that keep a repository and a work session honest. Its first skill, doc-truth, checks that what your markdown documents say exists: cited paths, links and anchors, EN/PT-BR heading parity, and versions and plugin lists against the manifests. | [CHANGELOG](plugins/housekeeping/CHANGELOG.md) |
+| [**housekeeping**](plugins/housekeeping) | Small read-only tools that keep a repository and a work session honest. doc-truth checks that what your markdown documents say exists (cited paths, links and anchors, EN/PT-BR heading parity, versions and plugin lists against the manifests); handoff writes an end-of-session note whose git facts come from git and whose citations are verified. | [CHANGELOG](plugins/housekeeping/CHANGELOG.md) |
 
 ## Install
 
@@ -41,7 +41,7 @@ Install only the plugins you want, restart Claude Code, then ask in plain langua
 | ar-board | *"give me 10 improvements for this repo as an AR board"* | `/ar-board:ar-board`, `/ar-board:question-board` |
 | publish-check | *"scan this repo for leaks before I publish it"* | `/publish-check:publish-check` |
 | tidy-board | *"clean up my stale branches"* | `/tidy-board:tidy-board` |
-| housekeeping | *"check the docs"* | `/housekeeping:doc-truth` |
+| housekeeping | *"check the docs"*, *"write a handoff"* | `/housekeeping:doc-truth`, `/housekeeping:handoff` |
 
 <details>
 <summary>Other ways to install</summary>

@@ -1,6 +1,6 @@
 # housekeeping
 
-Small tools that keep a repository and a work session honest. One plugin, several skills, added one release at a time: **doc-truth** checks that what a repository's documents say actually exists; more follow. Everything is read-only, offline, and Python standard library plus `git`.
+Small tools that keep a repository and a work session honest. One plugin, several skills, added one release at a time: **doc-truth** checks that what a repository's documents say actually exists, and **handoff** writes an end-of-session note whose git facts and citations are verified; more follow. Everything is read-only, offline, and Python standard library plus `git`.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only) and `git`.
 - **Languages:** the skills are in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
@@ -51,9 +51,25 @@ Configuration is `.doc-truth.json` at the repository root (an unknown key is an 
 
 It is a heuristic: a path in prose that is only an example will be reported, and `ignore_paths` or `allow` is how you say so.
 
+### handoff
+
+An end-of-session note a fresh session can pick up from. Ask Claude *"write a handoff"* or call `/housekeeping:handoff`, or run it yourself:
+
+```bash
+S=plugins/housekeeping/skills/handoff/scripts
+python3 -I $S/handoff.py collect                          # the git facts only
+python3 -I $S/handoff.py write --draft draft.md           # check the citations, save .handoff/<date>-<time>.md
+python3 -I $S/handoff.py verify draft.md                  # check the citations of any note, never edits it
+python3 -I $S/handoff.py resume                           # the newest note, and what changed since
+```
+
+The git facts (branch, tip, commits ahead of and behind the base, modified and untracked files, stashes, linked worktrees, the last commits) come from git, not from memory. The agent's draft has four sections (`O que foi feito`, `Decisoes e por que`, `Proximos passos`, `O que falhou ou travou`) and its citations are **typed**: `` `commit:abc1234` ``, `` `branch:feat/x` `` and `` `file:path/to/f.py:42` ``. Only typed spans are checked and an untyped backtick is prose. A citation that does not exist is kept and followed by ` [nao verificado]`, once; nothing is ever removed from the draft. The note ends with a machine-readable data block (the facts and the citations as they were), which is how `resume` can tell what drifted: a branch tip that moved, a changed ahead/behind count, files that were modified then and not now, stashes, and every citation again.
+
+Exit code `0` when every citation is verified (and, for `resume`, nothing drifted), `1` otherwise, `2` on error; `--json` has a `schema` field. `.handoff/` is not added to `.gitignore` for you: notes can name internal paths, so keep them out of git. Resuming happens only when you ask; there is no hook and no automatic offer.
+
 ## Safety
 
-Every tool in this plugin leaves your tracked files alone, none of them uses the network, and none runs a command a document cites. They do trust the repository's own git configuration (git reads it), so do not run them on a repository you do not trust.
+Every tool in this plugin leaves your tracked files alone, none of them uses the network, and none runs a command a document cites. handoff writes only its notes, in `.handoff/` (keep it out of git: notes can quote internal paths, and a `.handoff` that is a symlink is refused). They do trust the repository's own git configuration (git reads it), so do not run them on a repository you do not trust.
 
 ## Development
 

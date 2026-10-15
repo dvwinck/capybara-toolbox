@@ -218,3 +218,275 @@ def mark_unverified(text, results):
             out.append(UNVERIFIED)
     out.append(text[last:])
     return "".join(out)
+
+
+SECTIONS = ("O que foi feito", "Decisoes e por que", "Proximos passos", "O que falhou ou travou")
+DATA_BLOCK = re.compile(r"<!-- handoff:data (\{.*?\}) -->")
+NOTE_NAME = re.compile(r"(\d{4}-\d{2}-\d{2}-\d{6})(?:-(\d+))?\.md")
+SHOWN = 8  # file names listed per group in the git section
+NOW = time.localtime  # a function: the tests replace it
+
+
+def data_block(data):
+    """The machine-readable part of a note, as one HTML comment. `--` is escaped so no text inside it can end
+    the comment early."""
+    text = json.dumps(data, ensure_ascii=True, separators=(",", ":")).replace("--", "-\\u002d")
+    return f"<!-- handoff:data {text} -->"
+
+
+FACT_TYPES = {"branch": (str, type(None)), "tip": (str, type(None)), "upstream": (str, type(None)), "base": (str, type(None)),
+              "ahead": (int, type(None)), "behind": (int, type(None)), "stashes": (int,)}
+
+
+def valid_facts(facts):
+    """A note is plain text anyone can edit or plant: its data block is used only if it has exactly the shape
+    `collect` writes."""
+    if not isinstance(facts, dict):
+        return False
+    for key, types in FACT_TYPES.items():
+        if key not in facts or not isinstance(facts[key], types) or isinstance(facts[key], bool):
+            return False
+    return all(isinstance(facts.get(k), list) and all(isinstance(x, str) for x in facts[k]) for k in ("modified", "untracked"))
+
+
+def parse_data(text):
+    found = DATA_BLOCK.findall(text)
+    if not found:
+        return None
+    try:
+        data = json.loads(found[-1])
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and valid_facts(data.get("facts")) else None
+
+
+def notes_folder(root):
+    """The default notes folder. A symlink there (a hostile repository can track one) would send the notes, or
+    the reading of them, somewhere else, so it is refused."""
+    folder = Path(root) / NOTE_DIR
+    if folder.is_symlink():
+        raise HandoffError(f"{folder} e um link simbolico: recuso escrever ou ler por ele (use --out para escolher a pasta)")
+    return folder
+
+
+def names(items):
+    shown = ", ".join(items[:SHOWN])
+    return shown + (f" e mais {len(items) - SHOWN}" if len(items) > SHOWN else "")
+
+
+def git_section(facts):
+    """The facts, as prose with no backtick spans (those are reserved for typed citations)."""
+    branch = facts["branch"] or "(HEAD solta)"
+    tip = f", ponta {facts['tip'][:7]}" if facts["tip"] else ", sem commits"
+    lines = ["## Estado do git", "", f"- Branch: {branch}{tip}"]
+    if facts["upstream"]:
+        lines.append(f"- Upstream: {facts['upstream']}")
+    if facts["base"] and facts["ahead"] is not None:
+        lines.append(f"- Em relacao a base {facts['base']}: {facts['ahead']} a frente, {facts['behind']} atras")
+    else:
+        lines.append("- Base: nao encontrada")
+    lines.append(f"- Arquivos modificados: {len(facts['modified'])}" + (f" ({names(facts['modified'])})" if facts["modified"] else ""))
+    lines.append(f"- Arquivos novos (nao rastreados): {len(facts['untracked'])}" + (f" ({names(facts['untracked'])})" if facts["untracked"] else ""))
+    lines.append(f"- Stashes: {facts['stashes']}")
+    others = [w for w in facts["worktrees"][1:]]
+    if others:
+        lines.append("- Outros worktrees: " + ", ".join(f"{w['path']} ({w['branch'] or 'HEAD solta'})" for w in others))
+    if facts["commits"]:
+        lines += ["- Commits recentes:"] + [f"  - {c['sha']} {c['subject']}" for c in facts["commits"]]
+    return "\n".join(lines)
+
+
+def missing_sections(draft):
+    return [name for name in SECTIONS if not re.search(rf"^#{{1,6}}[ \t]+{re.escape(name)}[ \t]*$", draft, re.M | re.I)]
+
+
+def render_note(facts, draft, results, when):
+    cites = [{"type": r["type"], "value": r["value"], "sha": r["sha"], "verified": r["verified"]} for r in results]
+    data = {"schema": SCHEMA, "facts": facts, "citations": cites}
+    return (f"# Handoff - {when} - {facts['branch'] or 'HEAD solta'}\n\n" + git_section(facts) + "\n\n"
+            + draft.strip("\n") + "\n\n" + data_block(data) + "\n")
+
+
+def write_note(root, draft, out_dir=None, base=None):
+    """Check the draft's citations, mark the ones that fail, and save the note in a new file (never over another)."""
+    facts = collect(root, base)
+    results = check_text(root, draft)
+    text = render_note(facts, mark_unverified(draft, results), results, time.strftime("%Y-%m-%d %H:%M", NOW()))
+    folder = Path(out_dir) if out_dir else notes_folder(root)
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y-%m-%d-%H%M%S", NOW())
+    name, n = stamp + ".md", 2
+    while True:
+        try:  # private (the note may name internal paths) and exclusive (two runs in a second never share a file)
+            fd = os.open(str(folder / name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            name, n = f"{stamp}-{n}.md", n + 1
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return {"path": str(folder / name), "facts": facts, "citations": results, "missing": missing_sections(draft)}
+
+
+def note_key(name):
+    m = NOTE_NAME.fullmatch(name)
+    return (m.group(1), int(m.group(2) or 1)) if m else None
+
+
+def newest_note(folder):
+    """The newest note of a folder: by its timestamp, then by its collision number. Anything that is not a regular
+    note file is ignored."""
+    best = None
+    for p in Path(folder).glob("*.md"):
+        key = note_key(p.name)
+        if key and p.is_file() and not p.is_symlink() and (best is None or key > best[0]):
+            best = (key, p)
+    return best[1] if best else None
+
+
+def drift(root, then, now):
+    """What changed between the facts a note recorded and the repository now, as a list of messages."""
+    out = []
+    if then["branch"] != now["branch"]:
+        out.append(f"a branch era {then['branch'] or '(HEAD solta)'} e agora e {now['branch'] or '(HEAD solta)'}")
+    elif then["tip"] != now["tip"]:
+        extra = ""
+        if then["tip"] and resolve(root, then["tip"]):
+            rc, count = git(root, "rev-list", "--count", f"{then['tip']}..HEAD")
+            extra = f" ({count.strip()} commits novos)" if rc == 0 else ""
+        else:
+            extra = " (o commit antigo nao existe mais)"
+        out.append(f"a ponta de {now['branch'] or 'HEAD'} mudou: {(then['tip'] or '-')[:7]} -> {(now['tip'] or '-')[:7]}{extra}")
+    if (then["ahead"], then["behind"]) != (now["ahead"], now["behind"]):
+        out.append(f"a frente/atras da base mudou: {then['ahead']}/{then['behind']} -> {now['ahead']}/{now['behind']}")
+    before, after = set(then["modified"] + then["untracked"]), set(now["modified"] + now["untracked"])
+    if before - after:
+        out.append("arquivos sujos que ja nao estao: " + names(sorted(before - after)))
+    if after - before:
+        out.append("arquivos sujos novos: " + names(sorted(after - before)))
+    if then["stashes"] != now["stashes"]:
+        out.append(f"stashes: {then['stashes']} -> {now['stashes']}")
+    return out
+
+
+def resume(root, file=None):
+    """The newest note, every citation checked again, and what drifted since it was written."""
+    path = Path(file) if file else newest_note(notes_folder(root))
+    if path is None:
+        raise HandoffError(f"nao ha nota em {NOTE_DIR}/ (rode `write` primeiro)")
+    if path.is_symlink() or not path.is_file():
+        raise HandoffError(f"{path} nao e um arquivo de nota")
+    text = path.read_text(encoding="utf-8", errors="replace")
+    data = parse_data(text)
+    results = check_text(root, text)
+    recorded = {(c["type"], c["value"]): c.get("sha") for c in (data or {}).get("citations", [])}
+    for r in results:
+        before = recorded.get((r["type"], r["value"]))
+        r["moved"] = bool(r["verified"] and before and r["sha"] and before != r["sha"])
+    changes = None
+    if data:
+        try:
+            now = collect(root, data["facts"].get("base"))
+        except HandoffError:  # the recorded base is gone (or is not a ref at all): detect it again
+            now = collect(root)
+        changes = drift(root, data["facts"], now)
+    return {"path": str(path), "text": text, "has_data": data is not None, "citations": results, "drift": changes}
+
+
+def facts_report(facts):
+    return git_section(facts)
+
+
+def citation_lines(results):
+    out = []
+    for r in results:
+        flag = "ok" if r["verified"] else "NAO VERIFICADO"
+        if r.get("moved"):
+            flag = "MUDOU (a ponta e outra)"
+        out.append(f"  linha {r['line']}: {r['type']}:{r['value']}  {flag}" + (f" ({r['why']})" if r["why"] else ""))
+    return out
+
+
+def clean_result(results):
+    return [{k: v for k, v in r.items() if k not in ("start", "end")} for r in results]
+
+
+def parser():
+    p = argparse.ArgumentParser(prog="handoff.py", description="Nota de fim de sessao com fatos do git e citacoes conferidas.")
+    p.add_argument("--version", action="version", version=f"handoff {VERSION}")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("collect", help="os fatos do git, como JSON ou texto")
+    c.add_argument("repo", nargs="?", default=".")
+    c.add_argument("--base")
+    c.add_argument("--json", action="store_true")
+    w = sub.add_parser("write", help="confere as citacoes de um rascunho e grava a nota")
+    w.add_argument("repo", nargs="?", default=".")
+    w.add_argument("--draft", required=True, help="arquivo com o rascunho, ou - para a entrada padrao")
+    w.add_argument("--out", help=f"pasta das notas (padrao: {NOTE_DIR}/ na raiz)")
+    w.add_argument("--base")
+    w.add_argument("--json", action="store_true")
+    v = sub.add_parser("verify", help="confere as citacoes de uma nota ou rascunho")
+    v.add_argument("file")
+    v.add_argument("repo", nargs="?", default=".")
+    v.add_argument("--json", action="store_true")
+    r = sub.add_parser("resume", help="mostra a nota mais recente e o que mudou desde entao")
+    r.add_argument("repo", nargs="?", default=".")
+    r.add_argument("--file", help="uma nota especifica (padrao: a mais recente)")
+    r.add_argument("--json", action="store_true")
+    return p
+
+
+def read_draft(arg):
+    try:
+        return sys.stdin.read() if arg == "-" else Path(arg).read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        raise HandoffError(f"nao consegui ler o rascunho: {e}")
+
+
+def emit(args, payload, text):
+    print(json.dumps(payload, indent=2, ensure_ascii=False) if args.json else text)
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        root = repo_root(args.repo)
+        if args.cmd == "collect":
+            facts = collect(root, args.base)
+            emit(args, facts, facts_report(facts))
+            return 0
+        if args.cmd == "write":
+            res = write_note(root, read_draft(args.draft), args.out, args.base)
+            bad = [c for c in res["citations"] if not c["verified"]]
+            lines = [f"nota gravada em {res['path']}", f"{len(res['citations'])} citacoes, {len(bad)} nao verificadas"]
+            lines += citation_lines(bad)
+            lines += [f"aviso: falta a secao '{name}'" for name in res["missing"]]
+            emit(args, {"schema": SCHEMA, "path": res["path"], "citations": clean_result(res["citations"]), "missing_sections": res["missing"]},
+                 "\n".join(lines))
+            return 1 if bad else 0
+        if args.cmd == "verify":
+            path = Path(args.file)
+            if path.is_symlink() or not path.is_file():
+                raise HandoffError(f"{path} nao e um arquivo")
+            results = check_text(root, path.read_text(encoding="utf-8", errors="replace"))
+            bad = [c for c in results if not c["verified"]]
+            emit(args, {"schema": SCHEMA, "citations": clean_result(results)},
+                 "\n".join([f"{len(results)} citacoes, {len(bad)} nao verificadas"] + citation_lines(results)))
+            return 1 if bad else 0
+        res = resume(root, args.file)
+        bad = [c for c in res["citations"] if not c["verified"] or c["moved"]]
+        changed = res["drift"] or []
+        lines = [res["text"].rstrip("\n"), "", "--- conferencia agora ---", f"nota: {res['path']}"]
+        if res["drift"] is None:
+            lines.append("a nota nao tem o bloco de dados: so as citacoes foram conferidas")
+        lines += (["mudou desde a nota:"] + [f"  - {m}" for m in changed]) if changed else ([] if res["drift"] is None else ["nada mudou no git desde a nota"])
+        lines += [f"{len(res['citations'])} citacoes, {len(bad)} com problema"] + citation_lines(bad)
+        emit(args, {"schema": SCHEMA, "path": res["path"], "drift": res["drift"], "citations": clean_result(res["citations"])},
+             "\n".join(lines))
+        return 1 if (bad or changed) else 0
+    except HandoffError as e:
+        print(f"erro: {e}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
