@@ -6,6 +6,7 @@
 # Uso:
 #   handoff.py collect [REPO] [--base REF] [--json]                   # fatos do git (branch, ponta, a frente/atras, sujos...)
 #   handoff.py write   [REPO] --draft FILE|- [--out DIR] [--base REF] # confere as citacoes e grava .handoff/AAAA-MM-DD-hhmmss.md
+#                                                                     # (um bloco --- Chave: Valor --- no inicio do rascunho vira a metainfo da nota)
 #   handoff.py verify  FILE [REPO] [--json]                           # confere as citacoes de uma nota ou rascunho
 #   handoff.py resume  [REPO] [--file FILE] [--json]                  # mostra a nota mais recente e o que mudou desde entao
 # Saida: 0 tudo conferido, 1 citacao nao verificada ou algo mudou, 2 erro.
@@ -296,6 +297,87 @@ def names(items):
     return shown + (f" e mais {len(items) - SHOWN}" if len(items) > SHOWN else "")
 
 
+META_TITLE = "Metainfo da sessao"
+META_RESERVED = ("gravada em", "repositorio")  # rows the tool writes itself
+META_EXPECTED = ("Modelo", "Pedido original", "Status")  # what the agent always knows: a missing one is a warning
+MAX_META_KEY = 40
+MAX_META_VALUE = 1000
+FRONT_LINE = re.compile(r"([^:]{1,%d}):[ \t]+(\S.*)" % MAX_META_KEY)
+META_PART = re.compile(r"\| " + META_TITLE + r" \| \|\n(?:\|[^\n]*\n)*\n")
+
+
+def clean_meta_text(text):
+    """One line, single spaces. Control characters are refused, never dropped."""
+    text = " ".join(text.split())
+    if any(ord(c) < 32 or ord(c) == 127 for c in text):
+        raise HandoffError("a metainfo tem caracteres de controle")
+    return text
+
+
+def split_front(draft):
+    """The metainfo block at the top of a draft: `---`, one `Chave: Valor` per line, `---`. Returns
+    (rows, the rest of the draft, how many lines the block took). A draft that does not start with such a block
+    comes back untouched, and a block with a line of another shape is an error, so nothing is dropped quietly."""
+    lines = draft.split("\n")
+    first = next((i for i, l in enumerate(lines) if l.strip()), None)
+    if first is None or lines[first].strip() != "---":
+        return [], draft, 0
+    close = next((j for j in range(first + 1, len(lines)) if lines[j].strip() == "---"), None)
+    if close is None:
+        return [], draft, 0
+    rows = []
+    for n in range(first + 1, close):
+        if not lines[n].strip():
+            continue
+        m = FRONT_LINE.fullmatch(lines[n].strip())
+        if not m:
+            raise HandoffError(f"metainfo invalida na linha {n + 1} do rascunho: use 'Chave: Valor', uma por linha, entre dois '---'")
+        rows.append((m.group(1), m.group(2)))
+    return rows, "\n".join(lines[close + 1:]), close + 1
+
+
+def clean_meta(rows):
+    """The agent's rows, validated: single line, no duplicate, none of the tool's own keys, and no typed citation
+    (a citation is checked only where the tool checks them: in the sections)."""
+    out, seen = [], set()
+    for key, value in rows:
+        key, value = clean_meta_text(key), clean_meta_text(value)
+        if not key or not value:
+            raise HandoffError("a metainfo precisa de chave e valor")
+        if len(key) > MAX_META_KEY or len(value) > MAX_META_VALUE:
+            raise HandoffError(f"metainfo '{key[:20]}': chave de ate {MAX_META_KEY} e valor de ate {MAX_META_VALUE} caracteres (resuma)")
+        if key.lower() in META_RESERVED or key.lower() in seen:
+            raise HandoffError(f"metainfo '{key}': chave repetida ou reservada (a ferramenta ja grava 'Gravada em' e 'Repositorio')")
+        if CITATION.search(key) or CITATION.search(value):
+            raise HandoffError(f"metainfo '{key}': citacao tipada (commit:, branch:, file:) nao entra no cabecalho, ponha-a numa secao")
+        seen.add(key.lower())
+        out.append((key, value))
+    return out
+
+
+def meta_rows(root, agent_rows, when):
+    """The header rows: the agent's, then what the tool knows by itself."""
+    own = [("Gravada em", when), ("Repositorio", Path(root).name)]
+    return agent_rows + [(k, clean_meta_text(v).replace("`", "'")) for k, v in own]
+
+
+def meta_section(rows):
+    esc = lambda text: text.replace("|", "\\|")
+    return "\n".join([f"| {META_TITLE} | |", "|---|---|"] + [f"| {esc(k)} | {esc(v)} |" for k, v in rows])
+
+
+def valid_meta(meta):
+    """The rows a note recorded, or None. The data block is untrusted: whatever is not a list of string pairs is no header."""
+    if isinstance(meta, list) and all(isinstance(r, list) and len(r) == 2 and all(isinstance(x, str) for x in r) for r in meta):
+        return [tuple(r) for r in meta]
+    return None
+
+
+def missing_meta(rows):
+    have = {k.lower() for k, _ in rows}
+    return [name for name in META_EXPECTED if name.lower() not in have]
+
+
 def git_section(facts):
     """The facts, as prose with no backtick spans (those are reserved for typed citations)."""
     branch = facts["branch"] or "(HEAD solta)"
@@ -322,18 +404,24 @@ def missing_sections(draft):
     return [name for name in SECTIONS if not re.search(rf"^#{{1,6}}[ \t]+{re.escape(name)}[ \t]*$", draft, re.M | re.I)]
 
 
-def render_note(facts, draft, results, when):
+def render_note(facts, meta, draft, results, when):
     cites = [{"type": r["type"], "value": r["value"], "sha": r["sha"], "verified": r["verified"]} for r in results]
-    data = {"schema": SCHEMA, "facts": facts, "citations": cites}
-    return (f"# Handoff - {when} - {facts['branch'] or 'HEAD solta'}\n\n" + git_section(facts) + "\n\n"
+    data = {"schema": SCHEMA, "facts": facts, "meta": [list(r) for r in meta], "citations": cites}
+    return (f"# Handoff - {when} - {facts['branch'] or 'HEAD solta'}\n\n" + meta_section(meta) + "\n\n" + git_section(facts) + "\n\n"
             + draft.strip("\n") + "\n\n" + data_block(data) + "\n")
 
 
 def write_note(root, draft, out_dir=None, base=None):
     """Check the draft's citations, mark the ones that fail, and save the note in a new file (never over another)."""
     facts = collect(root, base)
-    results = check_text(root, draft)
-    text = render_note(facts, mark_unverified(draft, results), results, time.strftime("%Y-%m-%d %H:%M", NOW()))
+    agent_rows, body, skipped = split_front(draft)
+    agent_rows = clean_meta(agent_rows)
+    results = check_text(root, body)
+    when = time.strftime("%Y-%m-%d %H:%M", NOW())
+    meta = meta_rows(root, agent_rows, when)
+    text = render_note(facts, meta, mark_unverified(body, results), results, when)
+    for r in results:  # the lines the person wrote, not the lines left after the metainfo block
+        r["line"] += skipped
     try:  # encoded before any file exists: a text that cannot be written must not leave an empty note behind
         payload = text.encode("utf-8")
     except UnicodeError:
@@ -367,7 +455,8 @@ def write_note(root, draft, out_dir=None, base=None):
                 pass
         raise HandoffError(f"nao consegui gravar a nota {folder / name}: {e.strerror or e}")
     os.close(fd)
-    return {"path": str(folder / name), "facts": facts, "citations": results, "missing": missing_sections(draft)}
+    return {"path": str(folder / name), "facts": facts, "meta": meta, "citations": results,
+            "missing": missing_sections(body), "missing_meta": missing_meta(agent_rows)}
 
 
 TITLE = re.compile(r"# Handoff - [^\n]*\n\n")
@@ -375,23 +464,34 @@ GIT_PART = re.compile(r"## Estado do git\n\n(?:[^\n]+\n)+")
 
 
 def tool_spans(text):
-    """The parts of a note the tool wrote itself: the title and the git section (commit subjects, branch and file
-    names, quoted verbatim) and the data block. They are not the agent's citations and are never checked."""
+    """The parts of a note the tool wrote itself: the title, the metainfo header and the git section (commit
+    subjects, branch and file names, quoted verbatim) and the data block. They are not the agent's citations and
+    are never checked."""
     spans = []
     title = TITLE.match(text)
     if title:
-        end = None
+        pos = title.end()
         data = parse_data(text)
+        meta = valid_meta(data.get("meta")) if data else None
+        header = None
+        if meta is not None:  # the exact rendering of the recorded rows, as for the git section below
+            exact = meta_section(meta) + "\n\n"
+            if text.startswith(exact, pos):
+                header = pos + len(exact)
+        if header is None:
+            part = META_PART.match(text, pos)
+            header = part.end() if part else pos  # a note written before the header existed has none
+        end = None
         if data:  # the exact rendering of the recorded facts, so even a file name with a blank line in it is covered
             try:
                 section = git_section(data["facts"]) + "\n"
-                if text.startswith(section, title.end()):
-                    end = title.end() + len(section)
+                if text.startswith(section, header):
+                    end = header + len(section)
             except (KeyError, TypeError, ValueError, AttributeError):
                 end = None
         if end is None:
-            part = GIT_PART.match(text, title.end())
-            end = part.end() if part else title.end()
+            part = GIT_PART.match(text, header)
+            end = part.end() if part else header
         spans.append((0, end))
     block = last_data_block(text)
     if block:
@@ -563,8 +663,9 @@ def main(argv=None):
             lines = [f"nota gravada em {res['path']}", f"{len(res['citations'])} citacoes, {len(bad)} nao verificadas"]
             lines += citation_lines(bad)
             lines += [f"aviso: falta a secao '{name}'" for name in res["missing"]]
-            emit(args, {"schema": SCHEMA, "path": res["path"], "citations": clean_result(res["citations"]), "missing_sections": res["missing"]},
-                 "\n".join(lines))
+            lines += [f"aviso: falta a metainfo '{name}'" for name in res["missing_meta"]]
+            emit(args, {"schema": SCHEMA, "path": res["path"], "citations": clean_result(res["citations"]), "missing_sections": res["missing"],
+                        "missing_meta": res["missing_meta"]}, "\n".join(lines))
             return 1 if bad else 0
         if args.cmd == "verify":
             path = Path(args.file)

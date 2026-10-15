@@ -53,6 +53,23 @@ class CollectCliTest(CliCase):
 
 
 class WriteCliTest(CliCase):
+    def test_the_metainfo_block_becomes_the_header_and_a_missing_row_is_a_warning(self):
+        draft = "---\nModelo: Claude Sonnet 5.5\nStatus: Proposta\n---\n## O que foi feito\n`file:src/a.py`\n"
+        rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file(draft)])
+        self.assertEqual(rc, 0)
+        self.assertIn("aviso: falta a metainfo 'Pedido original'", out)
+        self.assertNotIn("aviso: falta a metainfo 'Modelo'", out)
+        note = Path(out.split("nota gravada em ")[1].splitlines()[0]).read_text(encoding="utf-8")
+        self.assertIn("| Modelo | Claude Sonnet 5.5 |", note)
+        rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file(draft), "--json"])
+        self.assertEqual(json.loads(out)["missing_meta"], ["Pedido original"])
+
+    def test_a_bad_metainfo_block_is_exit_two_without_a_note(self):
+        rc, _, err = run_main(["write", str(self.repo), "--draft", self.draft_file("---\nModelo\n---\n## O que foi feito\nx\n")])
+        self.assertEqual(rc, 2)
+        self.assertIn("erro: metainfo invalida na linha 2", err)
+        self.assertFalse((self.repo / ".handoff").exists())
+
     def test_all_citations_verified_exits_zero(self):
         rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`file:src/a.py`\n")])
         self.assertEqual(rc, 0)

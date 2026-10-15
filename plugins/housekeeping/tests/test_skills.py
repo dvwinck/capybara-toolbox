@@ -60,6 +60,19 @@ class SkillFilesTest(unittest.TestCase):
         for section in ho.SECTIONS:
             self.assertIn(f"## {section}", text)
 
+    def test_the_handoff_skill_runs_on_haiku_and_the_others_keep_the_session_model(self):
+        models = {f.name: frontmatter((f / "SKILL.md").read_text(encoding="utf-8")).get("model") for f in SKILLS.iterdir()}
+        self.assertEqual(models, {"doc-truth": None, "handoff": "haiku", "todo-sweep": None})
+
+    def test_the_handoff_example_header_is_exactly_what_the_tool_renders(self):
+        from helpers import load_handoff
+        ho = load_handoff()
+        text = (SKILLS / "handoff" / "examples" / "note.example.md").read_text(encoding="utf-8")
+        meta = ho.valid_meta(ho.parse_data(text)["meta"])
+        self.assertIsNotNone(meta)
+        self.assertIn("\n\n" + ho.meta_section(meta) + "\n\n## Estado do git", text)
+        self.assertEqual(ho.missing_meta(meta), [])
+
 
 class ManualInstallTest(unittest.TestCase):
     def test_install_ships_every_skill_and_uninstall_removes_them(self):

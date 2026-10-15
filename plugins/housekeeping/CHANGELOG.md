@@ -6,6 +6,10 @@ All notable changes to the **housekeeping** plugin are documented here. The form
 
 ## [Unreleased]
 
+### Added
+- handoff notes always start with a `Metainfo da sessao` table. The agent opens the draft with a `---` block of `Chave: Valor` lines (`Modelo`, `Pedido original` and `Status` are expected, anything else is optional); the tool adds `Gravada em` and `Repositorio`, records the rows in the data block, warns with `aviso: falta a metainfo '<key>'` when an expected one is missing, and refuses a duplicate or reserved key, a control character, an over-long row and a typed citation in the block. `resume` and `verify` never treat the header as citations; a note written before the header existed still resumes. `write --json` has a `missing_meta` list.
+- The handoff skill asks for `model: haiku` in its frontmatter (the override lasts for the turn that runs the skill).
+
 ## [0.3.1] - 2026-10-15
 
 ### Changed

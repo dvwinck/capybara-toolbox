@@ -47,7 +47,8 @@ class WriteTest(NoteCase):
         text = Path(res["path"]).read_text(encoding="utf-8")
         self.assertEqual(Path(res["path"]).name, "2026-10-14-090507.md")
         self.assertEqual(Path(res["path"]).parent, self.repo / ".handoff")
-        self.assertTrue(text.startswith("# Handoff - 2026-10-14 09:05 - main\n\n## Estado do git\n"))
+        self.assertTrue(text.startswith("# Handoff - 2026-10-14 09:05 - main\n\n| Metainfo da sessao | |\n|---|---|\n"))
+        self.assertIn("\n\n## Estado do git\n", text)
         self.assertIn(f"- Branch: main, ponta {self.first[:7]}", text)
         self.assertIn("- Em relacao a base main: 0 a frente, 0 atras", text)
         self.assertIn("## Decisoes e por que", text)
@@ -452,6 +453,128 @@ class ToolPartsAreNotCitationsTest(NoteCase):
         text = Path(res["path"]).read_text(encoding="utf-8")
         shown = ho.resume(self.repo)["citations"][0]["line"]
         self.assertEqual(text.splitlines()[shown - 1].strip(), "`file:ghost.py` [nao verificado]")
+
+
+LINK = "https://claude.ai/" + "code/session_01ABC"  # assembled at run time: publish-check flags a session link in the tree
+FRONT = f"""---
+Nome da sessao: config sonarqube
+Modelo: Claude Sonnet 5.5 (`claude-sonnet-5-5`)
+Sessao: {LINK}
+Pedido original: "analise o code base | crie uma proposta"
+Status: Proposta. Nada aplicado.
+---
+"""
+
+
+class MetainfoHeaderTest(NoteCase):
+    """The header every note starts with: the agent's rows, then the ones the tool knows."""
+
+    def note(self, front="", **kw):
+        return Path(self.write(draft=front + self.draft(), **kw)["path"]).read_text(encoding="utf-8")
+
+    def test_the_header_is_always_there_even_without_a_metainfo_block(self):
+        text = self.note()
+        self.assertIn("| Metainfo da sessao | |\n|---|---|\n| Gravada em | 2026-10-14 09:05 |\n| Repositorio | r |\n\n## Estado do git", text)
+
+    def test_the_agents_rows_come_first_in_order_and_the_tool_rows_after(self):
+        text = self.note(FRONT)
+        rows = [l for l in text.split("\n\n")[1].splitlines()[2:]]
+        self.assertEqual([r.split(" | ")[0].lstrip("| ") for r in rows],
+                         ["Nome da sessao", "Modelo", "Sessao", "Pedido original", "Status", "Gravada em", "Repositorio"])
+        self.assertIn(f"| Sessao | {LINK} |", text)
+        self.assertIn("| Modelo | Claude Sonnet 5.5 (`claude-sonnet-5-5`) |", text)
+
+    def test_a_pipe_in_a_value_cannot_break_the_table(self):
+        self.assertIn('| Pedido original | "analise o code base \\| crie uma proposta" |', self.note(FRONT))
+
+    def test_the_block_is_not_left_in_the_body_and_the_draft_survives(self):
+        text = self.note(FRONT)
+        self.assertEqual(text.count("Nome da sessao"), 2)  # the table row and the data block
+        self.assertNotIn("\n---\n", text)
+        self.assertIn("## O que foi feito", text)
+
+    def test_the_rows_are_recorded_in_the_data_block(self):
+        meta = ho.parse_data(self.note(FRONT))["meta"]
+        self.assertEqual(meta[0], ["Nome da sessao", "config sonarqube"])
+        self.assertEqual(meta[-1], ["Repositorio", "r"])
+
+    def test_the_header_never_adds_citations_and_resume_ignores_it(self):
+        self.note(FRONT)
+        res = ho.resume(self.repo)
+        self.assertEqual([c["value"] for c in res["citations"]], [self.first[:7], "src/a.py", "main", "ghost", "docs/missing.md"])
+        self.assertEqual(res["drift"], [])
+
+    def test_line_numbers_still_count_the_lines_of_the_whole_draft(self):
+        draft = FRONT + "## O que foi feito\n`file:ghost.py`\n"
+        res = self.write(draft=draft)
+        self.assertEqual(draft.splitlines()[res["citations"][0]["line"] - 1], "`file:ghost.py`")
+
+    def test_a_hr_that_is_not_a_block_is_left_alone(self):
+        text = self.note("---\n")  # an opener with no closer
+        self.assertIn("\n---\n", text)
+        self.assertEqual(ho.split_front("## O que foi feito\n---\nx: y\n---\n"), ([], "## O que foi feito\n---\nx: y\n---\n", 0))
+
+    def test_blank_lines_before_the_block_and_around_it_are_fine(self):
+        rows, body, skipped = ho.split_front("\n\n---\nModelo: m\n\nStatus: s\n---\n\n## O que foi feito\nx\n")
+        self.assertEqual((rows, skipped), ([("Modelo", "m"), ("Status", "s")], 7))
+        self.assertTrue(body.lstrip("\n").startswith("## O que foi feito"))
+
+    def test_a_line_that_is_not_chave_valor_is_an_error_naming_the_line(self):
+        with self.assertRaises(ho.HandoffError) as cm:
+            self.write(draft="---\nModelo: m\nsem dois pontos\n---\n## O que foi feito\nx\n")
+        self.assertIn("linha 3", str(cm.exception))
+        self.assertFalse((self.repo / ".handoff").exists())
+
+    def test_bad_rows_are_refused_and_nothing_is_written(self):
+        bad = {"a typed citation": "Memoria: `file:src/a.py`", "a tool key": "Repositorio: x", "a repeated key": "Modelo: a\nmodelo: b",
+               "a long value": "Escopo: " + "x" * (ho.MAX_META_VALUE + 1), "a long key": "k" * 41 + ": v",
+               "a control character": "Escopo: a\x07b"}
+        for why, rows in bad.items():
+            with self.subTest(why):
+                with self.assertRaises(ho.HandoffError):
+                    self.write(draft=f"---\n{rows}\n---\n" + self.draft())
+        self.assertFalse((self.repo / ".handoff").exists())
+
+    def test_a_value_may_hold_colons_and_untyped_backticks(self):
+        text = self.note("---\nRepo analisado: `repos/x`, origin/base @ `32cc76d`: ok\n---\n")
+        self.assertIn("| Repo analisado | `repos/x`, origin/base @ `32cc76d`: ok |", text)
+
+    def test_the_tool_rows_hold_no_backticks_even_in_a_strange_folder_name(self):
+        odd = init_repo(self.tmp / "`x`")
+        commit(odd, "c", {"a.txt": "a\n"})
+        text = Path(ho.write_note(odd, "## O que foi feito\nx\n")["path"]).read_text(encoding="utf-8")
+        self.assertIn("| Repositorio | 'x' |", text)
+
+    def test_missing_expected_rows_are_reported(self):
+        self.assertEqual(self.write()["missing_meta"], ["Modelo", "Pedido original", "Status"])
+        self.assertEqual(self.write(draft="---\nmodelo: m\nStatus: s\n---\n" + self.draft())["missing_meta"], ["Pedido original"])
+        self.assertEqual(self.write(draft=FRONT + self.draft())["missing_meta"], [])
+
+    def test_a_note_written_before_the_header_existed_still_resumes(self):
+        folder = self.repo / ".handoff"
+        folder.mkdir()
+        facts = ho.collect(self.repo)
+        old = ("# Handoff - 2026-10-14 09:05 - main\n\n" + ho.git_section(facts) + "\n\n## O que foi feito\n`file:src/a.py`\n\n"
+               + ho.data_block({"schema": 1, "facts": facts, "citations": []}) + "\n")
+        (folder / "2026-10-14-090507.md").write_text(old, encoding="utf-8")
+        res = ho.resume(self.repo)
+        self.assertEqual([(c["type"], c["value"]) for c in res["citations"]], [("file", "src/a.py")])
+        self.assertEqual(res["drift"], [])
+
+    def test_a_header_with_a_planted_citation_is_still_masked_when_the_data_block_is_gone(self):
+        path = Path(self.write(draft=self.draft())["path"])
+        text = path.read_text(encoding="utf-8")
+        text = text.replace("| Repositorio | r |", "| Repositorio | `file:nope.py` |")
+        path.write_text(text[:text.index("<!-- handoff:data")], encoding="utf-8")
+        res = ho.resume(self.repo)
+        self.assertNotIn("nope.py", [c["value"] for c in res["citations"]])
+
+    def test_a_malformed_meta_in_the_data_block_means_no_exact_header_but_no_crash(self):
+        path = Path(self.write(draft=self.draft())["path"])
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace('"meta":[', '"meta":[1,'), encoding="utf-8")
+        res = ho.resume(self.repo)
+        self.assertEqual([c["value"] for c in res["citations"]][:2], [self.first[:7], "src/a.py"])
 
 
 if __name__ == "__main__":
