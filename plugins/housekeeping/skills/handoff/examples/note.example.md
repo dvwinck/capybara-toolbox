@@ -1,5 +1,13 @@
 # Handoff - 2026-10-14 09:05 - feat/export
 
+| Metainfo da sessao | |
+|---|---|
+| Modelo | Claude Sonnet 5.5 (`claude-sonnet-5-5`) |
+| Pedido original | "add a CSV export" |
+| Status | In progress: the writer exists, the header test is missing |
+| Gravada em | 2026-10-14 09:05 |
+| Repositorio | export-tool |
+
 ## Estado do git
 
 - Branch: feat/export, ponta 3f9a2c1
@@ -25,4 +33,4 @@ Kept one file per export instead of a zip: the zip hid partial failures. The zip
 ## O que falhou ou travou
 Streaming the rows with the old reader ran out of memory on the big fixture; see `file:docs/notes/memory.md` [nao verificado].
 
-<!-- handoff:data {"schema":1,"facts":{"schema":1,"branch":"feat/export","tip":"3f9a2c1d4e5f60718293a4b5c6d7e8f901234567","upstream":"origin/feat/export","base":"base","ahead":3,"behind":0,"modified":["src/export.py"],"untracked":[],"stashes":0,"worktrees":[],"commits":[{"sha":"3f9a2c1","subject":"export: write the header row"},{"sha":"8b41d07","subject":"export: add the CSV writer"}]},"citations":[]} -->
+<!-- handoff:data {"schema":1,"meta":[["Modelo","Claude Sonnet 5.5 (`claude-sonnet-5-5`)"],["Pedido original","\"add a CSV export\""],["Status","In progress: the writer exists, the header test is missing"],["Gravada em","2026-10-14 09:05"],["Repositorio","export-tool"]],"facts":{"schema":1,"branch":"feat/export","tip":"3f9a2c1d4e5f60718293a4b5c6d7e8f901234567","upstream":"origin/feat/export","base":"base","ahead":3,"behind":0,"modified":["src/export.py"],"untracked":[],"stashes":0,"worktrees":[],"commits":[{"sha":"3f9a2c1","subject":"export: write the header row"},{"sha":"8b41d07","subject":"export: add the CSV writer"}]},"citations":[]} -->
