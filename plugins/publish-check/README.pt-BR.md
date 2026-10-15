@@ -3,7 +3,7 @@
 Varredura **somente leitura** de um repositório git, **árvore de trabalho e histórico completo**, atrás do que não deveria ficar público: links de conversa do Claude, caminhos absolutos da sua máquina, e-mails e a sua lista de nomes internos. Rode logo antes de um repositório, branch ou PR ficar público.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (somente biblioteca padrão) e `git`; sem rede.
-- **Idiomas:** a skill está em português; a documentação principal é em inglês ([README.md](README.md)).
+- **Idiomas:** a skill está em inglês; a documentação principal é em inglês ([README.md](README.md)).
 - **Não é um scanner de segredos.** Chaves e tokens ficam de fora de propósito; use uma ferramenta própria, como o [gitleaks](https://github.com/gitleaks/gitleaks). O gitleaks não lê mensagens de commit nem os campos de autor, que é a lacuna que esta ferramenta cobre.
 
 ## Instalação

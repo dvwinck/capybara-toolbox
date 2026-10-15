@@ -6,6 +6,11 @@ All notable changes to the **tidy-board** plugin are documented here. The format
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-15
+
+### Changed
+- The skill and its examples were rewritten in English for LLM use (the panel and script output stay in Portuguese). Behaviour and script are unchanged apart from the version.
+
 ## [0.1.0] - 2026-10-14
 
 ### Added

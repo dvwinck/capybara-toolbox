@@ -12,7 +12,7 @@
       "name": "ar-board",
       "source": "./plugins/ar-board",
       "description": "Local approve/reject (AR) board and question form: the agent proposes N options or asks N questions, you answer with the keyboard and comments, and the agent acts only on what you decided and keeps your preferences for the next rounds.",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "author": {
         "name": "Diogo Winck",
         "email": "diogo.winck@gmail.com"
@@ -45,7 +45,7 @@
         "skill"
       ],
       "category": "security",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Read-only scan of a git repository (working tree and full history) for session links, home paths, e-mail addresses and internal names before it goes public. Python standard library and git only.",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"
@@ -66,7 +66,7 @@
         "skill"
       ],
       "category": "productivity",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Clean up stale git branches, worktrees and stashes from a local board: every candidate is a card with its proof of being merged, only what you approve is deleted, and anything that exists in one place only is backed up first. Python standard library and git only.",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"
@@ -86,7 +86,7 @@
         "skill"
       ],
       "category": "productivity",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "Small read-only tools that keep a repository and a work session honest: doc-truth checks that what the documents say exists, handoff writes an end-of-session note whose citations are verified, todo-sweep triages TODO and FIXME comments on a local board. Python standard library and git only.",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"

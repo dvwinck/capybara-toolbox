@@ -36,13 +36,15 @@ GENERATED = [PLUGIN, SINGLE, QB_SINGLE, QB_SCRIPT]
 
 BUNDLED = "${CLAUDE_SKILL_DIR}/scripts/ar_board.py"  # how the lean SKILL.md files name the script
 INSTALLED = "$HOME/.claude/ar-board/ar_board.py"  # where the single-file variants install it
-SINGLE_STEP0 = """### 0. Instalar o script (uma vez por máquina)
+SINGLE_STEP0 = """### 0. Install the script (once per machine)
 
 ```bash
 test -f "{installed}" && grep -q 'ar-board {version}' "{installed}" && echo OK || echo FALTA
 ```
 
-Se faltar (ou a versão for anterior), crie com `mkdir -p ~/.claude/ar-board` e grave o conteúdo da seção **Script** no fim deste arquivo em `~/.claude/ar-board/ar_board.py` (cópia literal, sem alterar). Os comandos abaixo usam esse caminho. Requer apenas `python3` (stdlib).
+`OK` means the script is installed and its version matches. `FALTA` means "missing".
+
+If the output is `FALTA` (or the installed version is older), run `mkdir -p ~/.claude/ar-board`. Then write the content of the **Script** section at the end of this file to `~/.claude/ar-board/ar_board.py` (a literal copy, no changes). The commands below use that path. It needs only `python3` (stdlib).
 """
 
 
@@ -77,7 +79,7 @@ def single_file(root, skill_rel, name, script, version):
     if BUNDLED not in single:
         raise SystemExit(f"sync: {skill_rel} no longer runs the script as {BUNDLED}")
     single = single.replace(BUNDLED, INSTALLED)
-    return single.rstrip("\n") + "\n\n## Script\n\nGrave este conteúdo, sem alterações, em `~/.claude/ar-board/ar_board.py`:\n\n```python\n" + script.rstrip("\n") + "\n```\n"
+    return single.rstrip("\n") + "\n\n## Script\n\nWrite this content, unchanged, to `~/.claude/ar-board/ar_board.py`:\n\n```python\n" + script.rstrip("\n") + "\n```\n"
 
 
 def build(root):

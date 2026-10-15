@@ -6,6 +6,13 @@ All notable changes to the **ar-board** plugin are documented here. The format f
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-15
+
+### Changed
+- The `ar-board` and `question-board` SKILL.md files and their `examples/batch.example.json` files are rewritten in clear English for LLM use. Every rule, command and limit is kept. The agent now replies and writes card content in the user's language, while the panel's own UI stays in Portuguese.
+- The generated single-file variants in `dist/` are English end to end: the "install the script" step 0 and the "Script" intro written by `tools/sync.py` are translated.
+- Behaviour and scripts are unchanged apart from the version number.
+
 ## [1.3.0] - 2026-10-14
 
 ### Added

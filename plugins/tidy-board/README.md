@@ -3,7 +3,7 @@
 Clean up stale git **branches, worktrees and stashes** from a local board. Every candidate is a card that shows how sure the tool is that it is finished; you decide **Apagar** (delete), **Manter** (keep) or **Depois** (later) with the keyboard; a separate `apply` step re-checks each approved item at the moment it deletes it. Nothing is deleted without your approval, and anything that exists in one place only is backed up first.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only) and `git`; `gh` is optional (it proves merged pull requests). `scan` and `apply` never use the network except through `gh`, read-only and only when it is installed (`scan` to prove merged pull requests, `apply` to re-check the P2 items); `restore` uses none.
-- **Languages:** the skill and the panel are in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
+- **Languages:** the skill is in English; the panel, the card text and the CLI messages are in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
 - **Scope:** one repository per board, local refs only. `origin` is never touched.
 
 ## Install

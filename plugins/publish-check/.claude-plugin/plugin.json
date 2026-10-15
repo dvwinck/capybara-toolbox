@@ -1,7 +1,7 @@
 {
   "name": "publish-check",
   "description": "Read-only scan of a git repository (working tree and full history) for session links, home paths, e-mail addresses and internal names before it goes public. Python standard library and git only.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Diogo Winck",
     "email": "diogo.winck@gmail.com"

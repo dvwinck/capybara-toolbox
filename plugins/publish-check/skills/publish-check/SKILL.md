@@ -1,62 +1,104 @@
 ---
 name: publish-check
-description: Varredura somente leitura de um repositório git (árvore e histórico completo) atrás de vazamentos antes de publicar - links de conversa do Claude, caminhos da sua máquina (/Users/<nome>), e-mails e nomes internos. Use quando o usuário for tornar algo público - criar repositório público, abrir PR para repositório público ou dar push em remoto público - ou pedir para checar vazamentos antes de publicar. Also use when the user says "publish-check", "check this repo before I publish", "scan history for leaks" or "is it safe to make this repo public". Gatilhos - /publish-check ou /publish-check:publish-check.
+description: Read-only scan of a git repository (working tree and full history) for leaks before it goes public - Claude conversation links, paths from your machine (/Users/<name>), e-mail addresses and internal names. Use when the user is about to make something public - creating a public repository, opening a PR to a public repository or pushing to a public remote - or asks to check for leaks before publishing. Triggers - /publish-check or /publish-check:publish-check, "publish-check", "check this repo before I publish", "scan history for leaks", "is it safe to make this repo public", "checar antes de publicar", "varredura de vazamentos".
 ---
 
-# publish-check (checagem antes de publicar)
+# publish-check (check before publishing)
 
-Procura, na árvore de trabalho e em **todo o histórico git**, o que não deveria ficar público: links de conversa do Claude (`claude.ai/code/session...`, `/chat/...`, `/share/...`), caminhos da máquina de alguém (`/Users/<nome>`, `/home/<nome>`, `C:\Users\<nome>`), e-mails (texto, autor e committer) e uma lista de nomes internos do dono. É **somente leitura**: nunca altera o repositório nem reescreve histórico. Requer `python3` (stdlib) e `git`.
+This skill scans the working tree and the **whole git history** for what should not become public:
+- Claude conversation links (`claude.ai/code/session...`, `/chat/...`, `/share/...`).
+- Paths from someone's machine (`/Users/<name>`, `/home/<name>`, `C:\Users\<name>`).
+- E-mail addresses (in text, in the author field and in the committer field).
+- A list of the owner's internal names.
 
-Não procura segredos (chaves, tokens): para isso use um scanner de segredos, como o gitleaks. Diga isso ao usuário no relatório.
+The scan is **read-only**: it never changes the repository and never rewrites history. It needs `python3` (stdlib only) and `git`.
 
-## Quando usar
+It does not look for secrets (keys, tokens). For secrets, use a secret scanner such as gitleaks. Tell the user this when you present the results.
 
-Antes de tornar algo público: criar um repositório público, abrir PR para um repositório público ou dar push para um remoto público. **Ofereça** rodar a checagem e **nunca bloqueie**: a decisão de publicar é do usuário. Em repositórios privados que não vão ser publicados, não ofereça.
+Reply to the user in the user's language. The script's report is in English: explain its content to the user in the user's language.
 
-## Fluxo
+## When to use
 
-### 0. Localizar o script
+Use it before something becomes public: creating a public repository, opening a PR to a public repository or pushing to a public remote.
 
-O script acompanha esta skill: `${CLAUDE_SKILL_DIR}/scripts/publish_check.py`. Use-o direto, sempre com `python3 -I`.
+**Offer** to run the scan. **Never block**: the decision to publish belongs to the user.
+
+If the repository is private and will not be published, do not offer.
+
+## Flow
+
+### 0. Locate the script
+
+The script ships with this skill: `${CLAUDE_SKILL_DIR}/scripts/publish_check.py`. Run it directly, always with `python3 -I`.
 
 ```bash
 test -f "${CLAUDE_SKILL_DIR}/scripts/publish_check.py" && echo OK || echo FALTA
 ```
 
-Se `${CLAUDE_SKILL_DIR}` aparecer sem ser substituído, use no lugar dele o caminho mostrado como "Base directory for this skill" quando a skill foi carregada, escrito por extenso em cada comando.
+`FALTA` means "missing".
 
-### 1. Confirmar que o repositório vai (ou já está) público
+If `${CLAUDE_SKILL_DIR}` appears unexpanded, use the path shown as "Base directory for this skill" when the skill was loaded. Write that path out in full in every command.
 
-Se não estiver claro, pergunte. Se o `gh` existir, `gh repo view --json visibility -q .visibility` mostra a visibilidade de um repositório já no GitHub. Não presuma.
+### 1. Confirm that the repository will be public (or already is)
 
-### 2. Rodar
+If it is not clear, ask the user. Do not assume.
+
+If `gh` is installed, `gh repo view --json visibility -q .visibility` shows the visibility of a repository that is already on GitHub.
+
+### 2. Run
 
 ```bash
-python3 -I "${CLAUDE_SKILL_DIR}/scripts/publish_check.py" <repositório>
+python3 -I "${CLAUDE_SKILL_DIR}/scripts/publish_check.py" <repository>
 ```
 
-Opções úteis: `--json`, `--since <data>`, `--max-commits N` (repositórios grandes), `--denylist <arquivo>` (nomes internos, um por linha, **fora** do repositório) e `--config <arquivo>`. Se existir `.publish-check.json` na raiz, ele é lido sozinho: chaves `denylist` (nomes internos) e `allow` (fingerprints de achados aceitos).
+Useful options:
+- `--json`: print the script's report as JSON.
+- `--since <date>`: scan only commits newer than the date (any date git accepts).
+- `--max-commits N`: scan only the newest N commits (for large repositories).
+- `--denylist <file>`: internal names, one per line. Keep this file **outside** the repository.
+- `--config <file>`: use this config file.
 
-Código de saída: `0` limpo, `1` com achados, `2` erro (não é repositório git, config inválida, `git` ausente).
+If `.publish-check.json` exists at the repository root, the script reads it by itself. Its keys:
+- `denylist`: internal names.
+- `allow`: fingerprints of accepted findings.
 
-### 3. Apresentar
+Exit code:
+- `0`: clean.
+- `1`: findings.
+- `2`: error (not a git repository, invalid config, `git` missing).
 
-Mostre os achados agrupados por categoria, como o relatório os imprime: os valores já vêm parcialmente mascarados (`j***@dominio.dev`, `/Users/***`); **não** reproduza o valor completo em outro lugar. Diga quantos arquivos e commits foram varridos. Para cada categoria explique o que fazer, sem executar nada:
+### 3. Present
 
-- achado só na **árvore**: editar o arquivo e commitar;
-- achado no **histórico** (mensagem, autor, patch, tag): só some reescrevendo o histórico. Aponte `docs/remediation.md` (dentro do plugin), lembre de fazer backup antes e de que todos os SHAs mudam. **Nunca reescreva histórico por conta própria**, nem ofereça rodar a reescrita sem pedido explícito do usuário;
-- se o relatório disser **skipped** (arquivos binários, ilegíveis ou muito grandes), esses arquivos **não foram verificados**: diga isso; se mostrar "accepted by the allow list", diga quantos achados foram aceitos e por quem (o `allow` do `.publish-check.json`);
-- se o relatório disser **history limited** (`--since`/`--max-commits`), **no commits were scanned** ou **partial clone**, a varredura foi parcial: diga o que ficou de fora e que "limpo" vale só para o que foi varrido (o hook de pre-push de exemplo limita a 200 commits);
-- se o relatório avisar **shallow clone**, o resultado é parcial (só parte do histórico foi varrida): diga isso e sugira `git fetch --unshallow` antes de confiar em "limpo";
-- achado que é falso positivo (um e-mail público de propósito, um caminho de exemplo): o usuário pode aceitá-lo adicionando o `fingerprint` ao `allow` de `.publish-check.json`. Só edite esse arquivo com o OK do usuário.
+Show the findings grouped by category, as the script prints them (keep the masked values and fingerprints exactly as printed; write your explanations in the user's language). The values are already partly masked (`j***@domain.dev`, `/Users/***`). Do **not** reproduce the full value anywhere else.
 
-### 4. Fechar
+Say how many files and commits were scanned.
 
-Resuma: limpo, ou N achados em M categorias e o que o usuário decidiu. A decisão de publicar continua dele.
+For each category, explain to the user what to do. Do not execute any of it yourself.
 
-## Regras
+- A finding only in the **working tree**: tell the user to edit the file and commit the change.
+- A finding in the **history** (message, author, patch, tag): it goes away only by rewriting the history.
+  - Point to `docs/remediation.md` (inside the plugin).
+  - Remind the user to back up first and that every SHA will change.
+  - **Never rewrite history on your own.** Do not offer to run the rewrite. Run it only if the user explicitly asks.
+- If the script's report says `skipped` (binary, unreadable or too large files), those files were **not checked**. Tell the user.
+- If the script's report shows `accepted by the allow list`, tell the user how many findings were accepted and by whom (the `allow` key of `.publish-check.json`).
+- If the script's report says `history limited` (from `--since` / `--max-commits`) or `no commits were scanned`, the scan was partial.
+  - Say what was left out.
+  - Say that "clean" holds only for what was scanned.
+  - The example pre-push hook limits the scan to 200 commits by default.
+- If the script's report warns `partial clone`, the script never fetches blobs that are not stored locally and stops with an error if it needs one. If you see this warning together with an error, tell the user the scan could not complete.
+- If the script's report warns `shallow clone`, the result is partial (only part of the history was scanned).
+  - Tell the user.
+  - Suggest `git fetch --unshallow` before trusting "clean".
+- A finding that is a false positive (an e-mail that is public on purpose, an example path): the user can accept it by adding its `fingerprint` to the `allow` key of `.publish-check.json`. Edit that file only with the user's approval.
 
-- Somente leitura. Nunca rode comandos que reescrevem histórico (`filter-branch`, `filter-repo`) nem envie com força para o remoto.
-- A lista de nomes internos (`denylist`) é sensível: se o repositório for público, mantenha-a em arquivo **fora** dele (`--denylist`), ou em `.publish-check.json` ignorado pelo git (`.gitignore` ou `.git/info/exclude`). Um `.publish-check.json` com `denylist` commitado em repositório público vaza a própria lista, e a ferramenta vai acusar isso.
-- O relatório tem nomes de arquivos e mensagens de commit: trate-o como interno até o usuário decidir.
-- Se `git` não existir no PATH, diga isso ao usuário em vez de tentar outra forma.
+### 4. Close
+
+Summarise: clean, or N findings in M categories and what the user decided. The decision to publish stays with the user.
+
+## Rules
+
+- Read-only. Never run commands that rewrite history (`filter-branch`, `filter-repo`). Never force-push to the remote.
+- The list of internal names (`denylist`) is sensitive. If the repository is public, keep the list in a file **outside** it (`--denylist`), or in a `.publish-check.json` that git ignores (`.gitignore` or `.git/info/exclude`). A `.publish-check.json` with `denylist` committed in a public repository leaks the list itself, and the tool will report that.
+- The script's report contains file names and commit messages. Treat it as internal until the user decides otherwise.
+- If `git` is not on the PATH, tell the user. Do not try another way.

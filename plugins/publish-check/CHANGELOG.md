@@ -6,6 +6,11 @@ All notable changes to the **publish-check** plugin are documented here. The for
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-15
+
+### Changed
+- `SKILL.md` rewritten in English for LLM use (the skill now tells the agent to reply in the user's language). The example files were already English. Behaviour and the script are unchanged apart from the version.
+
 ## [0.1.0] - 2026-10-12
 
 ### Added

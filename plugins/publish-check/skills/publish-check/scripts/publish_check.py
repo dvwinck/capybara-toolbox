@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# publish-check 0.1.0 - read-only scan of a git repository for leaks before it goes public
+# publish-check 0.1.1 - read-only scan of a git repository for leaks before it goes public
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 """publish-check: read-only scan of a git repository, working tree and full history, for things
@@ -29,7 +29,7 @@ import tempfile
 from collections import namedtuple
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 SCHEMA = 1
 CONFIG_NAME = ".publish-check.json"
 MAX_FILE_BYTES = 50_000_000  # larger text files are not read; they are counted as skipped, never silently ignored

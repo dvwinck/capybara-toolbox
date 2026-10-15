@@ -3,7 +3,7 @@
 Limpa **branches, worktrees e stashes** obsoletos do git a partir de um painel local. Cada candidato é um card que mostra o quanto a ferramenta tem certeza de que ele terminou; você decide **Apagar**, **Manter** ou **Depois** com o teclado; um passo separado, o `apply`, reconfere cada item aprovado no momento em que o apaga. Nada é apagado sem a sua aprovação, e o que existe em um lugar só ganha um backup antes.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (somente biblioteca padrão) e `git`; o `gh` é opcional (prova PRs mergeados). `scan` e `apply` só usam a rede por meio do `gh`, somente leitura e apenas se ele estiver instalado (o `scan` para provar PRs mergeados, o `apply` para reconferir os itens P2); o `restore` não usa nenhuma.
-- **Idiomas:** a skill e o painel estão em português; a documentação principal está em inglês ([README.md](README.md)).
+- **Idiomas:** a skill está em inglês; o painel, o texto dos cards e as mensagens da linha de comando estão em português; a documentação principal está em inglês ([README.md](README.md)).
 - **Escopo:** um repositório por painel, só refs locais. O `origin` nunca é tocado.
 
 ## Instalação
