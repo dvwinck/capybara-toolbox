@@ -63,7 +63,7 @@ It runs only if the user clicked `Concluir` (the panel is finished) and the deci
 
 ### 4. After the report
 
-The tool only informs. **Do not edit the code on your own.** If the user asks, you may make these as ordinary edits, showing what changes: resolve the TODOs under `Resolver`, or delete the comments under `Descartar` (the whole comment line; check the file first, because the lines in the report are the ones from the moment of the `scan`). The ones under `Manter` stay as they are. For another batch, run `scan` again.
+The tool only informs. **Do not edit the code on your own.** If the user asks, you may make these as ordinary edits, showing what changes: resolve the TODOs under `Resolver`, or delete the comments under `Descartar`. Delete only the comment, never the code next to it: if the comment is alone on its line, remove that line; if it trails code on the same line (for example `x = 1  # TODO: fix`), remove only the comment and keep the code; if it is one line of a longer comment, remove only the TODO text and leave the rest of the comment. Check the file first, because the lines in the report are the ones from the moment of the `scan`. The ones under `Manter` stay as they are. For another batch, run `scan` again.
 
 ## Rules
 
