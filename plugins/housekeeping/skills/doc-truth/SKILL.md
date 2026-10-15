@@ -1,54 +1,61 @@
 ---
 name: doc-truth
-description: Confere se o que os documentos de um repositório dizem existe - caminhos citados, links e âncoras, paridade entre README.md e README.pt-BR.md, e versões e lista de plugins contra os manifestos. Somente leitura, sem rede, saída 0/1/2. Use quando o usuário pedir para conferir, auditar ou validar a documentação - "os docs estão certos?", "tem link quebrado?", "o README cita arquivo que não existe?", "o README em português está igual ao em inglês?". Also use when the user says "doc-truth", "check the docs", "verify documentation paths and links" or "do the READMEs match". Gatilhos - /doc-truth ou /housekeeping:doc-truth.
+description: Checks that what a repository's documents say actually exists - cited paths, links and anchors, parity between README.md and README.pt-BR.md, and versions and the plugin list against the manifests. Read-only, no network, exit code 0/1/2. Use when the user asks to check, audit or validate the documentation, for example "os docs estão certos?", "tem link quebrado?", "o README cita arquivo que não existe?", "o README em português está igual ao em inglês?", "check the docs", "verify documentation paths and links", "do the READMEs match". Triggers - /doc-truth or /housekeeping:doc-truth.
 ---
 
-# doc-truth (os documentos dizem a verdade?)
+# doc-truth (do the documents tell the truth?)
 
-Lê todo `.md` rastreado pelo git e confere o que ele afirma contra o repositório: o caminho citado existe, o link e a âncora levam a algum lugar, o `README.md` e o `README.pt-BR.md` têm a mesma estrutura, a versão escrita ao lado do nome de um plugin é a do manifesto. É **somente leitura**: nunca altera o repositório, nunca roda um comando citado e não usa a rede. Requer `python3` (stdlib) e `git`.
+Reads every `.md` file tracked by git and checks what it claims against the repository: the cited path exists, the link and the anchor lead somewhere, `README.md` and `README.pt-BR.md` have the same structure, the version written next to a plugin's name is the one in the manifest. It is **read-only**: it never changes the repository, never runs a command that a document cites, and does not use the network. It needs `python3` (stdlib) and `git`.
 
-Não confere links externos (`https://...`) nem se uma descrição está certa, só se o que ela aponta existe.
+It does not check external links (`https://...`) and does not check whether a description is correct, only whether what it points to exists.
 
-## Quando usar
+Reply to the user in the user's language. The tool prints its output in Portuguese without accents (for example `limpo: nenhum achado`, "clean: no findings"): when you present the findings, explain them in the user's language and keep the category names, paths and fingerprints exactly as printed.
 
-Quando o usuário pedir para conferir a documentação: depois de editar READMEs ou `docs/`, antes de um lançamento, ou numa dúvida ("o README ainda cita esse arquivo?"). Não se ofereça sozinho: é uma ferramenta de pedido explícito.
+## When to use
 
-## Fluxo
+Use it when the user asks to check the documentation: after editing READMEs or `docs/`, before a release, or when in doubt ("does the README still cite that file?"). Never offer it on your own: it is a tool for explicit requests only.
 
-### 0. Localizar o script
+## Flow
 
-O script acompanha esta skill: `${CLAUDE_SKILL_DIR}/scripts/doc_truth.py`. Use-o direto, sempre com `python3 -I`.
+### 0. Locate the script
+
+The script ships with this skill: `${CLAUDE_SKILL_DIR}/scripts/doc_truth.py`. Use it directly, always with `python3 -I`.
 
 ```bash
 test -f "${CLAUDE_SKILL_DIR}/scripts/doc_truth.py" && echo OK || echo FALTA
 ```
 
-Se `${CLAUDE_SKILL_DIR}` aparecer sem ser substituído, use no lugar dele o caminho mostrado como "Base directory for this skill" quando a skill foi carregada, escrito por extenso em cada comando.
+`OK` means the script exists. `FALTA` means "missing".
 
-### 1. Rodar
+If `${CLAUDE_SKILL_DIR}` shows up unexpanded, use the path shown as "Base directory for this skill" when the skill was loaded, written out in full in every command.
+
+In the commands below, `<repositório>` is the repository path ("repository") and `<arquivo>` is a file ("file").
+
+### 1. Run
 
 ```bash
 python3 -I "${CLAUDE_SKILL_DIR}/scripts/doc_truth.py" <repositório>
 ```
 
-Opções: `--json` (campo `schema`) e `--config <arquivo>`. Se existir `.doc-truth.json` na raiz, ele é lido sozinho. Código de saída: `0` limpo, `1` com achados, `2` erro (não é repositório git, config inválida).
+Options: `--json` (the output has a `schema` field) and `--config <arquivo>`. If `.doc-truth.json` exists in the repository root, it is read automatically. Exit codes: `0` clean, `1` with findings, `2` error (not a git repository, invalid config).
 
-### 2. Apresentar
+### 2. Present
 
-Mostre os achados por categoria, como o relatório os imprime, e diga quantos documentos foram conferidos:
+Show the findings by category, as the output prints them, and say how many documents were checked. The output starts with `doc-truth <version>: <N> documentos conferidos em <path>` ("N documents checked in <path>"). It then prints `limpo: nenhum achado` ("clean: no findings") or `<N> achados` ("N findings"). The categories are:
 
-- `path`: um caminho citado entre crases ou em bloco de código não existe **na árvore do git** (o que está só no seu disco não conta, para o resultado ser o mesmo no CI). Proponha corrigir o texto, ou, se for um arquivo criado em execução (`decisions.json`), pôr o nome em `ignore_paths`;
-- `link` e `anchor`: o link aponta para algo que não existe, ou não há título para a âncora (regras de slug do GitHub);
-- `parity`: `<name>.md` e `<name>.pt-BR.md` têm sequências de níveis de título diferentes, ou um `README.md` não tem o `README.pt-BR.md`;
-- `version`: uma versão `X.Y.Z` na mesma linha do nome de um plugin não bate com o `plugin.json`; `plugins`: o catálogo tem um plugin que o README da raiz não linka.
+- `path`: a path cited between backticks or in a code block does not exist **in the git tree**. What exists only on your disk does not count, so that the result is the same in CI. Propose fixing the text. If the file is created at run time (`decisions.json`), propose adding the name to `ignore_paths`.
+- `link` and `anchor`: the link points to something that does not exist, or there is no heading for the anchor (GitHub slug rules).
+- `parity`: `<name>.md` and `<name>.pt-BR.md` have different sequences of heading levels, or a `README.md` has no `README.pt-BR.md` (the finding reads `falta README.pt-BR.md`, "README.pt-BR.md is missing").
+- `version`: an `X.Y.Z` version on the same line as a plugin's name does not match `plugin.json`.
+- `plugins`: the catalog has a plugin that the root README does not link.
 
-Se o relatório disser "aceitos pela lista allow", diga quantos achados o `.doc-truth.json` já aceitou.
+If the output says `aceitos pela lista allow` ("accepted by the allow list"), tell the user how many findings `.doc-truth.json` has already accepted (the line reads `(<N> aceitos pela lista allow)`).
 
-### 3. Corrigir só com pedido
+### 3. Fix only on request
 
-A skill relata. Corrigir o texto de um documento é uma edição comum, que você só faz quando o usuário pedir, mostrando o que muda. **Não edite `.doc-truth.json`** (nem `allow`, nem `exclude`) sem o OK do usuário: aceitar um achado é decisão dele. Para aceitar, o usuário põe o `fingerprint` do achado em `allow`; ele não depende do número da linha.
+The skill reports. Fixing a document's text is an ordinary edit, which you make only when the user asks, showing what changes. **Never edit `.doc-truth.json`** (neither `allow` nor `exclude`) without the user's OK: accepting a finding is the user's decision. To accept a finding, the user puts the finding's `fingerprint` in `allow`; it does not depend on the line number.
 
-## Configuração (`.doc-truth.json`)
+## Configuration (`.doc-truth.json`)
 
 ```json
 {
@@ -58,13 +65,13 @@ A skill relata. Corrigir o texto de um documento é uma edição comum, que voc�
 }
 ```
 
-- `exclude`: documentos que não são conferidos (históricos, gerados). Eles continuam valendo como alvo de link.
-- `ignore_paths`: caminhos que não existem na árvore de propósito (criados em execução). Um padrão sem `/` vale para o nome em qualquer pasta; com `/` no meio, parte da raiz, e o mesmo vale para um com `/` no início (`/SKILL.md` cala só a abreviação `SKILL.md`, não um caminho completo com pasta que não existe); `**` atravessa pastas e `*` não.
-- `allow`: fingerprints de achados aceitos.
-- Chave desconhecida é erro (saída 2).
+- `exclude`: documents that are not checked (historical, generated). They still count as link targets.
+- `ignore_paths`: paths that deliberately do not exist in the tree (created at run time). A pattern with no `/` matches the name in any folder. A pattern with a `/` in the middle starts at the root, and so does one with a leading `/` (`/SKILL.md` silences only the shorthand `SKILL.md`, not a full path with a folder that does not exist). `**` crosses folders and `*` does not.
+- `allow`: fingerprints of accepted findings.
+- An unknown key is an error (exit code 2).
 
-## Regras
+## Rules
 
-- Somente leitura, sem rede. Nunca rode um comando que um documento cita.
-- Diagramas de árvore (linhas com `├──`) não são conferidos: são desenhos.
-- Não rode em um repositório em que você não confia: o git lê a configuração local dele. Se `git` não existir no PATH, diga isso ao usuário em vez de tentar outra forma.
+- Read-only, no network. Never run a command that a document cites.
+- Tree diagrams (lines with `├──`) are not checked: they are drawings.
+- Never run it on a repository you do not trust: git reads that repository's local configuration. If `git` is not on the PATH, tell the user so instead of trying another way.

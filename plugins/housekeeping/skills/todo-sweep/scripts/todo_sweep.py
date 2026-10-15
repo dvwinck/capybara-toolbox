@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# todo-sweep 0.3.0 - TODO e FIXME como cards num painel local, do mais antigo ao mais novo; o resultado e um relatorio somente leitura (somente stdlib e git)
+# todo-sweep 0.3.1 - TODO e FIXME como cards num painel local, do mais antigo ao mais novo; o resultado e um relatorio somente leitura (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 SCHEMA = 1
 WORK_DIR = ".todo-sweep"
 LEDGER = "ledger.json"
