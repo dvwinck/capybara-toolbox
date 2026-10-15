@@ -561,15 +561,37 @@ def report_markdown(scan, groups):
     return "\n".join(lines)
 
 
+def trusted_repo(scan, a_dir):
+    """The repository the scan was made in, from scan.json. That path decides where the ledger is written, and the
+    file may have been edited by hand: it must be absolute and be the toplevel of the repository (not a subfolder or
+    a relative spelling that depends on the working directory), and a batch kept in a `.todo-sweep` folder must be
+    reported against the repository that folder belongs to. A batch made with --out elsewhere has no such anchor,
+    so only the first rule applies to it."""
+    value = scan["repo"]
+    if not isinstance(value, str) or not os.path.isabs(value) or "\0" in value:
+        raise SweepError(f"o repo do scan.json deve ser um caminho absoluto: {value!r}"[:200])
+    root = Path(value)
+    if not root.is_dir() or git(root, "rev-parse", "--git-dir")[0] != 0:
+        raise SweepError(f"o repositorio do scan nao existe mais: {root}")
+    try:
+        same = root.resolve() == repo_root(root).resolve()
+    except (OSError, RuntimeError, ValueError):
+        same = False
+    if not same:
+        raise SweepError(f"o repo do scan.json nao e a raiz de um repositorio git: {root}")
+    anchor = next((p.parent for p in Path(a_dir).resolve().parents if p.name == WORK_DIR), None)
+    if anchor is not None and anchor != root.resolve():  # a batch kept in some repository's work area belongs to that repository
+        raise SweepError(f"o repo do scan.json ({root}) nao e o repositorio onde este lote esta guardado ({anchor})")
+    return root
+
+
 def cmd_report(a):
     batch, scan = load_dir(a.dir)
     errs = scan_problems(batch, scan)
     if errs:
         raise SweepError("scan.json/batch.json invalidos: " + "; ".join(errs))
     groups = group_items(scan, read_decisions(a.dir, batch))
-    root = Path(scan["repo"])
-    if not root.is_dir() or git(root, "rev-parse", "--git-dir")[0] != 0:
-        raise SweepError(f"o repositorio do scan nao existe mais: {root}")
+    root = trusted_repo(scan, a.dir)
     decided = load_ledger(root)  # read first: a bad ledger (or a symlinked folder) stops the run before anything is written
     ledger = ledger_path(root)
     now_text = time.strftime("%Y-%m-%dT%H:%M:%S%z")

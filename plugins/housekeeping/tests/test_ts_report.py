@@ -88,13 +88,23 @@ class ReportTest(ReportCase):
         self.assertEqual(sorted(texts), sorted([self.scan["items"][0]["text"], self.scan["items"][3]["text"]]))
 
     def test_running_the_report_twice_gives_the_same_result(self):
-        self.decide({self.scan["items"][0]["id"]: ("rejected", "")})
+        ids = [i["id"] for i in self.scan["items"]]
+        self.decide({ids[0]: ("approved", "soon"), ids[1]: ("rejected", "old"), ids[2]: ("maybe", "")})
+
+        def snapshot():
+            data = json.loads((self.out / "report.json").read_text(encoding="utf-8"))
+            data.pop("created")
+            ledger = {k: {f: v for f, v in e.items() if f not in ("at", "created")} for k, e in ts.load_ledger(self.repo).items()}
+            return data, (self.out / "report.md").read_bytes(), ledger
+
         self.report()
-        first = (self.out / "report.json").read_text(encoding="utf-8"), ts.load_ledger(self.repo)
+        first = snapshot()
         self.report()
-        second = (self.out / "report.json").read_text(encoding="utf-8"), ts.load_ledger(self.repo)
-        self.assertEqual(first[0].split('"created"')[0], second[0].split('"created"')[0])
-        self.assertEqual(set(first[1]), set(second[1]))
+        second = snapshot()
+        self.assertEqual(first, second)
+        self.assertEqual(len(first[2]), 2)
+        self.assertEqual(len(second[2]), 2)
+        self.assertEqual(sum(len(second[0][k]) for k in ("resolver", "descartar", "manter", "sem_decisao")), 4)
 
     def test_the_report_files_and_ledger_are_private_and_no_source_file_is_touched(self):
         self.decide({self.scan["items"][0]["id"]: ("rejected", "")})
@@ -160,6 +170,75 @@ class RefusalTest(ReportCase):
         with self.assertRaises(ts.SweepError):
             self.report()
         self.assertFalse((self.out / "report.json").exists())
+
+class TrustedRepoTest(ReportCase):
+    """scan.json's `repo` says where the ledger is written, so a hand-edited sidecar may not redirect it: it must be
+    an absolute path equal to the toplevel of a repository. Refused before anything is written, anywhere."""
+
+    def tree(self, *roots):
+        snap = {}
+        for root in roots:
+            for path in sorted(Path(root).rglob("*")):
+                if ".git" in path.relative_to(root).parts:
+                    continue
+                snap[str(path)] = path.read_bytes() if path.is_file() else None
+        return snap
+
+    def refused_repo(self, value, *extra_roots):
+        self.decide({self.scan["items"][0]["id"]: ("rejected", "")})
+        (self.out / "scan.json").write_text(json.dumps(dict(self.scan, repo=value)), encoding="utf-8")
+        before = self.tree(self.repo, *extra_roots)
+        with self.assertRaises(ts.SweepError) as ctx:
+            self.report()
+        self.assertIn("repo", str(ctx.exception))
+        self.assertEqual(self.tree(self.repo, *extra_roots), before)
+
+    def test_another_repository_is_refused_and_neither_is_written(self):
+        other = init_repo(self.tmp / "other")
+        commit(other, "o", {"o.py": "# TODO: elsewhere\n"})
+        self.refused_repo(str(other), other)
+        self.assertFalse((other / ".todo-sweep").exists())
+
+    def test_a_subdirectory_of_the_same_repository_is_refused(self):
+        (self.repo / "sub").mkdir()
+        self.refused_repo(str(self.repo / "sub"))
+        self.assertFalse((self.repo / "sub" / ".todo-sweep").exists())
+
+    def test_a_relative_path_is_refused_whatever_the_working_directory(self):
+        for value in (".", "r", "../r"):
+            old = os.getcwd()
+            os.chdir(self.repo)
+            try:
+                with self.subTest(value=value):
+                    self.refused_repo(value)
+            finally:
+                os.chdir(old)
+
+    def test_a_repo_that_is_not_text_is_refused(self):
+        for value in (None, 3, ["x"], {"a": 1}, True):
+            with self.subTest(value=value):
+                self.refused_repo(value)
+
+    def test_a_path_with_a_nul_is_refused(self):
+        self.refused_repo(str(self.repo) + "\0x")
+
+    def test_the_normal_flow_and_a_symlinked_spelling_of_the_toplevel_still_work(self):
+        self.decide({self.scan["items"][0]["id"]: ("rejected", "")})
+        self.assertEqual(self.report(), 0)
+        link = self.tmp / "link"
+        link.symlink_to(self.repo)
+        (self.out / "scan.json").write_text(json.dumps(dict(self.scan, repo=str(link))), encoding="utf-8")
+        self.assertEqual(self.report(), 0)  # the same toplevel by its real path
+
+    def test_a_custom_out_folder_outside_the_work_area_still_reports(self):
+        out = self.tmp / "custom"
+        ts.cmd_scan(self.args(out=str(out)))
+        store = engine.Store(out)
+        store.set_item("T01", {"decision": "rejected"})
+        store.set_finished(True)
+        self.assertEqual(ts.cmd_report(argparse.Namespace(dir=str(out))), 0)
+        self.assertEqual(len(ts.load_ledger(self.repo)), 1)
+
 
 class HostileBoardTest(ReportCase):
     """decisions.json, scan.json and batch.json are files a hostile or hand-edited board can corrupt: every shape of
