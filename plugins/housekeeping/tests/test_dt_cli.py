@@ -147,6 +147,45 @@ class ErrorTest(CliCase):
         self.assertEqual(run_main([str(self.repo), "--config", str(self.tmp / "none.json")])[0], 2)
 
 
+class DeepJsonTest(CliCase):
+    """A tracked JSON file nested far deeper than the interpreter recurses must be an ordinary result (exit 0, 1 or 2
+    with a message), never a traceback: Python 3.9 raises RecursionError, newer versions no longer do."""
+
+    DEEP = '{"a":' * 100000 + "1" + "}" * 100000
+
+    def seed(self, extra):
+        files = {"README.md": "# T\n", "README.pt-BR.md": "# T\n"}
+        files.update(extra)
+        self.docs(files)
+
+    def test_a_manifest_nested_a_hundred_thousand_levels_deep_is_not_trusted(self):
+        self.seed({"plugins/x/.claude-plugin/plugin.json": self.DEEP})
+        rc, out, err = run_main([str(self.repo), "--json"])
+        self.assertEqual((rc, json.loads(out)["findings"], err), (0, [], ""))
+
+    def test_a_catalog_nested_a_hundred_thousand_levels_deep_is_not_trusted(self):
+        self.seed({".claude-plugin/marketplace.json": self.DEEP})
+        rc, out, err = run_main([str(self.repo), "--json"])
+        self.assertEqual((rc, json.loads(out)["findings"], err), (0, [], ""))
+
+    def test_a_config_nested_a_hundred_thousand_levels_deep_exits_two(self):
+        self.seed({})
+        (self.repo / ".doc-truth.json").write_text(self.DEEP, encoding="utf-8")
+        rc, out, err = run_main([str(self.repo)])
+        self.assertEqual((rc, out), (2, ""))
+        self.assertTrue(err.startswith("erro:"), err)
+
+    def test_the_script_prints_no_traceback_for_any_of_them(self):
+        self.seed({"plugins/x/.claude-plugin/plugin.json": self.DEEP, ".claude-plugin/marketplace.json": self.DEEP})
+        ok = subprocess.run([sys.executable, "-I", str(DOC_TRUTH), str(self.repo)], capture_output=True, text=True)
+        self.assertEqual((ok.returncode, ok.stderr), (0, ""))
+        (self.repo / ".doc-truth.json").write_text(self.DEEP, encoding="utf-8")
+        bad = subprocess.run([sys.executable, "-I", str(DOC_TRUTH), str(self.repo)], capture_output=True, text=True)
+        self.assertEqual(bad.returncode, 2)
+        self.assertTrue(bad.stderr.startswith("erro:"), bad.stderr)
+        self.assertNotIn("Traceback", bad.stderr)
+
+
 class EnvironmentTest(CliCase):
     def run_cli(self, target, env):
         return subprocess.run([sys.executable, "-I", str(DOC_TRUTH), str(target), "--json"], capture_output=True, text=True,

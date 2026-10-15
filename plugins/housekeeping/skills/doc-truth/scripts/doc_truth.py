@@ -93,6 +93,8 @@ def load_config(root, explicit=None):
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise DocTruthError(f"{path}: {e}")
+    except RecursionError:  # Python 3.9 recurses while decoding; a hostile file can nest far deeper than that
+        raise DocTruthError(f"{path}: JSON aninhado fundo demais")
     if not isinstance(data, dict):
         raise DocTruthError(f"{path}: deve ser um objeto JSON")
     for key, value in data.items():
@@ -380,7 +382,7 @@ def read_json(ctx, rel):
     text = read_text(ctx.root, rel)
     try:
         data = json.loads(text) if text is not None else None
-    except ValueError:
+    except (ValueError, RecursionError):  # invalid, or nested deeper than the decoder recurses (Python 3.9): not trusted
         return None
     return data if isinstance(data, dict) else None
 
@@ -520,6 +522,9 @@ def main(argv=None):
         result = run(root, config)
     except DocTruthError as e:
         print(f"erro: {e}", file=sys.stderr)
+        return 2
+    except (OSError, UnicodeError, RecursionError) as e:  # a safety net: no failure path may end in a traceback and exit 1
+        print(f"erro: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, ensure_ascii=False) if args.json else report(result))
     return 1 if result["findings"] else 0
