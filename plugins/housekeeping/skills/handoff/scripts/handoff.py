@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# handoff 0.2.0 - nota de fim de sessao com fatos do git coletados e citacoes conferidas (somente stdlib e git)
+# handoff 0.3.0 - nota de fim de sessao com fatos do git coletados e citacoes conferidas (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 SCHEMA = 1  # of the --json output and of the data block inside a note
 NOTE_DIR = ".handoff"
 RECENT = 5  # commits listed in the note
