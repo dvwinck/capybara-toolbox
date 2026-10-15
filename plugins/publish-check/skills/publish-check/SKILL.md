@@ -5,7 +5,7 @@ description: Read-only scan of a git repository (working tree and full history) 
 
 # publish-check (check before publishing)
 
-Scan the working tree and the **whole git history** for what should not become public:
+This skill scans the working tree and the **whole git history** for what should not become public:
 - Claude conversation links (`claude.ai/code/session...`, `/chat/...`, `/share/...`).
 - Paths from someone's machine (`/Users/<name>`, `/home/<name>`, `C:\Users\<name>`).
 - E-mail addresses (in text, in the author field and in the committer field).
@@ -13,7 +13,7 @@ Scan the working tree and the **whole git history** for what should not become p
 
 The scan is **read-only**: it never changes the repository and never rewrites history. It needs `python3` (stdlib only) and `git`.
 
-It does not look for secrets (keys, tokens). For secrets, use a secret scanner such as gitleaks. Tell the user this in your report.
+It does not look for secrets (keys, tokens). For secrets, use a secret scanner such as gitleaks. Tell the user this when you present the results.
 
 Reply to the user in the user's language. The script's report is in English: explain its content to the user in the user's language.
 
@@ -21,7 +21,7 @@ Reply to the user in the user's language. The script's report is in English: exp
 
 Use it before something becomes public: creating a public repository, opening a PR to a public repository or pushing to a public remote.
 
-**Offer** to run the check. **Never block**: the decision to publish belongs to the user.
+**Offer** to run the scan. **Never block**: the decision to publish belongs to the user.
 
 If the repository is private and will not be published, do not offer.
 
@@ -52,7 +52,7 @@ python3 -I "${CLAUDE_SKILL_DIR}/scripts/publish_check.py" <repository>
 ```
 
 Useful options:
-- `--json`: print the report as JSON.
+- `--json`: print the script's report as JSON.
 - `--since <date>`: scan only commits newer than the date (any date git accepts).
 - `--max-commits N`: scan only the newest N commits (for large repositories).
 - `--denylist <file>`: internal names, one per line. Keep this file **outside** the repository.
@@ -69,24 +69,25 @@ Exit code:
 
 ### 3. Present
 
-Show the findings grouped by category, as the report prints them. The values are already partly masked (`j***@domain.dev`, `/Users/***`). Do **not** reproduce the full value anywhere else.
+Show the findings grouped by category, as the script prints them (keep the masked values and fingerprints exactly as printed; write your explanations in the user's language). The values are already partly masked (`j***@domain.dev`, `/Users/***`). Do **not** reproduce the full value anywhere else.
 
 Say how many files and commits were scanned.
 
-For each category, explain what to do. Do not run anything yet.
+For each category, explain to the user what to do. Do not execute any of it yourself.
 
-- A finding only in the **working tree**: edit the file and commit.
+- A finding only in the **working tree**: tell the user to edit the file and commit the change.
 - A finding in the **history** (message, author, patch, tag): it goes away only by rewriting the history.
   - Point to `docs/remediation.md` (inside the plugin).
   - Remind the user to back up first and that every SHA will change.
-  - **Never rewrite history on your own.** Do not even offer to run the rewrite unless the user explicitly asks.
-- If the report says `skipped` (binary, unreadable or too large files), those files were **not checked**. Tell the user.
-- If the report shows `accepted by the allow list`, tell the user how many findings were accepted and by whom (the `allow` key of `.publish-check.json`).
-- If the report says `history limited` (from `--since` / `--max-commits`), `no commits were scanned` or `partial clone`, the scan was partial.
+  - **Never rewrite history on your own.** Do not offer to run the rewrite. Run it only if the user explicitly asks.
+- If the script's report says `skipped` (binary, unreadable or too large files), those files were **not checked**. Tell the user.
+- If the script's report shows `accepted by the allow list`, tell the user how many findings were accepted and by whom (the `allow` key of `.publish-check.json`).
+- If the script's report says `history limited` (from `--since` / `--max-commits`) or `no commits were scanned`, the scan was partial.
   - Say what was left out.
   - Say that "clean" holds only for what was scanned.
-  - The example pre-push hook limits the scan to 200 commits.
-- If the report warns `shallow clone`, the result is partial (only part of the history was scanned).
+  - The example pre-push hook limits the scan to 200 commits by default.
+- If the script's report warns `partial clone`, the script never fetches blobs that are not stored locally and stops with an error if it needs one. If you see this warning together with an error, tell the user the scan could not complete.
+- If the script's report warns `shallow clone`, the result is partial (only part of the history was scanned).
   - Tell the user.
   - Suggest `git fetch --unshallow` before trusting "clean".
 - A finding that is a false positive (an e-mail that is public on purpose, an example path): the user can accept it by adding its `fingerprint` to the `allow` key of `.publish-check.json`. Edit that file only with the user's approval.
@@ -99,5 +100,5 @@ Summarise: clean, or N findings in M categories and what the user decided. The d
 
 - Read-only. Never run commands that rewrite history (`filter-branch`, `filter-repo`). Never force-push to the remote.
 - The list of internal names (`denylist`) is sensitive. If the repository is public, keep the list in a file **outside** it (`--denylist`), or in a `.publish-check.json` that git ignores (`.gitignore` or `.git/info/exclude`). A `.publish-check.json` with `denylist` committed in a public repository leaks the list itself, and the tool will report that.
-- The report contains file names and commit messages. Treat it as internal until the user decides otherwise.
+- The script's report contains file names and commit messages. Treat it as internal until the user decides otherwise.
 - If `git` is not on the PATH, tell the user. Do not try another way.
