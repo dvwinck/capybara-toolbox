@@ -1,3 +1,4 @@
+import time
 import unittest
 
 from helpers import load_doc_truth
@@ -124,6 +125,33 @@ class TokenTest(unittest.TestCase):
     def test_a_fenced_command_keeps_its_path_arguments(self):
         self.assertEqual(self.paths("python3 -m unittest discover -s plugins/x/tests", fenced=True), ["plugins/x/tests"])
         self.assertEqual(self.paths("cp a.json docs/b.json", fenced=True), ["a.json", "docs/b.json"])
+
+
+class HostileInputTest(unittest.TestCase):
+    """A hostile repository must not be able to stall the parser: every pattern is linear or capped."""
+    BOUND = 5.0  # the unfixed patterns took 30 s to minutes on these inputs; the fixed ones under a second
+
+    def parse_time(self, text):
+        start = time.monotonic()
+        doc = dt.Doc(text)
+        return time.monotonic() - start, doc
+
+    def test_a_long_whitespace_run_in_a_heading_is_fast(self):
+        elapsed, doc = self.parse_time("# a" + " " * 20000 + "b\n")
+        self.assertLess(elapsed, self.BOUND)
+        self.assertEqual([(lv, len(tx)) for lv, tx, _ in doc.headings], [(1, 20002)])
+
+    def test_long_runs_of_brackets_and_link_openers_are_fast(self):
+        for text in ["[" * 20000, "[a](" * 20000, "[a](x \"" * 10000]:
+            with self.subTest(text=text[:8]):
+                elapsed, _doc = self.parse_time(text + "\n")
+                self.assertLess(elapsed, self.BOUND)
+
+    def test_ordinary_headings_and_links_still_parse(self):
+        doc = dt.Doc("# Title ##\n## A # B\n### C#\n#### D #\n##### E\t\n# ##\n#\n"
+                     "[x](a.md \"t\") [y](<b.md>) ![i](c.svg 't')\n")
+        self.assertEqual([tx for _, tx, _ in doc.headings], ["Title", "A # B", "C#", "D", "E"])
+        self.assertEqual([t for _, t in doc.links], ["a.md", "b.md", "c.svg"])
 
 
 if __name__ == "__main__":

@@ -137,9 +137,11 @@ def matches_any(regexes, rel):
 
 
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
-HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")
+HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+)$")  # the closing # run is stripped by heading_text, not by the regex
 SPAN = re.compile(r"(`+)([^`\n]+?)\1")
-LINK = re.compile(r"!?\[[^\]\n]*\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+(?:\"[^\"]*\"|'[^']*'))?\s*\)")
+# every run is capped so that a hostile line (a megabyte of "[a](") cannot make the scan quadratic
+LINK = re.compile(r"!?\[[^\]\n]{0,500}\]\(\s*(<[^>\n]{0,1000}>|[^)\s]{1,1000})"
+                  r"(?:\s+(?:\"[^\"]{0,500}\"|'[^']{0,500}'))?\s*\)")
 REFDEF = re.compile(r"^ {0,3}\[[^\]\n]+\]:\s*(<[^>\n]*>|\S+)")
 HTML_REF = re.compile(r"""\b(?:href|src)=["']([^"']+)["']""")
 TREE_CHARS = "├└│─┌┐┘┬┴┼"
@@ -147,6 +149,15 @@ EXTENSIONS = (".md", ".py", ".json", ".sh", ".yml", ".yaml", ".toml", ".html", "
 SKIP_CHARS = "<>*$~|@{}"
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 MIME = re.compile(r"(?:application|text|image|audio|video|font|multipart|message)/[\w.+-]+")
+
+
+def heading_text(rest):
+    """The text of an ATX heading without its optional closing # run (only when preceded by a space or tab)."""
+    text = rest.rstrip(" \t")
+    stripped = text.rstrip("#")
+    if stripped != text and (not stripped or stripped[-1] in " \t"):
+        text = stripped.rstrip(" \t")
+    return text
 
 
 class Doc:
@@ -182,7 +193,9 @@ class Doc:
             self.prose.append((n + 1, line))
             h = HEADING.match(line)
             if h:
-                self.headings.append((len(h.group(1)), h.group(2), n + 1))
+                text = heading_text(h.group(2))
+                if text:
+                    self.headings.append((len(h.group(1)), text, n + 1))
             ref = REFDEF.match(line)
             if ref:
                 self.links.append((n + 1, ref.group(1).strip("<>")))
