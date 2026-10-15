@@ -21,10 +21,14 @@ class MarkerTest(unittest.TestCase):
         text = "x = 1  # TODO: later\nfoo();  // FIXME(alice): broken\n"
         self.assertEqual(found(text), [(1, "TODO", "later"), (2, "FIXME", "(alice): broken")])
 
+    def test_an_indented_trailing_comment_after_code(self):
+        text = "def f(x):\n    y = 1  # TODO: later\n\treturn x  // FIXME(alice): broken\n        z = 2  ## TODO deeper\n"
+        self.assertEqual(found(text), [(2, "TODO", "later"), (3, "FIXME", "(alice): broken"), (4, "TODO", "deeper")])
+
     def test_near_misses_are_not_markers(self):
         for line in ["# TODOS later", "# todo: lower", "# Todo: mixed", "# XXX", "# HACK", "We should TODO this",
                      'x = "TODO"', "#define TODO_FLAG 1", "# FIXMEs", "TODO: not in a comment", "x = 1 # NOTODO here",
-                     "http://example.com/TODO"]:
+                     "http://example.com/TODO", '    url = "http://x/TODO"', "\tcall()  # TODOS later"]:
             with self.subTest(line=line):
                 self.assertEqual(found(line + "\n"), [])
 
@@ -79,6 +83,8 @@ class HostileLineTest(unittest.TestCase):
                            ("slashes", "/" * n), ("stars", "*" * n), ("dashes", "-" * n), ("semicolons", ";" * n + " "),
                            ("code then hashes", "x " + "#" * n + "a"), ("code then slashes", "x " + "/" * n + "a"),
                            ("code then spaced hashes", "x" + " #" * n),
+                           ("indented code then spaced hashes", " " * 10 + "x" + " #" * n),
+                           ("indented spaces before a trailing marker", " " * (n // 2) + "x" + " " * (n // 2) + "# TODO: b"),
                            ("leading spaces", " " * n + "x"), ("leading spaces then marker", " " * n + "# TODO: x")]:
             with self.subTest(name):
                 _result, seconds = self.timed(line)
