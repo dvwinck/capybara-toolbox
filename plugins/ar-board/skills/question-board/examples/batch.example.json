@@ -1,76 +1,76 @@
 {
   "batch_id": "exemplo-perguntas-2026-10-14",
-  "title": "5 perguntas antes de construir o tidy-board",
-  "subtitle": "Cada pergunta traz contexto, opções e o efeito de cada escolha.",
+  "title": "5 questions before building tidy-board",
+  "subtitle": "Each question comes with context, options and the effect of each choice.",
   "round": 1,
   "items": [
     {
       "id": "Q01",
       "tag": "merge",
-      "title": "Como detectar que um branch já foi mesclado?",
+      "title": "How do we detect that a branch has already been merged?",
       "fields": [
-        {"label": "Contexto", "text": "Squash-merge reescreve os commits, então comparar ids não basta. O tidy-board apaga branches aprovados, e um falso \"mesclado\" custa caro."}
+        {"label": "Context", "text": "Squash-merge rewrites the commits, so comparing ids is not enough. tidy-board deletes approved branches, and a false \"merged\" is costly."}
       ],
       "choices": [
-        {"id": "ancestor", "label": "Ancestral de base (`git merge-base`)", "effect": "seguro, mas não reconhece squash-merge"},
-        {"id": "patch", "label": "Comparar patch-id com a base", "effect": "reconhece squash simples; falha se houve conflito resolvido"},
-        {"id": "gh", "label": "Perguntar ao GitHub (`gh pr list`)", "effect": "exato, mas exige rede e login"}
+        {"id": "ancestor", "label": "Ancestor of the base (`git merge-base`)", "effect": "safe, but does not recognise squash-merge"},
+        {"id": "patch", "label": "Compare patch-id with the base", "effect": "recognises a simple squash; fails if a conflict was resolved"},
+        {"id": "gh", "label": "Ask GitHub (`gh pr list`)", "effect": "exact, but needs network and login"}
       ],
       "recommended": ["patch"],
-      "why": "cobre o caso mais comum sem rede e sem depender do gh."
+      "why": "covers the most common case without network and without depending on gh."
     },
     {
       "id": "Q02",
-      "tag": "cartão",
-      "title": "O que mostrar em cada card de branch?",
+      "tag": "card",
+      "title": "What should each branch card show?",
       "fields": [
-        {"label": "Contexto", "text": "O card precisa permitir decidir em menos de 30 segundos, sem abrir o terminal."}
+        {"label": "Context", "text": "The card must allow a decision in under 30 seconds, without opening the terminal."}
       ],
       "choices": [
-        {"id": "min", "label": "Nome, último commit e se está mesclado"},
-        {"id": "full", "label": "Nome, último commit, autor, commits à frente e arquivos"},
-        {"id": "diff", "label": "Tudo isso mais o diff resumido"}
+        {"id": "min", "label": "Name, last commit and whether it is merged"},
+        {"id": "full", "label": "Name, last commit, author, commits ahead and files"},
+        {"id": "diff", "label": "All of that plus a summarised diff"}
       ],
       "recommended": ["full"],
-      "why": "dá o contexto de risco sem virar uma tela de revisão de código."
+      "why": "gives the risk context without becoming a code-review screen."
     },
     {
       "id": "Q03",
-      "tag": "alvos",
-      "title": "Quais tipos de coisa o tidy-board pode apagar?",
+      "tag": "targets",
+      "title": "Which kinds of things may tidy-board delete?",
       "fields": [
-        {"label": "Contexto", "text": "Cada tipo tem um risco diferente. Você pode liberar mais de um."}
+        {"label": "Context", "text": "Each kind has a different risk. You can allow more than one."}
       ],
       "multiple": true,
       "min": 1,
       "max": 3,
       "choices": [
-        {"id": "local", "label": "Branches locais já mesclados"},
-        {"id": "remote", "label": "Branches remotos já mesclados", "effect": "afeta outras pessoas"},
-        {"id": "wt", "label": "Worktrees sem alterações", "effect": "apaga a pasta"}
+        {"id": "local", "label": "Local branches already merged"},
+        {"id": "remote", "label": "Remote branches already merged", "effect": "affects other people"},
+        {"id": "wt", "label": "Worktrees with no changes", "effect": "deletes the folder"}
       ],
       "recommended": ["local", "wt"],
-      "why": "são locais e reversíveis; remotos ficam de fora até haver confiança."
+      "why": "they are local and reversible; remote ones stay out until there is trust."
     },
     {
       "id": "Q04",
-      "tag": "nome",
-      "title": "Qual nome você quer para o comando de limpeza?",
+      "tag": "name",
+      "title": "What name do you want for the cleanup command?",
       "fields": [
-        {"label": "Contexto", "text": "Pergunta aberta: não há opções, a resposta é o seu texto."}
+        {"label": "Context", "text": "Open question: there are no options, the answer is your own text."}
       ],
       "open": true
     },
     {
       "id": "Q05",
-      "tag": "ordem",
-      "title": "Em que ordem os cards aparecem?",
+      "tag": "order",
+      "title": "In what order do the cards appear?",
       "fields": [
-        {"label": "Contexto", "text": "Sem recomendação: depende de como você costuma limpar."}
+        {"label": "Context", "text": "No recommendation: it depends on how you usually clean up."}
       ],
       "choices": [
-        {"id": "age", "label": "Do mais antigo para o mais novo"},
-        {"id": "risk", "label": "Do menor risco para o maior"}
+        {"id": "age", "label": "From oldest to newest"},
+        {"id": "risk", "label": "From lowest risk to highest"}
       ]
     }
   ]

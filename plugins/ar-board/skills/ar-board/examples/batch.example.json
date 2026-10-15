@@ -1,40 +1,40 @@
 {
   "batch_id": "exemplo-2026-10-12",
-  "title": "Exemplo: 3 melhorias de arquitetura",
-  "subtitle": "Cada card: o que muda, por quê e o risco.",
+  "title": "Example: 3 architecture improvements",
+  "subtitle": "Each card: what changes, why, and the risk.",
   "round": 1,
   "items": [
     {
       "id": "A01",
-      "tag": "mudança",
-      "title": "Estado da produção como JSON validável",
+      "tag": "change",
+      "title": "Production state as validatable JSON",
       "fields": [
-        {"label": "O que", "text": "Trocar `X-STATUS.md` por `state.json` com etapas nomeadas."},
-        {"label": "Por quê", "text": "Hoje a continuidade entre sessões depende de prosa livre."},
-        {"label": "Conceito", "text": "JSON validável: arquivo estruturado que um script consegue checar."}
+        {"label": "What", "text": "Replace `X-STATUS.md` with `state.json` that has named stages."},
+        {"label": "Why", "text": "Today, continuity between sessions depends on free-form prose."},
+        {"label": "Concept", "text": "Validatable JSON: a structured file that a script can check."}
       ],
-      "risk": {"level": "médio", "text": "migrar 16 arquivos sem perder histórico"},
-      "meta": {"Área": "productions/", "Escala atual": "37 pastas"}
+      "risk": {"level": "médio", "text": "migrating 16 files without losing history"},
+      "meta": {"Area": "productions/", "Current scale": "37 folders"}
     },
     {
       "id": "A02",
-      "tag": "mudança",
-      "title": "Checklist de render automatizado antes da entrega",
+      "tag": "change",
+      "title": "Automated render checklist before delivery",
       "fields": [
-        {"label": "O que", "text": "Rodar `ffprobe` e comparar resolução, fps e duração com o briefing."},
-        {"label": "Por quê", "text": "A conferência visual falha em vídeos longos."}
+        {"label": "What", "text": "Run `ffprobe` and compare resolution, fps and duration with the brief."},
+        {"label": "Why", "text": "Visual checking fails on long videos."}
       ],
-      "risk": {"level": "baixo", "text": "só leitura de metadados"}
+      "risk": {"level": "baixo", "text": "reads metadata only"}
     },
     {
       "id": "A03",
-      "tag": "mudança",
-      "title": "Limpar cache de proxies a cada 7 dias",
+      "tag": "change",
+      "title": "Clear the proxy cache every 7 days",
       "fields": [
-        {"label": "O que", "text": "Job semanal que remove proxies não usados."},
-        {"label": "Por quê", "text": "Economiza disco."}
+        {"label": "What", "text": "Weekly job that removes unused proxies."},
+        {"label": "Why", "text": "Saves disk space."}
       ],
-      "risk": {"level": "alto", "text": "pode apagar material ainda em edição"}
+      "risk": {"level": "alto", "text": "may delete material still being edited"}
     }
   ]
 }
