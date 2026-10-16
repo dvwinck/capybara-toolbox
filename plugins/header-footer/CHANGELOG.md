@@ -6,6 +6,14 @@ All notable changes to the **header-footer** plugin are documented here. The for
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
+### Added
+- Footer field `state`: `● running 3m` from the moment a prompt is sent (with the turn's elapsed time), `◐ waiting` while Claude waits for a permission or an answer, `○ idle` when it stops. It is fed by a new `state-hook` subcommand that the plugin registers on `UserPromptSubmit`, `PostToolUse`, `Notification`, `PermissionRequest` and `Stop`; one small file per session in the cache directory. `state` is now the first default footer field.
+
+### Changed
+- `wire-header` and `unwire-header` became `wire-hooks` and `unwire-hooks`: for installs without the plugin system they register (or remove) the whole hook set of the plugin, header and state, in `settings.json`.
+
 ## [0.1.0] - 2026-10-16
 
 ### Added

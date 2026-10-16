@@ -8,7 +8,7 @@ description: Configures the reply header (a line such as "🕐 14:57 · main" at
 Two pieces, one config file (`header-footer.json` in the Claude config directory, `~/.claude` unless `CLAUDE_CONFIG_DIR` is set):
 
 - **Header**: a `UserPromptSubmit` hook renders a line (time, date, weekday, folder, repository, branch) and injects it as `<reply-header>...</reply-header>` together with the instruction to copy it. The plugin registers this hook by itself (`hooks/hooks.json`).
-- **Footer**: Claude Code's status line. A plugin cannot set `statusLine`, so `on footer` copies the script to a stable path inside the Claude config directory and points `statusLine` there.
+- **Footer**: Claude Code's status line. Its `state` field shows `● running 3m` while Claude works, `◐ waiting` while it waits for the user and `○ idle` when it stops; the plugin's hooks on `UserPromptSubmit`, `PostToolUse`, `Notification`, `PermissionRequest` and `Stop` feed it. A plugin cannot set `statusLine`, so `on footer` copies the script to a stable path inside the Claude config directory and points `statusLine` there.
 
 Reply to the user in the user's language. The script's messages are Portuguese: explain them in the user's language.
 
@@ -48,6 +48,7 @@ It prints the config, how each piece is wired, a preview of both, and a diagnosi
 | seconds in the time | `header-format "%H:%M:%S"` |
 | date as 16/10 | `header-format "%d/%m" --date` and add `date` to the header fields |
 | remove the clock from the footer | `footer-fields` with the current list minus `clock` |
+| show whether Claude is working | put `state` in `footer-fields` (it is in the default list) |
 | another icon / separator | `header-icon "⏱"` / `separator header " \| "` |
 | what fields exist | `fields` |
 | see both now | `preview` |
@@ -62,11 +63,11 @@ Show the preview line the script printed. Do not describe from memory how the he
 
 ## Installs without the plugin system
 
-If the skill was copied with `install.sh`, the plugin's `hooks.json` is not active and the header has no hook. Run `wire-header` to register the hook in `settings.json`, and `unwire-header` to remove it.
+If the skill was copied with `install.sh`, the plugin's `hooks.json` is not active: the header and the `state` field have no hooks. Run `wire-hooks` to register them in `settings.json`, and `unwire-hooks` to remove them.
 
 ## Rules
 
 - Change `settings.json` only through the script: it backs the file up and touches only its own entries.
 - `status` warns about an older header hook still in `settings.json` (a `reply-header.py` or `inject-timestamp.sh` entry): with the plugin installed, that would print two headers. Tell the user and remove the old entry only with the user's approval.
-- After a plugin update, `status` may report that the stable copy is older than the plugin: re-run `on footer` (or `wire-header`) to refresh it.
+- After a plugin update, `status` may report that the stable copy is older than the plugin: re-run `on footer` (or `wire-hooks`) to refresh it.
 - The `gsd` footer field shows the GSD status line when GSD is installed (`hooks/gsd-statusline.js` in the Claude config directory, plus `node`). Without GSD it renders nothing.

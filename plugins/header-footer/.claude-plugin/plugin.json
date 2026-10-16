@@ -1,7 +1,7 @@
 {
   "name": "header-footer",
   "description": "A verified header line at the top of every Claude reply (time, date, branch...) and a configurable status-line footer (session tokens, plan limits, clock...), both from one config file. Python standard library only.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Diogo Winck",
     "email": "diogo.winck@gmail.com"
