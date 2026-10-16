@@ -36,7 +36,7 @@ class RealCatalogTest(unittest.TestCase):
     def test_catalog_lists_every_plugin(self):
         market = json.loads((REPO / tool.MARKET).read_text(encoding="utf-8"))
         names = [p["name"] for p in market["plugins"]]
-        self.assertEqual(names, ["ar-board", "publish-check", "tidy-board", "housekeeping"])
+        self.assertEqual(names, ["ar-board", "publish-check", "tidy-board", "housekeeping", "header-footer"])
 
     def test_ci_runs_every_plugin_suite_and_sync_tool(self):
         ci = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

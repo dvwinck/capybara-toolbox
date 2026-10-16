@@ -1,0 +1,15 @@
+{
+  "header": {
+    "enabled": true,
+    "icon": "🕐",
+    "fields": ["time", "branch"],
+    "separator": " · ",
+    "time_format": "%H:%M",
+    "date_format": "%d/%m"
+  },
+  "footer": {
+    "enabled": true,
+    "fields": ["model", "branch", "context", "tokens", "limits", "clock"],
+    "separator": " │ "
+  }
+}

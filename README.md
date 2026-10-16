@@ -21,6 +21,7 @@ A small, carefully built collection of skills and plugins for [Claude Code](http
 | [**publish-check**](plugins/publish-check) | A read-only scan of a git repository, working tree and full history, for Claude conversation links, home paths, e-mail addresses and your own internal names, to run right before something goes public. Not a secret scanner. | [CHANGELOG](plugins/publish-check/CHANGELOG.md) |
 | [**tidy-board**](plugins/tidy-board) | Stale git branches, worktrees and stashes as cards on a local board. Each card shows its proof of being merged; you choose delete, keep or later; a separate `apply` re-checks every approved item before deleting it, and anything that exists in one place only is backed up first. | [CHANGELOG](plugins/tidy-board/CHANGELOG.md) |
 | [**housekeeping**](plugins/housekeeping) | Small read-only tools that keep a repository and a work session honest. doc-truth checks that what your markdown documents say exists (cited paths, links and anchors, EN/PT-BR heading parity, versions and plugin lists against the manifests); handoff writes an end-of-session note whose git facts come from git and whose citations are verified; todo-sweep triages TODO and FIXME comments, oldest first, on a local board. | [CHANGELOG](plugins/housekeeping/CHANGELOG.md) |
+| [**header-footer**](plugins/header-footer) | A header line at the top of every Claude reply (time, date, branch and more), computed by a hook so it is never guessed, and a configurable status-line footer (session tokens, plan limits, clock, branch, model, context). One config file, one command to turn each piece on or off or to pick its fields. | [CHANGELOG](plugins/header-footer/CHANGELOG.md) |
 
 ## Install
 
@@ -32,6 +33,7 @@ Inside Claude Code:
 /plugin install publish-check@capybara-toolbox
 /plugin install tidy-board@capybara-toolbox
 /plugin install housekeeping@capybara-toolbox
+/plugin install header-footer@capybara-toolbox
 ```
 
 Install only the plugins you want, restart Claude Code, then ask in plain language or call the skill by name:
@@ -42,6 +44,7 @@ Install only the plugins you want, restart Claude Code, then ask in plain langua
 | publish-check | *"scan this repo for leaks before I publish it"* | `/publish-check:publish-check` |
 | tidy-board | *"clean up my stale branches"* | `/tidy-board:tidy-board` |
 | housekeeping | *"check the docs"*, *"write a handoff"*, *"triage the TODOs"* | `/housekeeping:doc-truth`, `/housekeeping:handoff`, `/housekeeping:todo-sweep` |
+| header-footer | *"put the branch in the header"*, *"turn the footer on"* | `/header-footer:header-footer` |
 
 <details>
 <summary>Other ways to install</summary>
@@ -80,6 +83,7 @@ git clone https://github.com/dvwinck/capybara-toolbox.git
 │   ├── ar-board/                     # each plugin is self-contained
 │   ├── publish-check/
 │   ├── housekeeping/
+│   ├── header-footer/                # also ships a hook (hooks/hooks.json)
 │   └── tidy-board/                   # vendors a generated copy of the ar-board engine
 │       ├── .claude-plugin/plugin.json
 │       ├── skills/tidy-board/        # SKILL.md, scripts/, examples/

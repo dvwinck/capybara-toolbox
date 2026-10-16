@@ -55,7 +55,15 @@
     "tests/test_security.py",
     "/tidy_board.py",
     "tools/sync.py",
-    "try/catch"
+    "try/catch",
+    "%d/%m",
+    "header-footer.json",
+    "hooks.json",
+    "hooks/gsd-statusline.js",
+    "hooks/hooks.json",
+    "inject-timestamp.sh",
+    "reply-header.py",
+    "settings.json"
   ],
   "allow": []
 }
