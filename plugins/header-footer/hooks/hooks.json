@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/skills/header-footer/scripts/header_footer.py\" header-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
