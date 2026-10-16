@@ -1,6 +1,6 @@
 # header-footer
 
-A **header line at the top of every Claude reply** (time, date, weekday, folder, repository, branch) and a **configurable status-line footer** (session tokens, plan limits, clock, branch, model, context, cost), both driven by one config file and changed with one command.
+A **header line at the top of every Claude reply** (time, date, weekday, folder, repository, branch) and a **configurable status-line footer** (whether Claude is running, waiting or idle, session tokens, plan limits, clock, branch, model, context, cost), both driven by one config file and changed with one command.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only); `git` for the branch and repository fields; `node` only for the optional `gsd` field.
 - **Languages:** the skill is in English; the CLI messages are Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
@@ -16,9 +16,9 @@ Claude has no clock. Asked to stamp its replies, it guesses, and a guessed time 
 /plugin install header-footer@capybara-toolbox
 ```
 
-The plugin registers the header hook by itself. The footer needs one more step, because a plugin cannot set the status line: ask Claude *"turn the footer on"*, or run the script with `on footer` (see below).
+The plugin registers its hooks (the header and the `state` field) by itself. The footer needs one more step, because a plugin cannot set the status line: ask Claude *"turn the footer on"*, or run the script with `on footer` (see below).
 
-Without the plugin system: `./install.sh header-footer` from a clone, then `wire-header` and `on footer`.
+Without the plugin system: `./install.sh header-footer` from a clone, then `wire-hooks` and `on footer`.
 
 ## Use
 
@@ -42,6 +42,7 @@ python3 -I $S fields                          # every field
 
 | Footer field | Shows |
 | --- | --- |
+| `state` | `● running 3m` while Claude works (time since the prompt), `◐ waiting` while it waits for you, `○ idle` when it stops |
 | `tokens` | input and output tokens of the whole session, summed over the transcript |
 | `limits` | the 5-hour and 7-day plan windows, with the time until each resets |
 | `clock`, `model`, `dir`, `branch` | what the name says |

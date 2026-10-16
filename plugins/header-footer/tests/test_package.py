@@ -36,10 +36,18 @@ class RepositoryStateTest(unittest.TestCase):
         self.assertEqual(manifest["name"], "header-footer")
         self.assertEqual(manifest["homepage"], "https://github.com/dvwinck/capybara-toolbox")
 
-    def test_the_plugin_hook_runs_the_shipped_script_in_isolated_mode(self):
+    def test_the_plugin_hooks_are_the_wired_set_and_run_the_shipped_script_in_isolated_mode(self):
+        from helpers import load_hf
+        hf = load_hf()
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-        command = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
-        self.assertEqual(command, 'python3 -I "${CLAUDE_PLUGIN_ROOT}/' + SCRIPT.relative_to(ROOT).as_posix() + '" header-hook')
+        prefix = 'python3 -I "${CLAUDE_PLUGIN_ROOT}/' + SCRIPT.relative_to(ROOT).as_posix() + '" '
+        found = {}
+        for event, groups in hooks.items():
+            for group in groups:
+                for hook in group["hooks"]:
+                    self.assertTrue(hook["command"].startswith(prefix), hook["command"])
+                    found.setdefault(event, []).append(hook["command"][len(prefix):])
+        self.assertEqual(found, hf.PLUGIN_HOOKS)
 
     def test_the_skill_names_itself_and_runs_its_script(self):
         text = (SKILL / "SKILL.md").read_text(encoding="utf-8")

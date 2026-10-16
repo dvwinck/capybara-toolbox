@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# header-footer 0.1.0 - a header line at the top of every Claude reply and a configurable status-line footer
+# header-footer 0.2.0 - a header line at the top of every Claude reply and a configurable status-line footer
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 """header-footer: the reply header (a line such as "🕐 14:57 · main" at the top of Claude's first
@@ -10,6 +10,8 @@ instruction to copy it, as turn context. Claude has no clock and no git of its o
 comes from here; a guessed timestamp is worse than none.
 
 The footer is a status-line command: it renders the configured fields in the configured order.
+Its `state` field (running / waiting / idle) is fed by `state-hook`, registered on UserPromptSubmit,
+PostToolUse, Notification, PermissionRequest and Stop.
 A plugin cannot set `statusLine`, so `on footer` copies this script to a stable place under the
 Claude config directory and points `statusLine` there (the plugin cache path changes on every update).
 
@@ -18,9 +20,10 @@ Python 3.9+ standard library only; `git` is optional (branch/repo fields), `node
 Usage:
   python3 -I header_footer.py header-hook            # UserPromptSubmit hook (stdin: hook payload)
   python3 -I header_footer.py footer                 # status line command (stdin: status-line payload)
+  python3 -I header_footer.py state-hook turn|running|waiting|idle   # hooks that feed the `state` field
   python3 -I header_footer.py status [--json]        # what is on, what is wired, what is wrong
   python3 -I header_footer.py on|off header|footer [--replace]
-  python3 -I header_footer.py wire-header|unwire-header   # hook in settings.json, for installs without the plugin
+  python3 -I header_footer.py wire-hooks|unwire-hooks     # hooks in settings.json, for installs without the plugin
   python3 -I header_footer.py header-fields time,branch
   python3 -I header_footer.py header-format "%H:%M" [--date]
   python3 -I header_footer.py header-icon "⏱"
@@ -43,7 +46,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 HEADER_FIELDS = {
     "time": "hora (header-format)",
@@ -54,6 +57,7 @@ HEADER_FIELDS = {
     "branch": "branch git atual",
 }
 FOOTER_FIELDS = {
+    "state": "running Nm enquanto o Claude trabalha, waiting quando espera voce, idle quando termina",
     "gsd": "bloco do GSD (modelo | tarefa | pasta | contexto), se o GSD estiver instalado",
     "model": "modelo",
     "dir": "pasta atual",
@@ -75,7 +79,7 @@ DEFAULTS = {
     },
     "footer": {
         "enabled": True,
-        "fields": ["tokens", "limits", "clock"],
+        "fields": ["state", "tokens", "limits", "clock"],
         "separator": " │ ",
     },
 }
@@ -86,7 +90,18 @@ INSTRUCTION = (
 )
 # Markers live this long; the header hook only needs them to recognise a second run of the same prompt.
 MARKER_TTL = 600
-SEEN_IDS_KEPT = 200  # duplicate transcript entries sit adjacent, so a short ring of ids dedupes them
+SEEN_IDS_KEPT = 200
+STATE_EVENTS = ("turn", "running", "waiting", "idle")
+# The hooks the plugin registers (hooks/hooks.json) and that `wire-hooks` writes into settings.json
+# for installs without the plugin system: event -> subcommands. PostToolUse brings "waiting" back to
+# "running" after a permission prompt.
+PLUGIN_HOOKS = {
+    "UserPromptSubmit": ["header-hook", "state-hook turn"],
+    "PostToolUse": ["state-hook running"],
+    "Notification": ["state-hook waiting"],
+    "PermissionRequest": ["state-hook waiting"],
+    "Stop": ["state-hook idle"],
+}  # duplicate transcript entries sit adjacent, so a short ring of ids dedupes them
 
 DIM = "\x1b[2m"
 RESET = "\x1b[0m"
@@ -244,6 +259,79 @@ def header_hook(stdin_text, now=None):
     return f"<reply-header>{line}</reply-header>\n{INSTRUCTION}\n"
 
 
+# --- state (running / waiting / idle) -----------------------------------------------
+
+def session_file(prefix, session_id):
+    """A per-session file in the cache directory, or None for a session_id that could escape it."""
+    if not isinstance(session_id, str) or not session_id or "/" in session_id or "\\" in session_id or ".." in session_id:
+        return None
+    return cache_dir() / f"{prefix}-{session_id}.json"
+
+
+def state_path(session_id):
+    return session_file("state", session_id)
+
+
+def read_state(session_id):
+    sp = state_path(session_id)
+    if not sp:
+        return {}
+    try:
+        st = json.loads(sp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return st if isinstance(st, dict) else {}
+
+
+def state_hook(event, stdin_text, now_ts=None):
+    """Record the session's state. `turn` starts the turn's clock; a permission prompt (`waiting`) and
+    the tool call after it (`running`) keep it; `idle` restarts it as "idle since"."""
+    if event not in STATE_EVENTS:
+        raise UsageError(f"evento de estado invalido: {event} (use {', '.join(STATE_EVENTS)})")
+    try:
+        payload = json.loads(stdin_text or "{}")
+    except ValueError:
+        return
+    sp = state_path(payload.get("session_id") if isinstance(payload, dict) else None)
+    if not sp:
+        return
+    now_ts = time.time() if now_ts is None else now_ts
+    prev = read_state(payload["session_id"])
+    since = prev.get("since")
+    if event in ("turn", "idle") or not isinstance(since, (int, float)):
+        since = now_ts
+    state = {"state": "running" if event in ("turn", "running") else event, "since": since}
+    if state == {k: prev.get(k) for k in state}:
+        return  # PostToolUse fires on every tool call; skip the write when nothing changed
+    try:
+        atomic_write(sp, json.dumps(state), mode=0o600)
+    except OSError:
+        pass
+
+
+def fmt_elapsed(secs):
+    """45s, 3m, 1h12."""
+    if secs < 60:
+        return f"{max(0, int(secs))}s"
+    mins = int(secs // 60)
+    if mins < 60:
+        return f"{mins}m"
+    return f"{mins // 60}h{mins % 60:02d}"
+
+
+def render_state(session_id, now_ts):
+    st = read_state(session_id)
+    since = st.get("since")
+    if st.get("state") == "running":
+        elapsed = f" {fmt_elapsed(now_ts - since)}" if isinstance(since, (int, float)) else ""
+        return f"\x1b[33m● running{elapsed}{RESET}"
+    if st.get("state") == "waiting":
+        return f"\x1b[38;5;208m◐ waiting{RESET}"
+    if st.get("state") == "idle":
+        return f"{DIM}○ idle{RESET}"
+    return ""
+
+
 # --- footer ---------------------------------------------------------------------
 
 def half_up(x):
@@ -285,10 +373,7 @@ def fmt_resets_in(epoch_seconds, now_ts):
 
 
 def token_state_path(session_id):
-    # Reject separators and traversal so a hostile session_id cannot escape the cache directory.
-    if not session_id or "/" in session_id or "\\" in session_id or ".." in session_id:
-        return None
-    return cache_dir() / f"tokens-{session_id}.json"
+    return session_file("tokens", session_id)
 
 
 def session_tokens(transcript_path, session_id):
@@ -371,6 +456,8 @@ def gsd_block(stdin_text):
 def footer_field(name, data, stdin_text, now):
     workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
     cwd = workspace.get("current_dir") or data.get("cwd") or ""
+    if name == "state":
+        return render_state(data.get("session_id"), now.timestamp())
     if name == "gsd":
         return gsd_block(stdin_text)
     if name == "model":
@@ -485,18 +572,19 @@ def command_for(mode):
     return f'"{sys.executable}" -I "{stable_script()}" {mode}'
 
 
-def wire_header(settings, on):
+def wire_hooks(settings, on):
+    """Remove every hook of this script from settings.json and, when `on`, add the PLUGIN_HOOKS set."""
     hooks = settings.setdefault("hooks", {})
-    groups = hooks.setdefault("UserPromptSubmit", [])
-    for gi, hi, cmd in sorted(prompt_hook_commands(settings), reverse=True):
-        if is_ours(cmd):
-            del groups[gi]["hooks"][hi]
-            if not groups[gi]["hooks"]:
-                del groups[gi]
-    if on:
-        groups.append({"hooks": [{"type": "command", "command": command_for("header-hook"), "timeout": 5}]})
-    if not groups:
-        del hooks["UserPromptSubmit"]
+    for event, modes in PLUGIN_HOOKS.items():
+        groups = hooks.setdefault(event, [])
+        for group in groups:
+            group["hooks"] = [h for h in group.get("hooks") or [] if not is_ours(h.get("command", ""))]
+        groups[:] = [g for g in groups if g["hooks"]]
+        if on:
+            for mode in modes:
+                groups.append({"hooks": [{"type": "command", "command": command_for(mode), "timeout": 5}]})
+        if not groups:
+            del hooks[event]
     if not hooks:
         del settings["hooks"]
 
@@ -534,7 +622,7 @@ def collect_status(cfg, settings):
         problems.append("footer ligado na config, mas a statusLine nao aponta para este script: rode `on footer`")
     uses_copy = footer_wired(settings) or any(is_ours(c) for c in commands)
     if uses_copy and copy_version != VERSION:
-        problems.append(f"a copia em {stable_script()} esta na versao {copy_version or 'ausente'}, o plugin na {VERSION}: rode `on footer` (ou `wire-header`) de novo")
+        problems.append(f"a copia em {stable_script()} esta na versao {copy_version or 'ausente'}, o plugin na {VERSION}: rode `on footer` (ou `wire-hooks`) de novo")
     if "gsd" in cfg["footer"]["fields"] and not (gsd_script().exists() and shutil.which("node")):
         problems.append("campo gsd configurado, mas o GSD (ou o node) nao esta instalado: o campo sai vazio")
     return {
@@ -646,6 +734,9 @@ def main(argv, stdin=None):
         if cmd == "footer":
             sys.stdout.write(render_footer(stdin.read()))
             return 0
+        if cmd == "state-hook" and len(args) == 1:
+            state_hook(args[0], stdin.read())
+            return 0
         cfg = load_config(strict=True)
         if cmd == "status":
             st = collect_status(cfg, load_settings())
@@ -656,13 +747,13 @@ def main(argv, stdin=None):
             return 1 if st["problems"] else 0
         if cmd in ("on", "off") and args[:1] in (["header"], ["footer"]) and set(args[1:]) <= {"--replace"}:
             toggle(cfg, args[0], cmd == "on", replace="--replace" in args)
-        elif cmd in ("wire-header", "unwire-header") and not args:
+        elif cmd in ("wire-hooks", "unwire-hooks") and not args:
             settings = load_settings()
-            if cmd == "wire-header":
+            if cmd == "wire-hooks":
                 install_stable_copy()
-            wire_header(settings, cmd == "wire-header")
+            wire_hooks(settings, cmd == "wire-hooks")
             save_settings(settings)
-            print(f"hook do header {'registrado' if cmd == 'wire-header' else 'removido'} no settings.json (com backup)")
+            print(f"hooks {'registrados' if cmd == 'wire-hooks' else 'removidos'} no settings.json (com backup): {', '.join(PLUGIN_HOOKS)}")
         elif cmd == "header-fields" and len(args) == 1:
             set_and_show(cfg, "header", "fields", parse_fields(args[0], HEADER_FIELDS, "header"))
         elif cmd == "footer-fields" and len(args) == 1:

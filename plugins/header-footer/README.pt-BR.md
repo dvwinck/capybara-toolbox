@@ -1,6 +1,6 @@
 # header-footer
 
-Uma **linha de header no topo de cada resposta do Claude** (hora, data, dia da semana, pasta, repositório, branch) e um **footer configurável na status line** (tokens da sessão, limites do plano, relógio, branch, modelo, contexto, custo), os dois guiados por um arquivo de configuração e alterados com um comando.
+Uma **linha de header no topo de cada resposta do Claude** (hora, data, dia da semana, pasta, repositório, branch) e um **footer configurável na status line** (se o Claude está trabalhando, esperando ou parado, tokens da sessão, limites do plano, relógio, branch, modelo, contexto, custo), os dois guiados por um arquivo de configuração e alterados com um comando.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (só biblioteca padrão); `git` para os campos de branch e repositório; `node` só para o campo opcional `gsd`.
 - **Idiomas:** a skill é em inglês; as mensagens da CLI são em português; a documentação é em inglês ([README.md](README.md)) e este é o equivalente em português.
@@ -16,9 +16,9 @@ O Claude não tem relógio. Quando pedem que ele marque a hora nas respostas, el
 /plugin install header-footer@capybara-toolbox
 ```
 
-O plugin registra o hook do header sozinho. O footer precisa de mais um passo, porque plugin não consegue definir a status line: peça ao Claude *"liga o footer"* ou rode o script com `on footer` (veja abaixo).
+O plugin registra os hooks dele (o header e o campo `state`) sozinho. O footer precisa de mais um passo, porque plugin não consegue definir a status line: peça ao Claude *"liga o footer"* ou rode o script com `on footer` (veja abaixo).
 
-Sem o sistema de plugins: `./install.sh header-footer` a partir de um clone, depois `wire-header` e `on footer`.
+Sem o sistema de plugins: `./install.sh header-footer` a partir de um clone, depois `wire-hooks` e `on footer`.
 
 ## Uso
 
@@ -42,6 +42,7 @@ python3 -I $S fields                          # todos os campos
 
 | Campo do footer | Mostra |
 | --- | --- |
+| `state` | `● running 3m` enquanto o Claude trabalha (tempo desde o prompt), `◐ waiting` enquanto espera você, `○ idle` quando termina |
 | `tokens` | tokens de entrada e saída da sessão inteira, somados a partir do transcript |
 | `limits` | as janelas de 5 horas e 7 dias do plano, com o tempo até cada uma zerar |
 | `clock`, `model`, `dir`, `branch` | o que o nome diz |

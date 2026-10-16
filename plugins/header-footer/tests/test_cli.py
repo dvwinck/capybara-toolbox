@@ -91,22 +91,24 @@ class SettingsWiringTest(ConfigDirCase):
         self.assertEqual(self.run_cli("off", "footer")[0], 0)
         self.assertNotIn("statusLine", self.read_json("settings.json"))
 
-    def test_wire_and_unwire_header_touch_only_their_own_hook(self):
+    def test_wire_and_unwire_hooks_touch_only_their_own_entries(self):
         other = {"hooks": [{"type": "command", "command": "keep-me"}]}
-        self.write_settings({"hooks": {"UserPromptSubmit": [other]}})
-        self.assertEqual(self.run_cli("wire-header")[0], 0)
-        self.assertEqual(self.run_cli("wire-header")[0], 0)  # idempotent
-        groups = self.read_json("settings.json")["hooks"]["UserPromptSubmit"]
-        commands = [h["command"] for g in groups for h in g["hooks"]]
-        self.assertEqual(commands[0], "keep-me")
-        self.assertEqual(sum("header-hook" in c for c in commands), 1)
-        self.assertEqual(self.run_cli("unwire-header")[0], 0)
-        self.assertEqual(self.read_json("settings.json")["hooks"]["UserPromptSubmit"], [other])
+        self.write_settings({"hooks": {"UserPromptSubmit": [other], "Stop": [other]}})
+        self.assertEqual(self.run_cli("wire-hooks")[0], 0)
+        self.assertEqual(self.run_cli("wire-hooks")[0], 0)  # idempotent
+        hooks = self.read_json("settings.json")["hooks"]
+        for event, modes in self.hf.PLUGIN_HOOKS.items():
+            commands = [h["command"] for g in hooks[event] for h in g["hooks"]]
+            ours = [c.split('" ', 2)[-1] for c in commands if "header_footer.py" in c]
+            self.assertEqual(ours, modes, event)
+        self.assertEqual(hooks["UserPromptSubmit"][0], other)
+        self.assertEqual(self.run_cli("unwire-hooks")[0], 0)
+        self.assertEqual(self.read_json("settings.json")["hooks"], {"UserPromptSubmit": [other], "Stop": [other]})
 
-    def test_unwire_header_drops_empty_hook_sections(self):
+    def test_unwire_hooks_drops_empty_hook_sections(self):
         self.write_settings({})
-        self.run_cli("wire-header")
-        self.run_cli("unwire-header")
+        self.run_cli("wire-hooks")
+        self.run_cli("unwire-hooks")
         self.assertEqual(self.read_json("settings.json"), {})
 
 
