@@ -59,6 +59,13 @@ class ConfigDirCase(unittest.TestCase):
         return rc, out.getvalue(), err.getvalue()
 
 
+def run_like_a_windows_pipe(home, *argv, stdin=""):
+    """Run the script as a hook does, with cp1252 stdio as on a Windows pipe. PYTHONIOENCODING stands in
+    for the code page, so the script runs without -I here (-I would ignore the variable)."""
+    env = dict(os.environ, CLAUDE_CONFIG_DIR=str(home), PYTHONIOENCODING="cp1252", PYTHONDONTWRITEBYTECODE="1")
+    return subprocess.run([sys.executable, str(SCRIPT), *argv], input=stdin.encode("utf-8"), capture_output=True, env=env)
+
+
 def git_repo(path, branch="feature-x"):
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime
 
-from helpers import ConfigDirCase, git_repo
+from helpers import ConfigDirCase, git_repo, run_like_a_windows_pipe
 
 NOW = datetime(2026, 10, 16, 9, 5, 7)  # a Friday
 
@@ -83,6 +83,11 @@ class HeaderHookTest(ConfigDirCase):
                 self.write_config({"header": header})
                 out = self.hf.header_hook(self.payload(f"p{i}"), now=NOW)
                 self.assertIn("<reply-header>🕐 09:05</reply-header>", out)
+
+    def test_a_windows_code_page_pipe_still_gets_utf8(self):
+        done = run_like_a_windows_pipe(self.home, "header-hook", stdin=self.payload("olá, ação 🙂"))
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8", "replace"))
+        self.assertIn("<reply-header>🕐 ", done.stdout.decode("utf-8"))
 
     def test_cli_entry_point(self):
         rc, out, _ = self.run_cli("header-hook", stdin=self.payload())

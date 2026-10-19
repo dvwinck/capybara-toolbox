@@ -883,5 +883,14 @@ def main(argv, stdin=None):
     return 0
 
 
+def utf8_stdio():
+    """Claude Code speaks UTF-8, but a Windows pipe defaults to the ANSI code page (cp1252), where the
+    icon and the separator cannot be written, and -I ignores PYTHONUTF8."""
+    for stream, errors in ((sys.stdin, "replace"), (sys.stdout, "strict"), (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors=errors)
+
+
 if __name__ == "__main__":
+    utf8_stdio()
     sys.exit(main(sys.argv[1:]))
