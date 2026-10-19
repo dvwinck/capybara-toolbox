@@ -225,11 +225,20 @@ def git(cwd, *args):
 
 # --- header ---------------------------------------------------------------------
 
+def format_time(now, header, key):
+    """strftime with the configured format, or the default one when this platform rejects it
+    (Windows refuses %-H, which macOS and Linux accept)."""
+    try:
+        return now.strftime(header[key])
+    except ValueError:
+        return now.strftime(DEFAULTS["header"][key])
+
+
 def render_header(header, cwd, now):
     """The header line, or "" when every field came out empty."""
     values = {
-        "time": lambda: now.strftime(header["time_format"]),
-        "date": lambda: now.strftime(header["date_format"]),
+        "time": lambda: format_time(now, header, "time_format"),
+        "date": lambda: format_time(now, header, "date_format"),
         "weekday": lambda: WEEKDAYS[now.weekday()],
         "dir": lambda: os.path.basename(str(cwd).rstrip("/")) if cwd else "",
         "repo": lambda: os.path.basename(git(cwd, "rev-parse", "--show-toplevel")),
@@ -862,6 +871,10 @@ def main(argv, stdin=None):
             fmt = [a for a in args if a != "--date"]
             if len(fmt) != 1 or "%" not in fmt[0]:
                 raise UsageError('uso: header-format "%H:%M" [--date]')
+            try:
+                datetime.now().strftime(fmt[0])
+            except ValueError:
+                raise UsageError(f"formato {fmt[0]} nao funciona nesta plataforma (no Windows, %-H nao existe)")
             set_and_show(cfg, "header", key, fmt[0])
         elif cmd == "header-icon" and len(args) == 1:
             set_and_show(cfg, "header", "icon", args[0])

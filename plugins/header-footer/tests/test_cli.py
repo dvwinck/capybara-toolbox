@@ -2,8 +2,9 @@ import json
 import os
 import stat
 import unittest
+from unittest import mock
 
-from helpers import ConfigDirCase, strip_ansi
+from helpers import ConfigDirCase, WindowsDatetime, strip_ansi
 
 
 class FieldCommandsTest(ConfigDirCase):
@@ -32,6 +33,13 @@ class FieldCommandsTest(ConfigDirCase):
 
     def test_a_format_without_a_directive_is_refused(self):
         self.assertEqual(self.run_cli("header-format", "HH:MM")[0], 2)
+
+    def test_a_format_the_platform_rejects_is_refused(self):
+        with mock.patch.object(self.hf, "datetime", WindowsDatetime):
+            rc, _, err = self.run_cli("header-format", "%-H:%M")
+        self.assertEqual(rc, 2)
+        self.assertIn("%-H:%M", err)
+        self.assertFalse((self.home / "header-footer.json").exists())
 
     def test_header_on_off_is_only_the_config_flag(self):
         self.assertEqual(self.run_cli("off", "header")[0], 0)

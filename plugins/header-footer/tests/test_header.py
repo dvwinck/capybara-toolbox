@@ -2,8 +2,9 @@ import json
 import tempfile
 import unittest
 from datetime import datetime
+from unittest import mock
 
-from helpers import ConfigDirCase, git_repo, run_like_a_windows_pipe
+from helpers import ConfigDirCase, WindowsDatetime, git_repo, run_like_a_windows_pipe
 
 NOW = datetime(2026, 10, 16, 9, 5, 7)  # a Friday
 
@@ -31,6 +32,10 @@ class RenderHeaderTest(ConfigDirCase):
     def test_time_format_and_separator_are_configurable(self):
         h = self.header(fields=["time", "dir"], time_format="%H:%M:%S", separator=" | ", icon="⏱")
         self.assertEqual(self.hf.render_header(h, "/a/b/project/", NOW), "⏱ 09:05:07 | project")
+
+    def test_a_format_the_platform_rejects_falls_back_to_the_default(self):
+        now = WindowsDatetime(2026, 10, 16, 9, 5, 7)
+        self.assertEqual(self.hf.render_header(self.header(time_format="%-H:%M"), "/x", now), "🕐 09:05")
 
     def test_nothing_to_show_gives_an_empty_line(self):
         self.assertEqual(self.hf.render_header(self.header(fields=["branch"]), "/nonexistent", NOW), "")
