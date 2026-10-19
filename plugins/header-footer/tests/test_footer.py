@@ -51,6 +51,12 @@ class FooterTest(ConfigDirCase):
     def test_gsd_field_is_empty_without_gsd(self):
         self.assertEqual(self.render({}, ["gsd"]), "")
 
+    def test_a_wrongly_typed_config_value_falls_back_to_its_default(self):
+        self.write_config({"footer": {"fields": None, "separator": 3}})
+        rc, out, _ = self.run_cli("footer", stdin="{}")
+        self.assertEqual(rc, 0)
+        self.assertRegex(strip_ansi(out), r"^\d\d:\d\d$")  # the default fields; only the clock has data
+
     def test_cli_entry_point_uses_the_config(self):
         self.write_config({"footer": {"fields": ["model"]}})
         rc, out, _ = self.run_cli("footer", stdin=json.dumps({"model": {"display_name": "Opus"}}))

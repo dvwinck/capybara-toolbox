@@ -160,9 +160,26 @@ def load_config(path=None, strict=False):
             raise UsageError(f"{path} precisa ser um objeto JSON")
         return cfg
     for section in DEFAULTS:
-        if isinstance(raw.get(section), dict):
-            cfg[section].update(raw[section])
+        if not isinstance(raw.get(section), dict):
+            continue
+        for key, value in raw[section].items():
+            if key in DEFAULTS[section] and not same_type(value, DEFAULTS[section][key]):
+                if strict:
+                    raise UsageError(f"{path}: {section}.{key} precisa ser {type_name(DEFAULTS[section][key])}")
+                continue
+            cfg[section][key] = value
     return cfg
+
+
+def same_type(value, default):
+    """The config keeps the shape of DEFAULTS: bool, str or a list of str."""
+    if isinstance(default, list):
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return type(value) is type(default)
+
+
+def type_name(default):
+    return {bool: "true/false", str: "texto", list: "lista de textos"}[type(default)]
 
 
 def atomic_write(path, text, mode=None):

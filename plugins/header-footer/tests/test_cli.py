@@ -45,6 +45,14 @@ class FieldCommandsTest(ConfigDirCase):
         self.assertIn("nao e JSON valido", err)
         self.assertEqual((self.home / "header-footer.json").read_text(encoding="utf-8"), "{oops")
 
+    def test_a_wrongly_typed_config_value_is_a_usage_error_naming_the_key(self):
+        self.write_config({"header": {"separator": 3}})
+        for cmd in ("status", "preview"):
+            with self.subTest(cmd=cmd):
+                rc, _, err = self.run_cli(cmd)
+                self.assertEqual(rc, 2)
+                self.assertIn("header.separator", err)
+
     def test_bad_commands_are_usage_errors(self):
         for argv in (["nope"], ["on", "middle"], ["on", "footer", "--force"], ["separator", "x", "y"]):
             with self.subTest(argv=argv):

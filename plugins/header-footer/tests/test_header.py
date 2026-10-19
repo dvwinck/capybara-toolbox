@@ -76,6 +76,14 @@ class HeaderHookTest(ConfigDirCase):
         out = self.hf.header_hook("not json either", now=NOW)
         self.assertIn("<reply-header>🕐 09:05</reply-header>", out)
 
+    def test_a_wrongly_typed_config_value_falls_back_to_its_default(self):
+        bad = [{"fields": None}, {"fields": "time"}, {"fields": [1]}, {"separator": 3}, {"icon": None}, {"enabled": "no"}]
+        for i, header in enumerate(bad):
+            with self.subTest(header=header):
+                self.write_config({"header": header})
+                out = self.hf.header_hook(self.payload(f"p{i}"), now=NOW)
+                self.assertIn("<reply-header>🕐 09:05</reply-header>", out)
+
     def test_cli_entry_point(self):
         rc, out, _ = self.run_cli("header-hook", stdin=self.payload())
         self.assertEqual(rc, 0)
