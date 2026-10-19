@@ -1,6 +1,7 @@
 import json
 import os
 import stat
+import sys
 import unittest
 from unittest import mock
 
@@ -142,6 +143,44 @@ class SettingsWiringTest(ConfigDirCase):
         self.run_cli("wire-hooks")
         self.run_cli("unwire-hooks")
         self.assertEqual(self.read_json("settings.json"), {})
+
+
+class InterpreterTest(ConfigDirCase):
+    """The wired commands must survive an upgrade of the interpreter (Homebrew removes python@3.N)."""
+
+    def test_python3_on_the_path_is_used_when_it_is_this_interpreter(self):
+        link = self.home / "bin" / "python3"
+        link.parent.mkdir()
+        link.symlink_to(os.path.realpath(sys.executable))
+        with mock.patch.object(self.hf.shutil, "which", return_value=str(link)):
+            self.assertTrue(self.hf.command_for("footer").startswith(f'"{link}" -I "'))
+
+    def test_another_python3_on_the_path_is_not_used(self):
+        other = self.home / "python3"
+        other.write_text("", encoding="utf-8")
+        with mock.patch.object(self.hf.shutil, "which", return_value=str(other)):
+            self.assertTrue(self.hf.command_for("footer").startswith(f'"{sys.executable}" -I "'))
+
+    def test_windows_never_looks_up_python3_and_writes_forward_slashes(self):
+        # on Windows python3 may be the Store stub, and Git Bash eats backslashes
+        which = mock.Mock(return_value="C:\\stub\\python3.exe")
+        with mock.patch.object(self.hf.os, "name", "nt"), mock.patch.object(self.hf.sys, "executable", "C:\\Py\\python.exe"), \
+                mock.patch.object(self.hf, "stable_script", return_value="C:\\Users\\u\\.claude\\header-footer\\header_footer.py"), \
+                mock.patch.object(self.hf.shutil, "which", which):
+            command = self.hf.command_for("footer")
+        which.assert_not_called()
+        self.assertEqual(command, '"C:/Py/python.exe" -I "C:/Users/u/.claude/header-footer/header_footer.py" footer')
+
+    def test_status_reports_a_wired_interpreter_that_no_longer_exists(self):
+        gone = "/nonexistent/python@3.14/bin/python3.14"
+        script = self.hf.stable_script()
+        (self.home / "settings.json").write_text(json.dumps({
+            "statusLine": {"type": "command", "command": f'"{gone}" -I "{script}" footer'},
+            "hooks": {"Stop": [{"hooks": [{"type": "command", "command": f'"{gone}" -I "{script}" state-hook idle'}]}]},
+        }), encoding="utf-8")
+        _, out, _ = self.run_cli("status", "--json")
+        problems = [p for p in json.loads(out)["problems"] if gone in p]
+        self.assertEqual(len(problems), 1, problems)
 
 
 class StatusTest(ConfigDirCase):

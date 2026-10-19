@@ -673,8 +673,40 @@ def install_stable_copy():
     return target
 
 
+def interpreter():
+    """The python to write into settings.json. sys.executable can be a versioned path that an upgrade
+    removes (Homebrew's python@3.N), so prefer python3 on the PATH when it is this same interpreter.
+    Not on Windows, where python3 may be the Microsoft Store stub."""
+    if os.name != "nt":
+        found = shutil.which("python3")
+        if found and os.path.realpath(found) == os.path.realpath(sys.executable):
+            return found
+    return sys.executable
+
+
+def shell_path(path):
+    """Forward slashes on Windows: Git Bash, which runs hook and status line commands there, eats backslashes."""
+    return str(path).replace("\\", "/") if os.name == "nt" else str(path)
+
+
 def command_for(mode):
-    return f'"{sys.executable}" -I "{stable_script()}" {mode}'
+    return f'"{shell_path(interpreter())}" -I "{shell_path(stable_script())}" {mode}'
+
+
+def command_interpreter(command):
+    """The quoted interpreter path that command_for writes, or None for any other command shape."""
+    if command.startswith('"') and '"' in command[1:]:
+        return command[1:].split('"', 1)[0]
+    return None
+
+
+def our_commands(settings):
+    """Every command of this script in settings.json: the status line and the hooks of every event."""
+    commands = [(settings.get("statusLine") or {}).get("command", "")]
+    for groups in (settings.get("hooks") or {}).values():
+        for group in groups or []:
+            commands += [h.get("command", "") for h in group.get("hooks") or []]
+    return [c for c in commands if is_ours(c)]
 
 
 def wire_hooks(settings, on):
@@ -731,6 +763,9 @@ def collect_status(cfg, settings):
     uses_copy = footer_wired(settings) or any(is_ours(c) for c in commands)
     if uses_copy and copy_version != VERSION:
         problems.append(f"a copia em {stable_script()} esta na versao {copy_version or 'ausente'}, o plugin na {VERSION}: rode `on footer` (ou `wire-hooks`) de novo")
+    gone = sorted({i for i in map(command_interpreter, our_commands(settings)) if i and not os.path.exists(i)})
+    for interp in gone:
+        problems.append(f"o python gravado no settings.json nao existe mais ({interp}): rode `on footer` (ou `wire-hooks`) de novo")
     if "gsd" in cfg["footer"]["fields"] and not (gsd_script().exists() and shutil.which("node")):
         problems.append("campo gsd configurado, mas o GSD (ou o node) nao esta instalado: o campo sai vazio")
     return {
