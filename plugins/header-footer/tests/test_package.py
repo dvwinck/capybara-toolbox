@@ -44,6 +44,7 @@ class RepositoryStateTest(unittest.TestCase):
         found = {}
         for event, groups in hooks.items():
             for group in groups:
+                self.assertEqual(group.get("matcher"), hf.PLUGIN_HOOK_MATCHERS.get(event), event)
                 for hook in group["hooks"]:
                     self.assertTrue(hook["command"].startswith(prefix), hook["command"])
                     found.setdefault(event, []).append(hook["command"][len(prefix):])

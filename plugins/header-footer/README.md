@@ -42,7 +42,7 @@ python3 -I $S fields                          # every field
 
 | Footer field | Shows |
 | --- | --- |
-| `state` | `● running 3m` while Claude works (time since the prompt), `◐ waiting` while it waits for you, `○ idle` when it stops |
+| `state` | `● running 3m` while Claude works (time since the prompt), `◐ waiting` while it waits for a permission or an answer, `○ idle` when it stops or you interrupt it (Esc, or a denied permission) |
 | `tokens` | input and output tokens of the whole session, summed over the transcript |
 | `limits` | the 5-hour and 7-day plan windows, with the time until each resets |
 | `clock`, `model`, `dir`, `branch` | what the name says |
@@ -53,13 +53,20 @@ The config is `header-footer.json` in the Claude config directory (`~/.claude`, 
 
 ## How it touches your setup
 
-- **`settings.json` only through the CLI**: a timestamped backup first, an atomic write that keeps the file mode, and only its own entries. A status line from another tool is replaced only with `--replace`.
-- **A stable copy**: the status line points to a copy of the script in the Claude config directory, because the plugin's own path changes with every update. After an update, `status` says when the copy is older; `on footer` refreshes it.
-- **No double header**: if an older header hook is still in `settings.json`, both run but only the first prints for a given prompt, and `status` tells you to remove the old one.
+- **`settings.json` only through the CLI**: a timestamped backup first (the five newest are kept), an atomic write that keeps the file mode and writes through a symlinked `settings.json`, and only its own entries. A status line from another tool is replaced only with `--replace`.
+- **A stable copy**: the status line points to a copy of the script in the Claude config directory, because the plugin's own path changes with every update. After an update, `status` says when the copy is older; `on footer` refreshes it. The status line runs every 10 seconds (`refreshInterval`), so the `state` timer and the clock move while nothing else happens.
+- **A stable interpreter**: `on footer` and `wire-hooks` write `python3` from your `PATH` when it is the interpreter running the command (Homebrew's versioned path disappears on upgrade), and `status` reports an interpreter that no longer exists.
+- **No double header**: if an older header hook is still in `settings.json`, both run but only the first prints for a given prompt, and `status` tells you to remove the old one. `status` also says when the header is on but no hook runs it.
+
+## Platforms
+
+- **macOS and Linux**: supported. On macOS, `python3` and `git` need the Command Line Tools or Homebrew; without them the system stubs open an install dialog.
+- **Windows**: the script writes UTF-8 whatever the console code page, and refuses time formats Windows cannot render (such as `%-H`). Claude Code runs hooks in Git Bash or PowerShell, where `python3` usually does not exist, so the plugin's own hooks may not run: install with `wire-hooks` and `on footer`, which write the absolute interpreter path with forward slashes.
 
 ## Limits
 
 - The header is an instruction to Claude, not a rendered UI element: Claude copies the line at the top of its first reply of the turn. The hook makes the content exact; it cannot force the model to place it.
+- The `state` field learns about an interrupt from the transcript, because Claude Code runs no hook on Esc or on a denied permission.
 - The footer's token total is read from the transcript file, whose format is not a public contract; if it changes, the field shows nothing rather than a wrong number.
 
 ## Develop

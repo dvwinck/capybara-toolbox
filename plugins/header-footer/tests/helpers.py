@@ -10,6 +10,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -57,6 +58,23 @@ class ConfigDirCase(unittest.TestCase):
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             rc = self.hf.main(list(argv), stdin=io.StringIO(stdin))
         return rc, out.getvalue(), err.getvalue()
+
+
+def run_like_a_windows_pipe(home, *argv, stdin=""):
+    """Run the script as a hook does, with cp1252 stdio as on a Windows pipe. PYTHONIOENCODING stands in
+    for the code page, so the script runs without -I here (-I would ignore the variable)."""
+    env = dict(os.environ, CLAUDE_CONFIG_DIR=str(home), PYTHONIOENCODING="cp1252", PYTHONDONTWRITEBYTECODE="1")
+    return subprocess.run([sys.executable, str(SCRIPT), *argv], input=stdin.encode("utf-8"), capture_output=True, env=env)
+
+
+class WindowsDatetime(datetime):
+    """A datetime whose strftime rejects glibc/BSD extensions such as %-H, as Windows does; no format
+    string is rejected on every platform, so the tests stand in for the strict one."""
+
+    def strftime(self, fmt):
+        if "%-" in fmt:
+            raise ValueError("Invalid format string")
+        return super().strftime(fmt)
 
 
 def git_repo(path, branch="feature-x"):

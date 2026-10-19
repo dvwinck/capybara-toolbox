@@ -6,6 +6,23 @@ All notable changes to the **header-footer** plugin are documented here. The for
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-19
+
+### Fixed
+- The header no longer disappears when the same prompt is sent again within 10 minutes: the marker that stops a second header hook from printing is keyed on the submission (`prompt_id`, or the prompt plus the transcript size) and lives 60 seconds.
+- `idle` no longer turns into `waiting` a minute after a turn ends: the `Notification` hook only listens to `permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog`.
+- `state` shows `idle` after an Esc interrupt or a denied permission, read from the transcript, since Claude Code runs no hook for either.
+- A symlinked `settings.json` stays a symlink; the write goes to its target.
+- A config value of the wrong type (`"fields": null`, a numeric separator) no longer crashes the hooks: they use the default, and the CLI exits 2 naming the key.
+- Per-session state and token files older than a week are pruned from the cache.
+- Windows: UTF-8 stdio whatever the code page, so the icon and the separator no longer raise `UnicodeEncodeError`; a time format the platform rejects (such as `%-H`) is refused by `header-format` and falls back to the default in the header; paths in the wired commands use forward slashes.
+- `on footer` and `wire-hooks` write `python3` from the `PATH` when it is the running interpreter, instead of a versioned path that a Homebrew upgrade removes.
+- `settings.json` backups carry microseconds, so two saves in one second keep two backups, and only the five newest are kept; a replace refused because another process holds the file is retried.
+
+### Added
+- `on footer` sets `refreshInterval: 10`, so the `state` timer, an interrupt and the clock refresh without an event.
+- `status` reports a wired interpreter that no longer exists, and a header that is on with no hook to run it.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added

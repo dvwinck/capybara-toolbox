@@ -63,11 +63,12 @@ Show the preview line the script printed. Do not describe from memory how the he
 
 ## Installs without the plugin system
 
-If the skill was copied with `install.sh`, the plugin's `hooks.json` is not active: the header and the `state` field have no hooks. Run `wire-hooks` to register them in `settings.json`, and `unwire-hooks` to remove them.
+If the skill was copied with `install.sh`, the plugin's `hooks.json` is not active: the header and the `state` field have no hooks. Run `wire-hooks` to register them in `settings.json`, and `unwire-hooks` to remove them. On Windows, recommend `wire-hooks` even with the plugin installed: the plugin's hooks call `python3`, which Git Bash and PowerShell usually do not have, while `wire-hooks` writes the absolute interpreter path.
 
 ## Rules
 
 - Change `settings.json` only through the script: it backs the file up and touches only its own entries.
 - `status` warns about an older header hook still in `settings.json` (a `reply-header.py` or `inject-timestamp.sh` entry): with the plugin installed, that would print two headers. Tell the user and remove the old entry only with the user's approval.
-- After a plugin update, `status` may report that the stable copy is older than the plugin: re-run `on footer` (or `wire-hooks`) to refresh it.
+- After a plugin update, `status` may report that the stable copy is older than the plugin: re-run `on footer` (or `wire-hooks`) to refresh it. The same fix applies when `status` reports that the python written into `settings.json` no longer exists.
+- When `status` reports that the header is on but no hook runs it, check whether the plugin is enabled (it may be enabled only in a project `settings.json`, which `status` does not read); otherwise offer `wire-hooks`.
 - The `gsd` footer field shows the GSD status line when GSD is installed (`hooks/gsd-statusline.js` in the Claude config directory, plus `node`). Without GSD it renders nothing.

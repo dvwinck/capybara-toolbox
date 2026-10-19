@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from helpers import ConfigDirCase, strip_ansi
+from helpers import ConfigDirCase, run_like_a_windows_pipe, strip_ansi
 
 NOW = datetime(2026, 10, 16, 14, 7)
 
@@ -50,6 +50,18 @@ class FooterTest(ConfigDirCase):
 
     def test_gsd_field_is_empty_without_gsd(self):
         self.assertEqual(self.render({}, ["gsd"]), "")
+
+    def test_a_wrongly_typed_config_value_falls_back_to_its_default(self):
+        self.write_config({"footer": {"fields": None, "separator": 3}})
+        rc, out, _ = self.run_cli("footer", stdin="{}")
+        self.assertEqual(rc, 0)
+        self.assertRegex(strip_ansi(out), r"^\d\d:\d\d$")  # the default fields; only the clock has data
+
+    def test_a_windows_code_page_pipe_still_gets_utf8(self):
+        self.write_config({"footer": {"fields": ["model", "clock"]}})
+        done = run_like_a_windows_pipe(self.home, "footer", stdin=json.dumps({"model": {"display_name": "Opus"}}))
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8", "replace"))
+        self.assertIn("Opus\x1b[2m │ ", done.stdout.decode("utf-8"))
 
     def test_cli_entry_point_uses_the_config(self):
         self.write_config({"footer": {"fields": ["model"]}})

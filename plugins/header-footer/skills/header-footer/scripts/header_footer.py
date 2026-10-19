@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# header-footer 0.2.0 - a header line at the top of every Claude reply and a configurable status-line footer
+# header-footer 0.3.0 - a header line at the top of every Claude reply and a configurable status-line footer
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 """header-footer: the reply header (a line such as "🕐 14:57 · main" at the top of Claude's first
@@ -43,10 +43,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 HEADER_FIELDS = {
     "time": "hora (header-format)",
@@ -88,9 +88,12 @@ INSTRUCTION = (
     "Start your first reply of this turn with the text inside <reply-header>, verbatim, on a line "
     "of its own. Do not estimate, complete or reformat it."
 )
-# Markers live this long; the header hook only needs them to recognise a second run of the same prompt.
-MARKER_TTL = 600
+# Markers live this long; the header hook only needs them to recognise the parallel copy of one
+# submission, which runs within the 5 s hook timeout.
+MARKER_TTL = 60
 SEEN_IDS_KEPT = 200
+# Per-session state and token files older than this are pruned when a turn starts.
+CACHE_TTL = 7 * 86400
 STATE_EVENTS = ("turn", "running", "waiting", "idle")
 # The hooks the plugin registers (hooks/hooks.json) and that `wire-hooks` writes into settings.json
 # for installs without the plugin system: event -> subcommands. PostToolUse brings "waiting" back to
@@ -102,6 +105,12 @@ PLUGIN_HOOKS = {
     "PermissionRequest": ["state-hook waiting"],
     "Stop": ["state-hook idle"],
 }  # duplicate transcript entries sit adjacent, so a short ring of ids dedupes them
+# Only these notifications mean Claude waits for you; idle_prompt (about 60 s after a turn ends) and
+# auth_success must not turn "idle" into "waiting".
+PLUGIN_HOOK_MATCHERS = {"Notification": "permission_prompt|elicitation_dialog|elicitation_url_dialog"}
+
+# Seconds between status line runs without an event, so the running timer, an interrupt and the clock move.
+FOOTER_REFRESH = 10
 
 DIM = "\x1b[2m"
 RESET = "\x1b[0m"
@@ -156,14 +165,36 @@ def load_config(path=None, strict=False):
             raise UsageError(f"{path} precisa ser um objeto JSON")
         return cfg
     for section in DEFAULTS:
-        if isinstance(raw.get(section), dict):
-            cfg[section].update(raw[section])
+        if not isinstance(raw.get(section), dict):
+            continue
+        for key, value in raw[section].items():
+            if key in DEFAULTS[section] and not same_type(value, DEFAULTS[section][key]):
+                if strict:
+                    raise UsageError(f"{path}: {section}.{key} precisa ser {type_name(DEFAULTS[section][key])}")
+                continue
+            cfg[section][key] = value
     return cfg
 
 
+def same_type(value, default):
+    """The config keeps the shape of DEFAULTS: bool, str or a list of str."""
+    if isinstance(default, list):
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return type(value) is type(default)
+
+
+def type_name(default):
+    return {bool: "true/false", str: "texto", list: "lista de textos"}[type(default)]
+
+
+REPLACE_ATTEMPTS = 3
+SETTINGS_BACKUPS_KEPT = 5
+
+
 def atomic_write(path, text, mode=None):
-    """Write through a private temp file and os.replace, keeping the old file's mode (settings.json is 600)."""
-    path = Path(path)
+    """Write through a private temp file and os.replace, keeping the old file's mode (settings.json is 600).
+    A symlink is followed, so a settings.json linked from a dotfiles repository stays a link."""
+    path = Path(os.path.realpath(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     if mode is None:
         mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
@@ -172,7 +203,14 @@ def atomic_write(path, text, mode=None):
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
         os.chmod(tmp, mode)
-        os.replace(tmp, path)
+        for attempt in range(REPLACE_ATTEMPTS):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:  # Windows: another process holds the file open
+                if attempt == REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.05)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -201,11 +239,20 @@ def git(cwd, *args):
 
 # --- header ---------------------------------------------------------------------
 
+def format_time(now, header, key):
+    """strftime with the configured format, or the default one when this platform rejects it
+    (Windows refuses %-H, which macOS and Linux accept)."""
+    try:
+        return now.strftime(header[key])
+    except ValueError:
+        return now.strftime(DEFAULTS["header"][key])
+
+
 def render_header(header, cwd, now):
     """The header line, or "" when every field came out empty."""
     values = {
-        "time": lambda: now.strftime(header["time_format"]),
-        "date": lambda: now.strftime(header["date_format"]),
+        "time": lambda: format_time(now, header, "time_format"),
+        "date": lambda: format_time(now, header, "date_format"),
         "weekday": lambda: WEEKDAYS[now.weekday()],
         "dir": lambda: os.path.basename(str(cwd).rstrip("/")) if cwd else "",
         "repo": lambda: os.path.basename(git(cwd, "rev-parse", "--show-toplevel")),
@@ -218,10 +265,27 @@ def render_header(header, cwd, now):
     return f"{header['icon']} {body}".strip()
 
 
+def submission_key(payload):
+    """What identifies one prompt submission: its prompt_id when Claude Code sends one, else the prompt
+    text plus the transcript size (the hook runs before the prompt is written, so both copies of one
+    submission see the same size, and any later submission sees a longer transcript)."""
+    prompt_id = payload.get("prompt_id")
+    if isinstance(prompt_id, str) and prompt_id:
+        return [payload.get("session_id"), prompt_id]
+    size = None
+    transcript = payload.get("transcript_path")
+    if isinstance(transcript, str) and transcript:
+        try:
+            size = os.path.getsize(transcript)
+        except OSError:
+            pass
+    return [payload.get("session_id"), payload.get("prompt"), size]
+
+
 def first_run(payload, now_ts):
-    """True for the first header hook run of this prompt. With the plugin hook and a settings.json hook
-    both registered, the same prompt reaches two copies of this script; only one may print."""
-    key = json.dumps([payload.get("session_id"), payload.get("prompt")], ensure_ascii=False)
+    """True for the first header hook run of this prompt submission. With the plugin hook and a
+    settings.json hook both registered, one submission reaches two copies of this script; only one may print."""
+    key = json.dumps(submission_key(payload), ensure_ascii=False)
     marker = cache_dir() / ("hdr-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:24])
     try:
         cache_dir().mkdir(parents=True, exist_ok=True)
@@ -283,6 +347,18 @@ def read_state(session_id):
     return st if isinstance(st, dict) else {}
 
 
+def prune_cache(now_ts):
+    """Drop the state and token files of sessions untouched for CACHE_TTL. A session resumed later
+    recounts its tokens from the start of its transcript, which gives the same total."""
+    for pattern in ("state-*.json", "tokens-*.json"):
+        for old in cache_dir().glob(pattern):
+            try:
+                if now_ts - old.stat().st_mtime > CACHE_TTL:
+                    old.unlink()
+            except OSError:
+                pass
+
+
 def state_hook(event, stdin_text, now_ts=None):
     """Record the session's state. `turn` starts the turn's clock; a permission prompt (`waiting`) and
     the tool call after it (`running`) keep it; `idle` restarts it as "idle since"."""
@@ -296,6 +372,8 @@ def state_hook(event, stdin_text, now_ts=None):
     if not sp:
         return
     now_ts = time.time() if now_ts is None else now_ts
+    if event == "turn":
+        prune_cache(now_ts)
     prev = read_state(payload["session_id"])
     since = prev.get("since")
     if event in ("turn", "idle") or not isinstance(since, (int, float)):
@@ -319,9 +397,68 @@ def fmt_elapsed(secs):
     return f"{mins // 60}h{mins % 60:02d}"
 
 
-def render_state(session_id, now_ts):
+INTERRUPT_MARKER = "[Request interrupted by user"
+# The tail read first, and the wider one tried when trailing bookkeeping entries (attachments, file
+# snapshots) hide every conversation entry from the first.
+TRANSCRIPT_TAILS = (64 * 1024, 1024 * 1024)
+
+
+def entry_epoch(entry):
+    try:
+        return datetime.strptime(entry["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def interrupt_verdict(tail, since):
+    """Walk the tail backwards: True at an interrupt written at or after `since`, False at an older one or
+    at Claude's own work (an assistant entry), None when the tail holds neither. Other user entries are
+    skipped: local commands (/context, !git status) write them without starting a turn."""
+    for raw in reversed(tail.split(b"\n")):
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("type") not in ("user", "assistant") or entry.get("isSidechain"):
+            continue
+        if entry["type"] == "assistant":
+            return False
+        content = (entry.get("message") or {}).get("content") if isinstance(entry.get("message"), dict) else None
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        texts = [b.get("text") for b in blocks or [] if isinstance(b, dict) and isinstance(b.get("text"), str)]
+        if any(t.startswith(INTERRUPT_MARKER) for t in texts):
+            at = entry_epoch(entry)
+            return at is not None and at >= since
+    return None
+
+
+def interrupted_since(transcript_path, since):
+    """True when the transcript shows a user interrupt (Esc, or a denied permission) at or after `since`
+    with no assistant entry after it. Stop does not run on an interrupt and no hook runs on a manual
+    denial, so the transcript is the only witness. Reads only the tail of the file."""
+    if not isinstance(transcript_path, str) or not transcript_path or not isinstance(since, (int, float)):
+        return False
+    for size in TRANSCRIPT_TAILS:
+        try:
+            with open(transcript_path, "rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                start = max(0, fh.tell() - size)
+                fh.seek(start)
+                verdict = interrupt_verdict(fh.read(), since)
+        except OSError:
+            return False
+        if verdict is not None:
+            return verdict
+        if start == 0:
+            break
+    return False
+
+
+def render_state(session_id, now_ts, transcript_path=None):
     st = read_state(session_id)
     since = st.get("since")
+    if st.get("state") in ("running", "waiting") and interrupted_since(transcript_path, since):
+        return f"{DIM}○ idle{RESET}"
     if st.get("state") == "running":
         elapsed = f" {fmt_elapsed(now_ts - since)}" if isinstance(since, (int, float)) else ""
         return f"\x1b[33m● running{elapsed}{RESET}"
@@ -457,7 +594,7 @@ def footer_field(name, data, stdin_text, now):
     workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
     cwd = workspace.get("current_dir") or data.get("cwd") or ""
     if name == "state":
-        return render_state(data.get("session_id"), now.timestamp())
+        return render_state(data.get("session_id"), now.timestamp(), data.get("transcript_path"))
     if name == "gsd":
         return gsd_block(stdin_text)
     if name == "model":
@@ -541,8 +678,14 @@ def load_settings():
 def save_settings(data):
     path = settings_path()
     if path.exists():
-        backup = path.with_name(f"{path.name}.bak-header-footer-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+        backup = path.with_name(f"{path.name}.bak-header-footer-{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
         shutil.copy2(str(path), str(backup))
+        # names sort by time (copy2 keeps the source's mtime, so mtime cannot order them)
+        for old in sorted(path.parent.glob(f"{path.name}.bak-header-footer-*"))[:-SETTINGS_BACKUPS_KEPT]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
     atomic_write(path, dump_json(data))
 
 
@@ -568,8 +711,40 @@ def install_stable_copy():
     return target
 
 
+def interpreter():
+    """The python to write into settings.json. sys.executable can be a versioned path that an upgrade
+    removes (Homebrew's python@3.N), so prefer python3 on the PATH when it is this same interpreter.
+    Not on Windows, where python3 may be the Microsoft Store stub."""
+    if os.name != "nt":
+        found = shutil.which("python3")
+        if found and os.path.realpath(found) == os.path.realpath(sys.executable):
+            return found
+    return sys.executable
+
+
+def shell_path(path):
+    """Forward slashes on Windows: Git Bash, which runs hook and status line commands there, eats backslashes."""
+    return str(path).replace("\\", "/") if os.name == "nt" else str(path)
+
+
 def command_for(mode):
-    return f'"{sys.executable}" -I "{stable_script()}" {mode}'
+    return f'"{shell_path(interpreter())}" -I "{shell_path(stable_script())}" {mode}'
+
+
+def command_interpreter(command):
+    """The quoted interpreter path that command_for writes, or None for any other command shape."""
+    if command.startswith('"') and '"' in command[1:]:
+        return command[1:].split('"', 1)[0]
+    return None
+
+
+def our_commands(settings):
+    """Every command of this script in settings.json: the status line and the hooks of every event."""
+    commands = [(settings.get("statusLine") or {}).get("command", "")]
+    for groups in (settings.get("hooks") or {}).values():
+        for group in groups or []:
+            commands += [h.get("command", "") for h in group.get("hooks") or []]
+    return [c for c in commands if is_ours(c)]
 
 
 def wire_hooks(settings, on):
@@ -582,7 +757,10 @@ def wire_hooks(settings, on):
         groups[:] = [g for g in groups if g["hooks"]]
         if on:
             for mode in modes:
-                groups.append({"hooks": [{"type": "command", "command": command_for(mode), "timeout": 5}]})
+                group = {"hooks": [{"type": "command", "command": command_for(mode), "timeout": 5}]}
+                if event in PLUGIN_HOOK_MATCHERS:
+                    group = {"matcher": PLUGIN_HOOK_MATCHERS[event], **group}
+                groups.append(group)
         if not groups:
             del hooks[event]
     if not hooks:
@@ -618,11 +796,19 @@ def collect_status(cfg, settings):
         for f in cfg[section]["fields"]:
             if f not in known:
                 problems.append(f"campo de {section} desconhecido: {f}")
+    plugin_on = any(v is True and k.startswith("header-footer@") for k, v in (settings.get("enabledPlugins") or {}).items())
+    header_wired = any(is_ours(c) and c.endswith(" header-hook") for c in commands)
+    if cfg["header"]["enabled"] and not (plugin_on or header_wired):
+        problems.append("header ligado, mas nenhum hook o executa: o plugin nao esta habilitado no settings.json do usuario e "
+                        "nao ha `wire-hooks` (um settings.json de projeto, que o status nao le, ainda pode habilitar o plugin)")
     if cfg["footer"]["enabled"] and not footer_wired(settings):
         problems.append("footer ligado na config, mas a statusLine nao aponta para este script: rode `on footer`")
     uses_copy = footer_wired(settings) or any(is_ours(c) for c in commands)
     if uses_copy and copy_version != VERSION:
         problems.append(f"a copia em {stable_script()} esta na versao {copy_version or 'ausente'}, o plugin na {VERSION}: rode `on footer` (ou `wire-hooks`) de novo")
+    gone = sorted({i for i in map(command_interpreter, our_commands(settings)) if i and not os.path.exists(i)})
+    for interp in gone:
+        problems.append(f"o python gravado no settings.json nao existe mais ({interp}): rode `on footer` (ou `wire-hooks`) de novo")
     if "gsd" in cfg["footer"]["fields"] and not (gsd_script().exists() and shutil.which("node")):
         problems.append("campo gsd configurado, mas o GSD (ou o node) nao esta instalado: o campo sai vazio")
     return {
@@ -710,7 +896,7 @@ def toggle(cfg, piece, on, replace=False):
                          + "); use `on footer --replace` para troca-la (o settings.json ganha backup)")
     if on:
         install_stable_copy()
-        settings["statusLine"] = {"type": "command", "command": command_for("footer")}
+        settings["statusLine"] = {"type": "command", "command": command_for("footer"), "refreshInterval": FOOTER_REFRESH}
     elif footer_wired(settings):
         del settings["statusLine"]
     elif foreign:
@@ -763,6 +949,10 @@ def main(argv, stdin=None):
             fmt = [a for a in args if a != "--date"]
             if len(fmt) != 1 or "%" not in fmt[0]:
                 raise UsageError('uso: header-format "%H:%M" [--date]')
+            try:
+                datetime.now().strftime(fmt[0])
+            except ValueError:
+                raise UsageError(f"formato {fmt[0]} nao funciona nesta plataforma (no Windows, %-H nao existe)")
             set_and_show(cfg, "header", key, fmt[0])
         elif cmd == "header-icon" and len(args) == 1:
             set_and_show(cfg, "header", "icon", args[0])
@@ -784,5 +974,14 @@ def main(argv, stdin=None):
     return 0
 
 
+def utf8_stdio():
+    """Claude Code speaks UTF-8, but a Windows pipe defaults to the ANSI code page (cp1252), where the
+    icon and the separator cannot be written, and -I ignores PYTHONUTF8."""
+    for stream, errors in ((sys.stdin, "replace"), (sys.stdout, "strict"), (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors=errors)
+
+
 if __name__ == "__main__":
+    utf8_stdio()
     sys.exit(main(sys.argv[1:]))
