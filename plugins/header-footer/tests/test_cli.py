@@ -201,11 +201,11 @@ class InterpreterTest(ConfigDirCase):
         # on Windows python3 may be the Store stub, and Git Bash eats backslashes
         which = mock.Mock(return_value="C:\\stub\\python3.exe")
         with mock.patch.object(self.hf.os, "name", "nt"), mock.patch.object(self.hf.sys, "executable", "C:\\Py\\python.exe"), \
-                mock.patch.object(self.hf, "stable_script", return_value="C:\\Users\\u\\.claude\\header-footer\\header_footer.py"), \
+                mock.patch.object(self.hf, "stable_script", return_value="D:\\cfg\\header-footer\\header_footer.py"), \
                 mock.patch.object(self.hf.shutil, "which", which):
             command = self.hf.command_for("footer")
         which.assert_not_called()
-        self.assertEqual(command, '"C:/Py/python.exe" -I "C:/Users/u/.claude/header-footer/header_footer.py" footer')
+        self.assertEqual(command, '"C:/Py/python.exe" -I "D:/cfg/header-footer/header_footer.py" footer')
 
     def test_status_reports_a_wired_interpreter_that_no_longer_exists(self):
         gone = "/nonexistent/python@3.14/bin/python3.14"

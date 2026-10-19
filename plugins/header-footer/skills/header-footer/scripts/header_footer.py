@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# header-footer 0.2.0 - a header line at the top of every Claude reply and a configurable status-line footer
+# header-footer 0.3.0 - a header line at the top of every Claude reply and a configurable status-line footer
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 """header-footer: the reply header (a line such as "🕐 14:57 · main" at the top of Claude's first
@@ -46,7 +46,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 HEADER_FIELDS = {
     "time": "hora (header-format)",
