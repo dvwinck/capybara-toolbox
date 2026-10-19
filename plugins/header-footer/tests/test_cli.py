@@ -101,6 +101,8 @@ class SettingsWiringTest(ConfigDirCase):
             commands = [h["command"] for g in hooks[event] for h in g["hooks"]]
             ours = [c.split('" ', 2)[-1] for c in commands if "header_footer.py" in c]
             self.assertEqual(ours, modes, event)
+            matchers = [g.get("matcher") for g in hooks[event] if any("header_footer.py" in h["command"] for h in g["hooks"])]
+            self.assertEqual(set(matchers), {self.hf.PLUGIN_HOOK_MATCHERS.get(event)}, event)
         self.assertEqual(hooks["UserPromptSubmit"][0], other)
         self.assertEqual(self.run_cli("unwire-hooks")[0], 0)
         self.assertEqual(self.read_json("settings.json")["hooks"], {"UserPromptSubmit": [other], "Stop": [other]})

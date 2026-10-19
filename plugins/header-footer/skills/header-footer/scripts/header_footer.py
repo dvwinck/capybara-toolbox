@@ -103,6 +103,9 @@ PLUGIN_HOOKS = {
     "PermissionRequest": ["state-hook waiting"],
     "Stop": ["state-hook idle"],
 }  # duplicate transcript entries sit adjacent, so a short ring of ids dedupes them
+# Only these notifications mean Claude waits for you; idle_prompt (about 60 s after a turn ends) and
+# auth_success must not turn "idle" into "waiting".
+PLUGIN_HOOK_MATCHERS = {"Notification": "permission_prompt|elicitation_dialog|elicitation_url_dialog"}
 
 DIM = "\x1b[2m"
 RESET = "\x1b[0m"
@@ -600,7 +603,10 @@ def wire_hooks(settings, on):
         groups[:] = [g for g in groups if g["hooks"]]
         if on:
             for mode in modes:
-                groups.append({"hooks": [{"type": "command", "command": command_for(mode), "timeout": 5}]})
+                group = {"hooks": [{"type": "command", "command": command_for(mode), "timeout": 5}]}
+                if event in PLUGIN_HOOK_MATCHERS:
+                    group = {"matcher": PLUGIN_HOOK_MATCHERS[event], **group}
+                groups.append(group)
         if not groups:
             del hooks[event]
     if not hooks:
