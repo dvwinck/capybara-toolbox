@@ -87,6 +87,7 @@ class SettingsWiringTest(ConfigDirCase):
         self.assertIn("Stop", data["hooks"])
         self.assertIn(str(self.hf.stable_script()), data["statusLine"]["command"])
         self.assertTrue(data["statusLine"]["command"].endswith(" footer"))
+        self.assertEqual(data["statusLine"]["refreshInterval"], 10)  # state timer, interrupts and clock move without an event
         self.assertEqual(self.hf.script_version(self.hf.stable_script()), self.hf.VERSION)
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(len(self.backups()), 1)

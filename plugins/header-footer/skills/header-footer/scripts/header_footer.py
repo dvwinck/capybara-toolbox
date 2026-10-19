@@ -109,6 +109,9 @@ PLUGIN_HOOKS = {
 # auth_success must not turn "idle" into "waiting".
 PLUGIN_HOOK_MATCHERS = {"Notification": "permission_prompt|elicitation_dialog|elicitation_url_dialog"}
 
+# Seconds between status line runs without an event, so the running timer, an interrupt and the clock move.
+FOOTER_REFRESH = 10
+
 DIM = "\x1b[2m"
 RESET = "\x1b[0m"
 
@@ -853,7 +856,7 @@ def toggle(cfg, piece, on, replace=False):
                          + "); use `on footer --replace` para troca-la (o settings.json ganha backup)")
     if on:
         install_stable_copy()
-        settings["statusLine"] = {"type": "command", "command": command_for("footer")}
+        settings["statusLine"] = {"type": "command", "command": command_for("footer"), "refreshInterval": FOOTER_REFRESH}
     elif footer_wired(settings):
         del settings["statusLine"]
     elif foreign:
