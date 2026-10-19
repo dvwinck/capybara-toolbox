@@ -187,6 +187,10 @@ def type_name(default):
     return {bool: "true/false", str: "texto", list: "lista de textos"}[type(default)]
 
 
+REPLACE_ATTEMPTS = 3
+SETTINGS_BACKUPS_KEPT = 5
+
+
 def atomic_write(path, text, mode=None):
     """Write through a private temp file and os.replace, keeping the old file's mode (settings.json is 600).
     A symlink is followed, so a settings.json linked from a dotfiles repository stays a link."""
@@ -199,7 +203,14 @@ def atomic_write(path, text, mode=None):
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
         os.chmod(tmp, mode)
-        os.replace(tmp, path)
+        for attempt in range(REPLACE_ATTEMPTS):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:  # Windows: another process holds the file open
+                if attempt == REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.05)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -649,8 +660,14 @@ def load_settings():
 def save_settings(data):
     path = settings_path()
     if path.exists():
-        backup = path.with_name(f"{path.name}.bak-header-footer-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+        backup = path.with_name(f"{path.name}.bak-header-footer-{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
         shutil.copy2(str(path), str(backup))
+        # names sort by time (copy2 keeps the source's mtime, so mtime cannot order them)
+        for old in sorted(path.parent.glob(f"{path.name}.bak-header-footer-*"))[:-SETTINGS_BACKUPS_KEPT]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
     atomic_write(path, dump_json(data))
 
 

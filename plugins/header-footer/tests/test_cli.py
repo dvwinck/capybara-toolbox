@@ -123,6 +123,41 @@ class SettingsWiringTest(ConfigDirCase):
         self.assertEqual(self.run_cli("off", "footer")[0], 0)
         self.assertNotIn("statusLine", self.read_json("settings.json"))
 
+    def test_saves_within_one_second_keep_distinct_backups_and_only_the_last_five(self):
+        self.write_settings({"model": "opus"})
+        self.run_cli("on", "footer")
+        self.run_cli("off", "footer")
+        self.assertEqual(len(self.backups()), 2)
+        for _ in range(5):
+            self.run_cli("on", "footer")
+        newest = self.backups()[-1].read_text(encoding="utf-8")
+        self.assertEqual(len(self.backups()), 5)
+        self.assertIn("statusLine", newest)  # the newest backup holds the state before the last save
+
+    def test_a_refused_replace_is_retried(self):
+        # Windows refuses to replace a file another process holds open (the footer reading its state)
+        real_replace = os.replace
+        calls = []
+
+        def flaky(src, dst):
+            calls.append(dst)
+            if len(calls) < 3:
+                raise PermissionError("in use")
+            real_replace(src, dst)
+
+        target = self.home / "state.json"
+        with mock.patch.object(self.hf.os, "replace", flaky), mock.patch.object(self.hf.time, "sleep"):
+            self.hf.atomic_write(target, "{}")
+        self.assertEqual(target.read_text(encoding="utf-8"), "{}")
+        self.assertEqual(len(calls), 3)
+
+    def test_a_replace_refused_three_times_raises_and_leaves_no_temp_file(self):
+        with mock.patch.object(self.hf.os, "replace", side_effect=PermissionError("in use")), \
+                mock.patch.object(self.hf.time, "sleep"):
+            with self.assertRaises(PermissionError):
+                self.hf.atomic_write(self.home / "state.json", "{}")
+        self.assertEqual(list(self.home.iterdir()), [])
+
     def test_wire_and_unwire_hooks_touch_only_their_own_entries(self):
         other = {"hooks": [{"type": "command", "command": "keep-me"}]}
         self.write_settings({"hooks": {"UserPromptSubmit": [other], "Stop": [other]}})
