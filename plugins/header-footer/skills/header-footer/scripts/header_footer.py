@@ -88,8 +88,9 @@ INSTRUCTION = (
     "Start your first reply of this turn with the text inside <reply-header>, verbatim, on a line "
     "of its own. Do not estimate, complete or reformat it."
 )
-# Markers live this long; the header hook only needs them to recognise a second run of the same prompt.
-MARKER_TTL = 600
+# Markers live this long; the header hook only needs them to recognise the parallel copy of one
+# submission, which runs within the 5 s hook timeout.
+MARKER_TTL = 60
 SEEN_IDS_KEPT = 200
 STATE_EVENTS = ("turn", "running", "waiting", "idle")
 # The hooks the plugin registers (hooks/hooks.json) and that `wire-hooks` writes into settings.json
@@ -218,10 +219,27 @@ def render_header(header, cwd, now):
     return f"{header['icon']} {body}".strip()
 
 
+def submission_key(payload):
+    """What identifies one prompt submission: its prompt_id when Claude Code sends one, else the prompt
+    text plus the transcript size (the hook runs before the prompt is written, so both copies of one
+    submission see the same size, and any later submission sees a longer transcript)."""
+    prompt_id = payload.get("prompt_id")
+    if isinstance(prompt_id, str) and prompt_id:
+        return [payload.get("session_id"), prompt_id]
+    size = None
+    transcript = payload.get("transcript_path")
+    if isinstance(transcript, str) and transcript:
+        try:
+            size = os.path.getsize(transcript)
+        except OSError:
+            pass
+    return [payload.get("session_id"), payload.get("prompt"), size]
+
+
 def first_run(payload, now_ts):
-    """True for the first header hook run of this prompt. With the plugin hook and a settings.json hook
-    both registered, the same prompt reaches two copies of this script; only one may print."""
-    key = json.dumps([payload.get("session_id"), payload.get("prompt")], ensure_ascii=False)
+    """True for the first header hook run of this prompt submission. With the plugin hook and a
+    settings.json hook both registered, one submission reaches two copies of this script; only one may print."""
+    key = json.dumps(submission_key(payload), ensure_ascii=False)
     marker = cache_dir() / ("hdr-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:24])
     try:
         cache_dir().mkdir(parents=True, exist_ok=True)

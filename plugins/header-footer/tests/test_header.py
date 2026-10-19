@@ -37,8 +37,8 @@ class RenderHeaderTest(ConfigDirCase):
 
 
 class HeaderHookTest(ConfigDirCase):
-    def payload(self, prompt="hi"):
-        return json.dumps({"session_id": "s1", "prompt": prompt, "cwd": "/nonexistent"})
+    def payload(self, prompt="hi", **extra):
+        return json.dumps({"session_id": "s1", "prompt": prompt, "cwd": "/nonexistent", **extra})
 
     def test_injects_the_tag_and_the_instruction(self):
         out = self.hf.header_hook(self.payload(), now=NOW)
@@ -50,6 +50,22 @@ class HeaderHookTest(ConfigDirCase):
         self.assertNotEqual(self.hf.header_hook(self.payload(), now=NOW), "")
         self.assertEqual(self.hf.header_hook(self.payload(), now=NOW), "")
         self.assertNotEqual(self.hf.header_hook(self.payload("next prompt"), now=NOW), "")
+
+    def test_a_repeated_prompt_with_a_new_prompt_id_prints_again(self):
+        # "sim" sent twice is two submissions; prompt_id tells them apart
+        self.assertNotEqual(self.hf.header_hook(self.payload("sim", prompt_id="p1"), now=NOW), "")
+        self.assertNotEqual(self.hf.header_hook(self.payload("sim", prompt_id="p2"), now=NOW), "")
+        self.assertEqual(self.hf.header_hook(self.payload("sim", prompt_id="p2"), now=NOW), "")
+
+    def test_without_prompt_id_a_grown_transcript_marks_a_new_submission(self):
+        transcript = self.home / "t.jsonl"
+        transcript.write_text("{}\n", encoding="utf-8")
+        payload = lambda: self.payload("sim", transcript_path=str(transcript))
+        self.assertNotEqual(self.hf.header_hook(payload(), now=NOW), "")
+        self.assertEqual(self.hf.header_hook(payload(), now=NOW), "")  # the parallel copy of the same submission
+        with transcript.open("a", encoding="utf-8") as fh:
+            fh.write('{"type": "assistant"}\n')
+        self.assertNotEqual(self.hf.header_hook(payload(), now=NOW), "")
 
     def test_disabled_header_prints_nothing(self):
         self.write_config({"header": {"enabled": False}})
