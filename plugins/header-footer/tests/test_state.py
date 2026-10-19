@@ -1,6 +1,6 @@
 import json
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from helpers import ConfigDirCase, strip_ansi
 
@@ -12,9 +12,12 @@ class StateHookTest(ConfigDirCase):
         self.hf.state_hook(event, json.dumps({"session_id": sid}), now_ts=at)
         return self.hf.read_state(sid)
 
-    def footer(self, at, sid="s1"):
+    def footer(self, at, sid="s1", transcript=None):
         footer = {"enabled": True, "fields": ["state"], "separator": " │ "}
-        return strip_ansi(self.hf.render_footer(json.dumps({"session_id": sid}), now=datetime.fromtimestamp(at), footer=footer))
+        payload = {"session_id": sid}
+        if transcript is not None:
+            payload["transcript_path"] = str(transcript)
+        return strip_ansi(self.hf.render_footer(json.dumps(payload), now=datetime.fromtimestamp(at), footer=footer))
 
     def test_a_turn_runs_until_stop(self):
         self.hook("turn", T0)
@@ -58,6 +61,63 @@ class StateHookTest(ConfigDirCase):
     def test_cli_entry_point(self):
         self.assertEqual(self.run_cli("state-hook", "turn", stdin='{"session_id": "s1"}')[0], 0)
         self.assertEqual(self.hf.read_state("s1")["state"], "running")
+
+
+
+def stamp(ts):
+    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+class InterruptTest(ConfigDirCase):
+    """Stop does not run on Esc and no hook runs on a denied permission; the transcript tells."""
+
+    footer = StateHookTest.footer
+    hook = StateHookTest.hook
+
+    def transcript(self, *entries):
+        path = self.home / "t.jsonl"
+        path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+        return path
+
+    def user(self, text, at, **extra):
+        return {"type": "user", "timestamp": stamp(at), "message": {"role": "user", "content": [{"type": "text", "text": text}]}, **extra}
+
+    def assistant(self, at, **extra):
+        return {"type": "assistant", "timestamp": stamp(at), "message": {"role": "assistant", "content": [{"type": "text", "text": "ok"}]}, **extra}
+
+    def test_an_interrupt_after_the_turn_started_shows_idle(self):
+        self.hook("turn", T0)
+        t = self.transcript(self.assistant(T0 + 5), self.user("[Request interrupted by user]", T0 + 9),
+                            {"type": "system", "timestamp": stamp(T0 + 9)})
+        self.assertEqual(self.footer(T0 + 60, transcript=t), "○ idle")
+
+    def test_a_denied_permission_shows_idle(self):
+        self.hook("turn", T0)
+        self.hook("waiting", T0 + 5)
+        t = self.transcript(self.user("[Request interrupted by user for tool use]", T0 + 8))
+        self.assertEqual(self.footer(T0 + 60, transcript=t), "○ idle")
+
+    def test_an_interrupt_from_an_earlier_turn_is_ignored(self):
+        self.hook("turn", T0 + 100)
+        t = self.transcript(self.user("[Request interrupted by user]", T0))
+        self.assertEqual(self.footer(T0 + 160, transcript=t), "● running 1m")
+
+    def test_work_after_the_interrupt_keeps_running(self):
+        self.hook("turn", T0)
+        t = self.transcript(self.user("[Request interrupted by user]", T0 + 5), self.assistant(T0 + 9))
+        self.assertEqual(self.footer(T0 + 60, transcript=t), "● running 1m")
+
+    def test_a_sidechain_entry_does_not_hide_the_interrupt(self):
+        self.hook("turn", T0)
+        t = self.transcript(self.user("[Request interrupted by user]", T0 + 5), self.assistant(T0 + 9, isSidechain=True))
+        self.assertEqual(self.footer(T0 + 60, transcript=t), "○ idle")
+
+    def test_a_missing_or_corrupt_transcript_keeps_running(self):
+        self.hook("turn", T0)
+        self.assertEqual(self.footer(T0 + 60, transcript=self.home / "missing.jsonl"), "● running 1m")
+        bad = self.home / "bad.jsonl"
+        bad.write_bytes(b"\xff\xfe not json\n{\"type\": \"user\", \"timestamp\": 3}\n")
+        self.assertEqual(self.footer(T0 + 60, transcript=bad), "● running 1m")
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 VERSION = "0.2.0"
@@ -340,9 +340,50 @@ def fmt_elapsed(secs):
     return f"{mins // 60}h{mins % 60:02d}"
 
 
-def render_state(session_id, now_ts):
+INTERRUPT_MARKER = "[Request interrupted by user"
+TRANSCRIPT_TAIL = 64 * 1024
+
+
+def entry_epoch(entry):
+    try:
+        return datetime.strptime(entry["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def interrupted_since(transcript_path, since):
+    """True when the latest conversation entry of the transcript is a user interrupt (Esc, or a denied
+    permission) written at or after `since`. Stop does not run on an interrupt and no hook runs on a
+    manual denial, so the transcript is the only witness. Reads only the tail of the file."""
+    if not isinstance(transcript_path, str) or not transcript_path or not isinstance(since, (int, float)):
+        return False
+    try:
+        with open(transcript_path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - TRANSCRIPT_TAIL))
+            tail = fh.read()
+    except OSError:
+        return False
+    for raw in reversed(tail.split(b"\n")):
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("type") not in ("user", "assistant") or entry.get("isSidechain"):
+            continue
+        content = (entry.get("message") or {}).get("content") if isinstance(entry.get("message"), dict) else None
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        texts = [b.get("text") for b in blocks or [] if isinstance(b, dict) and isinstance(b.get("text"), str)]
+        at = entry_epoch(entry)
+        return entry.get("type") == "user" and any(t.startswith(INTERRUPT_MARKER) for t in texts) and at is not None and at >= since
+    return False
+
+
+def render_state(session_id, now_ts, transcript_path=None):
     st = read_state(session_id)
     since = st.get("since")
+    if st.get("state") in ("running", "waiting") and interrupted_since(transcript_path, since):
+        return f"{DIM}○ idle{RESET}"
     if st.get("state") == "running":
         elapsed = f" {fmt_elapsed(now_ts - since)}" if isinstance(since, (int, float)) else ""
         return f"\x1b[33m● running{elapsed}{RESET}"
@@ -478,7 +519,7 @@ def footer_field(name, data, stdin_text, now):
     workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
     cwd = workspace.get("current_dir") or data.get("cwd") or ""
     if name == "state":
-        return render_state(data.get("session_id"), now.timestamp())
+        return render_state(data.get("session_id"), now.timestamp(), data.get("transcript_path"))
     if name == "gsd":
         return gsd_block(stdin_text)
     if name == "model":
