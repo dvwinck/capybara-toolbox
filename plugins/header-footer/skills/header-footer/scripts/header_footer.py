@@ -166,8 +166,9 @@ def load_config(path=None, strict=False):
 
 
 def atomic_write(path, text, mode=None):
-    """Write through a private temp file and os.replace, keeping the old file's mode (settings.json is 600)."""
-    path = Path(path)
+    """Write through a private temp file and os.replace, keeping the old file's mode (settings.json is 600).
+    A symlink is followed, so a settings.json linked from a dotfiles repository stays a link."""
+    path = Path(os.path.realpath(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     if mode is None:
         mode = path.stat().st_mode & 0o777 if path.exists() else 0o644

@@ -74,6 +74,20 @@ class SettingsWiringTest(ConfigDirCase):
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(len(self.backups()), 1)
 
+    def test_a_symlinked_settings_file_stays_a_symlink(self):
+        # dotfiles setups link ~/.claude/settings.json to a file kept elsewhere
+        target = self.home / "dotfiles" / "settings.json"
+        target.parent.mkdir()
+        target.write_text(json.dumps({"model": "opus"}), encoding="utf-8")
+        os.chmod(target, 0o600)
+        (self.home / "settings.json").symlink_to(target)
+        self.assertEqual(self.run_cli("on", "footer")[0], 0)
+        self.assertTrue((self.home / "settings.json").is_symlink())
+        data = json.loads(target.read_text(encoding="utf-8"))
+        self.assertEqual(data["model"], "opus")
+        self.assertTrue(self.hf.footer_wired(data))
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+
     def test_footer_on_refuses_to_replace_another_status_line_without_replace(self):
         self.write_settings({"statusLine": {"type": "command", "command": "my-own-line"}})
         rc, _, err = self.run_cli("on", "footer")
