@@ -58,6 +58,22 @@ class StateHookTest(ConfigDirCase):
         self.assertEqual(rc, 2)
         self.assertIn("sleeping", err)
 
+    def test_a_new_turn_prunes_cache_files_older_than_a_week(self):
+        import os
+        cache = self.hf.cache_dir()
+        cache.mkdir(parents=True)
+        week = 7 * 86400
+        files = {name: cache / name for name in ("state-old.json", "tokens-old.json", "state-new.json", "tokens-new.json", "other-old.json")}
+        for name, path in files.items():
+            path.write_text("{}", encoding="utf-8")
+            age = week + 60 if "old" in name else week - 60
+            os.utime(path, (T0 - age, T0 - age))
+        self.hook("running", T0)
+        self.assertTrue(files["state-old.json"].exists())  # only a new turn prunes
+        self.hook("turn", T0)
+        self.assertEqual(sorted(p.name for p in cache.iterdir()),
+                         ["other-old.json", "state-new.json", "state-s1.json", "tokens-new.json"])
+
     def test_cli_entry_point(self):
         self.assertEqual(self.run_cli("state-hook", "turn", stdin='{"session_id": "s1"}')[0], 0)
         self.assertEqual(self.hf.read_state("s1")["state"], "running")

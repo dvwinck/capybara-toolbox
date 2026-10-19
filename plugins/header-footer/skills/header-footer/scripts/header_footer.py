@@ -92,6 +92,8 @@ INSTRUCTION = (
 # submission, which runs within the 5 s hook timeout.
 MARKER_TTL = 60
 SEEN_IDS_KEPT = 200
+# Per-session state and token files older than this are pruned when a turn starts.
+CACHE_TTL = 7 * 86400
 STATE_EVENTS = ("turn", "running", "waiting", "idle")
 # The hooks the plugin registers (hooks/hooks.json) and that `wire-hooks` writes into settings.json
 # for installs without the plugin system: event -> subcommands. PostToolUse brings "waiting" back to
@@ -322,6 +324,18 @@ def read_state(session_id):
     return st if isinstance(st, dict) else {}
 
 
+def prune_cache(now_ts):
+    """Drop the state and token files of sessions untouched for CACHE_TTL. A session resumed later
+    recounts its tokens from the start of its transcript, which gives the same total."""
+    for pattern in ("state-*.json", "tokens-*.json"):
+        for old in cache_dir().glob(pattern):
+            try:
+                if now_ts - old.stat().st_mtime > CACHE_TTL:
+                    old.unlink()
+            except OSError:
+                pass
+
+
 def state_hook(event, stdin_text, now_ts=None):
     """Record the session's state. `turn` starts the turn's clock; a permission prompt (`waiting`) and
     the tool call after it (`running`) keep it; `idle` restarts it as "idle since"."""
@@ -335,6 +349,8 @@ def state_hook(event, stdin_text, now_ts=None):
     if not sp:
         return
     now_ts = time.time() if now_ts is None else now_ts
+    if event == "turn":
+        prune_cache(now_ts)
     prev = read_state(payload["session_id"])
     since = prev.get("since")
     if event in ("turn", "idle") or not isinstance(since, (int, float)):
