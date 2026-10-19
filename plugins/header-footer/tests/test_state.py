@@ -128,6 +128,22 @@ class InterruptTest(ConfigDirCase):
         t = self.transcript(self.user("[Request interrupted by user]", T0 + 5), self.assistant(T0 + 9, isSidechain=True))
         self.assertEqual(self.footer(T0 + 60, transcript=t), "○ idle")
 
+    def test_local_commands_after_the_interrupt_keep_it_idle(self):
+        # /context and !git status write user entries but run no UserPromptSubmit hook
+        self.hook("turn", T0)
+        t = self.transcript(self.user("[Request interrupted by user]", T0 + 5),
+                            self.user("<command-name>/context</command-name>", T0 + 20),
+                            self.user("<local-command-stdout>ctx</local-command-stdout>", T0 + 20),
+                            self.user("<bash-input>git status</bash-input>", T0 + 30),
+                            self.user("<bash-stdout>clean</bash-stdout>", T0 + 30))
+        self.assertEqual(self.footer(T0 + 60, transcript=t), "○ idle")
+
+    def test_an_interrupt_behind_a_long_non_conversation_tail_is_found(self):
+        self.hook("turn", T0)
+        filler = [{"type": "attachment", "timestamp": stamp(T0 + 6), "blob": "x" * 7000} for _ in range(10)]
+        t = self.transcript(self.user("[Request interrupted by user]", T0 + 5), *filler)
+        self.assertEqual(self.footer(T0 + 60, transcript=t), "○ idle")
+
     def test_a_missing_or_corrupt_transcript_keeps_running(self):
         self.hook("turn", T0)
         self.assertEqual(self.footer(T0 + 60, transcript=self.home / "missing.jsonl"), "● running 1m")

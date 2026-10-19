@@ -398,7 +398,9 @@ def fmt_elapsed(secs):
 
 
 INTERRUPT_MARKER = "[Request interrupted by user"
-TRANSCRIPT_TAIL = 64 * 1024
+# The tail read first, and the wider one tried when trailing bookkeeping entries (attachments, file
+# snapshots) hide every conversation entry from the first.
+TRANSCRIPT_TAILS = (64 * 1024, 1024 * 1024)
 
 
 def entry_epoch(entry):
@@ -408,19 +410,10 @@ def entry_epoch(entry):
         return None
 
 
-def interrupted_since(transcript_path, since):
-    """True when the latest conversation entry of the transcript is a user interrupt (Esc, or a denied
-    permission) written at or after `since`. Stop does not run on an interrupt and no hook runs on a
-    manual denial, so the transcript is the only witness. Reads only the tail of the file."""
-    if not isinstance(transcript_path, str) or not transcript_path or not isinstance(since, (int, float)):
-        return False
-    try:
-        with open(transcript_path, "rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            fh.seek(max(0, fh.tell() - TRANSCRIPT_TAIL))
-            tail = fh.read()
-    except OSError:
-        return False
+def interrupt_verdict(tail, since):
+    """Walk the tail backwards: True at an interrupt written at or after `since`, False at an older one or
+    at Claude's own work (an assistant entry), None when the tail holds neither. Other user entries are
+    skipped: local commands (/context, !git status) write them without starting a turn."""
     for raw in reversed(tail.split(b"\n")):
         try:
             entry = json.loads(raw)
@@ -428,11 +421,36 @@ def interrupted_since(transcript_path, since):
             continue
         if not isinstance(entry, dict) or entry.get("type") not in ("user", "assistant") or entry.get("isSidechain"):
             continue
+        if entry["type"] == "assistant":
+            return False
         content = (entry.get("message") or {}).get("content") if isinstance(entry.get("message"), dict) else None
         blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
         texts = [b.get("text") for b in blocks or [] if isinstance(b, dict) and isinstance(b.get("text"), str)]
-        at = entry_epoch(entry)
-        return entry.get("type") == "user" and any(t.startswith(INTERRUPT_MARKER) for t in texts) and at is not None and at >= since
+        if any(t.startswith(INTERRUPT_MARKER) for t in texts):
+            at = entry_epoch(entry)
+            return at is not None and at >= since
+    return None
+
+
+def interrupted_since(transcript_path, since):
+    """True when the transcript shows a user interrupt (Esc, or a denied permission) at or after `since`
+    with no assistant entry after it. Stop does not run on an interrupt and no hook runs on a manual
+    denial, so the transcript is the only witness. Reads only the tail of the file."""
+    if not isinstance(transcript_path, str) or not transcript_path or not isinstance(since, (int, float)):
+        return False
+    for size in TRANSCRIPT_TAILS:
+        try:
+            with open(transcript_path, "rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                start = max(0, fh.tell() - size)
+                fh.seek(start)
+                verdict = interrupt_verdict(fh.read(), since)
+        except OSError:
+            return False
+        if verdict is not None:
+            return verdict
+        if start == 0:
+            break
     return False
 
 
