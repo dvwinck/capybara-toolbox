@@ -778,6 +778,11 @@ def collect_status(cfg, settings):
         for f in cfg[section]["fields"]:
             if f not in known:
                 problems.append(f"campo de {section} desconhecido: {f}")
+    plugin_on = any(v is True and k.startswith("header-footer@") for k, v in (settings.get("enabledPlugins") or {}).items())
+    header_wired = any(is_ours(c) and c.endswith(" header-hook") for c in commands)
+    if cfg["header"]["enabled"] and not (plugin_on or header_wired):
+        problems.append("header ligado, mas nenhum hook o executa: o plugin nao esta habilitado no settings.json do usuario e "
+                        "nao ha `wire-hooks` (um settings.json de projeto, que o status nao le, ainda pode habilitar o plugin)")
     if cfg["footer"]["enabled"] and not footer_wired(settings):
         problems.append("footer ligado na config, mas a statusLine nao aponta para este script: rode `on footer`")
     uses_copy = footer_wired(settings) or any(is_ours(c) for c in commands)

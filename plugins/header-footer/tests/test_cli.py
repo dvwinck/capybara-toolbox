@@ -232,6 +232,23 @@ class StatusTest(ConfigDirCase):
         self.assertEqual(rc, 1)
         self.assertTrue(any("duplicado" in p for p in st["problems"]))
 
+    def header_problems(self, settings, header_on=True):
+        (self.home / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+        self.write_config({"header": {"enabled": header_on}})
+        return [p for p in self.status()[1]["problems"] if "nenhum hook" in p]
+
+    def test_a_header_with_no_hook_to_drive_it_is_reported(self):
+        self.assertEqual(len(self.header_problems({})), 1)
+        self.assertEqual(len(self.header_problems({"enabledPlugins": {"header-footer@capybara-toolbox": False}})), 1)
+
+    def test_the_plugin_or_a_wired_hook_drives_the_header(self):
+        self.assertEqual(self.header_problems({"enabledPlugins": {"header-footer@capybara-toolbox": True}}), [])
+        hook = {"type": "command", "command": self.hf.command_for("header-hook")}
+        self.assertEqual(self.header_problems({"hooks": {"UserPromptSubmit": [{"hooks": [hook]}]}}), [])
+
+    def test_a_header_turned_off_needs_no_hook(self):
+        self.assertEqual(self.header_problems({}, header_on=False), [])
+
     def test_footer_enabled_but_not_wired_is_reported(self):
         rc, st = self.status()
         self.assertEqual(rc, 1)
@@ -248,6 +265,9 @@ class StatusTest(ConfigDirCase):
     def test_a_clean_setup_has_no_problems(self):
         self.write_config({"footer": {"fields": ["clock"]}})
         self.run_cli("on", "footer")
+        settings = self.read_json("settings.json")
+        settings["enabledPlugins"] = {"header-footer@capybara-toolbox": True}  # what drives the header
+        (self.home / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
         rc, st = self.status()
         self.assertEqual((rc, st["problems"]), (0, []))
         rc, out, _ = self.run_cli("status")
