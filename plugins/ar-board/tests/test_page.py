@@ -1,4 +1,5 @@
 import re
+import unicodedata
 import unittest
 
 from helpers import REPO, ab
@@ -172,3 +173,112 @@ class QuestionContrastTest(PageThemeTest):
         opt_rule = re.search(r"\.opt\{[^}]*\}", ab.PAGE).group(0)
         self.assertIn("border:1.5px solid var(--mut)", opt_rule)
         self.assertNotIn("var(--line)", opt_rule)
+
+
+# ---------------------------------------------------------------- the switchable language (ar-board 1.4.0)
+
+PT_WORDS = {  # words of the old Portuguese page: any of them in a literal outside the table is a leftover
+    "aprovar", "rejeitar", "talvez", "pular", "comentar", "escolher", "confirmar", "contexto", "navegar", "avancar",
+    "decidir", "comentario", "resposta", "respostas", "obrigatoria", "opcional", "lote", "itens", "rodada", "decisao",
+    "decisoes", "concluir", "concluido", "avisar", "agente", "baixar", "copiar", "copiado", "limpar", "resultado", "nota",
+    "observacao", "aperte", "cancela", "confirmacao", "cancelada", "escreva", "campo", "maximo", "opcoes", "opcao",
+    "desmarque", "marcada", "precisa", "precisam", "revise", "responder", "alterar", "voltar", "corrigir", "conexao",
+    "servidor", "cole", "arquivo", "vivo", "recomendada", "recomendamos", "outra", "pergunta", "aberta", "primeiro",
+    "respondida", "respondidas", "terminei", "volte", "diga", "sozinho", "todas", "deste", "mesmo", "assim", "proxima",
+    "mudar", "risco", "anterior", "proximo", "salva", "foca", "vale", "qualquer", "aprovou", "rejeitou", "ficou", "duvida",
+    "treina", "sim", "nao", "sem", "idioma", "sair", "escolha", "mais",
+}
+PROSE = re.compile(r"[A-Za-zÀ-ɏ]{4,}\s+[A-Za-zÀ-ɏ]{4,}")  # two words: text, not a token
+JS_LITERAL = re.compile(r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"")
+TAG_BITS = re.compile(r"<[^>]*>|<[^>]*$|^[^<]*>")  # whole tags, an unclosed tag at the end, a tag's tail at the start
+ALLOWED_TEXT = ("Capybara Toolbox",)  # the brand line in the footer
+
+
+def page_body():
+    """(markup of <body> before the script, the script's code)."""
+    body = ab.PAGE.split("<body>", 1)[1]
+    script = re.search(r"<script>(.*?)</script>", body, re.S).group(1)
+    return body[:body.index("<script>")], script
+
+
+def plain(text):
+    return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode("ascii").lower()
+
+
+def looks_like_text(fragment):
+    clean = TAG_BITS.sub(" ", fragment)
+    words = set(re.split(r"[^a-z]+", plain(clean)))
+    return bool(PROSE.search(clean)) or bool(words & PT_WORDS)
+
+
+class PageLanguageGuardTest(unittest.TestCase):
+    """The page's text comes from the I18N table: no literal of the markup or the JavaScript may read as prose
+    (in either language), and every key the page asks for exists, and every key of the table is asked for."""
+
+    def test_no_literal_of_the_page_reads_as_text_outside_the_table(self):
+        markup, script = page_body()
+        left = [m.group(0) for m in JS_LITERAL.finditer(script) if looks_like_text(m.group(0)[1:-1])]
+        for node in re.split(r"<[^>]*>", markup):
+            node = node.strip()
+            if node and not any(a in node for a in ALLOWED_TEXT) and looks_like_text(node):
+                left.append(node)
+        self.assertEqual(left, [], "text left outside the I18N table:\n" + "\n".join(left))
+
+    def test_every_key_the_page_uses_exists_and_every_key_of_the_table_is_used(self):
+        markup, script = page_body()
+        used = set(re.findall(r"T\('([a-z_]+)'", script)) | set(re.findall(r'data-tp?="([a-z_]+)"', markup))
+        self.assertEqual(used - set(ab.I18N["en"]), set(), "keys missing from the table")
+        self.assertEqual(set(ab.I18N["en"]) - used, set(), "table keys the page never uses")
+        dynamic = set(re.findall(r"(?<!function )T\((?!')[^)]*\)", script))
+        self.assertEqual(dynamic, {"T(el.dataset.t)", "T(el.dataset.tp)"})  # the only non-literal lookups
+
+    def test_the_precedence_is_saved_toggle_then_boot_then_english(self):
+        self.assertIn("let lang = LANGS.includes(BOOT.lang) ? BOOT.lang : 'en';", ab.PAGE)
+        self.assertIn("const saved = localStorage.getItem('ar-board:lang'); if(LANGS.includes(saved)) lang = saved;", ab.PAGE)
+        self.assertIn("localStorage.setItem('ar-board:lang', l)", ab.PAGE)
+        self.assertIn("function setLang(l){if(!LANGS.includes(l)) return;", ab.PAGE)
+
+    def test_the_toggle_sits_in_the_header_and_sets_html_lang(self):
+        self.assertIn('<html lang="en">', ab.PAGE)
+        self.assertIn("document.documentElement.lang = lang;", ab.PAGE)
+        self.assertIn('<button type="button" data-lang="en">EN</button><button type="button" data-lang="pt-BR">PT</button>', ab.PAGE)
+        self.assertIn("if(b) setLang(b.dataset.lang);", ab.PAGE)
+        self.assertLess(ab.PAGE.index('id="live"'), ab.PAGE.index('id="lang"'))
+
+    def test_switching_re_renders_without_a_reload_and_keeps_the_card_labels(self):
+        self.assertIn("applyLang(); render();}", ab.PAGE)
+        self.assertIn("  applyLabels();\n", ab.PAGE)  # batch labels win over the table after every switch
+        self.assertIn("$('#bF').textContent = hasQ ? T('review_finish') : T('finish');", ab.PAGE)
+        self.assertNotIn("location.reload", ab.PAGE)
+
+    def test_risk_levels_accept_english_words_and_keep_the_css_classes(self):
+        for pair in ("['low','baixo']", "['medium','medio']", "['high','alto']", "['baixo','baixo']"):
+            self.assertIn(pair, ab.PAGE)
+        self.assertIn("const RISK = Object.create(null);", ab.PAGE)
+        self.assertIn("const lvl = RISK[norm(it.risk.level)] || 'medio';", ab.PAGE)
+        for cls in (".risk.baixo{", ".risk.medio{", ".risk.alto{"):
+            self.assertIn(cls, ab.PAGE)
+
+    def test_the_key_letters_do_not_change_with_the_language(self):
+        for key in ("<kbd>A</kbd>", "<kbd>R</kbd>", "<kbd>M</kbd>", "<kbd>S</kbd>", "<kbd>C</kbd>"):
+            self.assertIn(key, ab.PAGE)
+        self.assertIn("if(k === 'a') decide('approved');", ab.PAGE)
+        self.assertIn("else if(k === 's') go(idx+1);", ab.PAGE)
+        self.assertIn("else if(k === 'c'){ev.preventDefault(); $('#cmt').focus();}", ab.PAGE)
+
+    def test_batch_labels_and_confirm_are_card_content_shown_as_written(self):
+        self.assertIn("LBL[p[1]] = l.text; CNT[p[1]] = l.text.toLowerCase();", ab.PAGE)
+        self.assertIn("T('confirm_label', {label: esc((LB.approve ? LB.approve.text : T('approve')).toLowerCase())})", ab.PAGE)
+        self.assertIn("rich(it.confirm) + '<b>' + T('armed_hint') + '</b></div>'", ab.PAGE)
+
+    def test_the_export_and_the_decisions_carry_no_language(self):
+        self.assertNotIn("lang:", ab.PAGE.split("function exportObj(){", 1)[1].split("}\n", 1)[0])
+        self.assertNotIn("'/api/lang'", ab.PAGE)
+
+    def test_the_rendered_page_shows_the_table_values_and_no_old_literal(self):
+        batch = {"batch_id": "t", "title": "T", "items": [{"id": "A01", "title": "x"}]}
+        page = ab.render_page(batch, {"items": {}}, "tok", True).decode("utf-8")
+        self.assertIn('"done_banner": "Finished.', page)
+        self.assertIn('"done_banner": "Concluído.', page)
+        self.assertNotIn("Concluido. Volte", page)
+        self.assertNotIn("avancar ao decidir", page)

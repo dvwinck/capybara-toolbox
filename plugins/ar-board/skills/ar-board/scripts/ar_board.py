@@ -665,7 +665,7 @@ def resolve_lang(batch, flag=None):
 # ---------------------------------------------------------------- pagina
 
 PAGE = r"""<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>__TITLE__</title>
 <link rel="icon" href="__FAVICON__">
@@ -676,8 +676,12 @@ PAGE = r"""<!doctype html>
 .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
 header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
 h1{font-size:22px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px}
+.hdr{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .badge{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);white-space:nowrap}
 .badge.on{color:var(--ok);border-color:var(--ok)}.badge.off{color:var(--mb);border-color:var(--mb)}
+.lang{display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden}
+.lang button{border:0;border-radius:0;padding:3px 10px;font-size:12px;background:transparent;color:var(--mut)}
+.lang button.on{background:var(--panel2);color:var(--fg);font-weight:600}
 .keys{display:flex;flex-wrap:wrap;gap:6px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:14px 0 10px;font-size:13px;color:var(--mut)}
 kbd{font:600 11px ui-monospace,Menlo,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--fg);margin-right:4px}
 .keys .auto{margin-left:auto;cursor:pointer;color:var(--fg)}#hint{flex-basis:100%;color:var(--acc);font-weight:600}#hint:empty{display:none}
@@ -740,34 +744,34 @@ button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-
 .rev a{color:var(--acc);cursor:pointer;margin-left:8px;text-decoration:underline}
 @media (prefers-reduced-motion:reduce){.opt{transition:none}}
 </style></head><body><div class="wrap">
-<header><div class="brand">__MASCOT__<div><h1 id="ttl"></h1><div class="sub" id="sub"></div></div></div><span class="badge" id="live"></span></header>
-<div class="keys"><span class="pronly"><kbd>A</kbd><i id="kA">aprovar</i></span><span class="pronly"><kbd>R</kbd><i id="kR">rejeitar</i></span><span class="pronly"><kbd>M</kbd><i id="kM">talvez</i></span><span class="qonly"><kbd>1-9</kbd>escolher</span><span class="qonly"><kbd>Enter</kbd>confirmar</span><span class="qonly"><kbd>M</kbd>mais contexto</span><span><kbd>S</kbd>pular</span><span><kbd>C</kbd>comentar</span><span><kbd>Esc</kbd>sair do campo</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd>navegar</span><label class="auto"><input type="checkbox" id="auto" checked> avancar ao decidir</label><span id="hint" role="status" aria-live="polite"></span></div>
+<header><div class="brand">__MASCOT__<div><h1 id="ttl"></h1><div class="sub" id="sub"></div></div></div><div class="hdr"><span class="badge" id="live"></span><span class="lang" id="lang" role="group"><button type="button" data-lang="en">EN</button><button type="button" data-lang="pt-BR">PT</button></span></div></header>
+<div class="keys"><span class="pronly"><kbd>A</kbd><i id="kA"></i></span><span class="pronly"><kbd>R</kbd><i id="kR"></i></span><span class="pronly"><kbd>M</kbd><i id="kM"></i></span><span class="qonly"><kbd>1-9</kbd><i data-t="key_choose"></i></span><span class="qonly"><kbd>Enter</kbd><i data-t="key_confirm"></i></span><span class="qonly"><kbd>M</kbd><i data-t="key_more_context"></i></span><span><kbd>S</kbd><i data-t="key_skip"></i></span><span><kbd>C</kbd><i data-t="key_comment"></i></span><span><kbd>Esc</kbd><i data-t="key_leave_field"></i></span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd><i data-t="key_navigate"></i></span><label class="auto"><input type="checkbox" id="auto" checked> <i data-t="auto_advance"></i></label><span id="hint" role="status" aria-live="polite"></span></div>
 <div class="bar"><i id="prog"></i></div>
 <div class="grid">
   <section class="card" id="card"></section>
   <aside class="side">
     <div class="meta" id="meta"></div>
-    <label for="cmt" id="cmtlbl">Comentario deste item (C foca &middot; salva sozinho). Vale para qualquer decisao.</label>
-    <textarea id="cmt" placeholder="Por que aprovou, rejeitou ou ficou em duvida? Isso e o que mais treina o agente."></textarea>
+    <label for="cmt" id="cmtlbl"></label>
+    <textarea id="cmt" data-tp="comment_placeholder"></textarea>
     <div class="btns">
-      <button class="ok" id="bA">&#10003; Aprovar<kbd>A</kbd></button>
-      <button class="no" id="bR">&#10007; Rejeitar<kbd>R</kbd></button>
-      <button class="mb" id="bM">&asymp; Talvez<kbd>M</kbd></button>
-      <button id="bS">Pular<kbd>S</kbd></button>
-      <button id="bP">&larr; Anterior</button><button id="bN">Proximo &rarr;</button>
+      <button class="ok" id="bA"></button>
+      <button class="no" id="bR"></button>
+      <button class="mb" id="bM"></button>
+      <button id="bS"><span data-t="skip"></span><kbd>S</kbd></button>
+      <button id="bP">&larr; <span data-t="prev"></span></button><button id="bN"><span data-t="next"></span> &rarr;</button>
     </div>
     <div class="chips" id="chips"></div>
   </aside>
 </div>
 <section class="card rev" id="rev" hidden></section>
 <section class="res">
-  <h3>Resultado</h3>
+  <h3 data-t="result"></h3>
   <div class="counts" id="counts"></div>
-  <label for="note" class="sub">Nota geral do lote (batch_note)</label>
-  <textarea id="note" placeholder="Observacao geral sobre este lote inteiro..."></textarea>
+  <label for="note" class="sub" data-t="note_label"></label>
+  <textarea id="note" data-tp="note_placeholder"></textarea>
   <div class="btns">
-    <button class="go" id="bF">Concluir e avisar o agente</button>
-    <button id="bD">Baixar JSON</button><button id="bC">Copiar</button><button id="bX">Limpar</button>
+    <button class="go" id="bF"></button>
+    <button id="bD" data-t="download"></button><button id="bC" data-t="copy"></button><button id="bX" data-t="clear"></button>
   </div>
   <div class="done" id="done"></div>
 </section>
@@ -776,15 +780,18 @@ button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg);font-
 <script>
 (function(){
 const BOOT = __BOOT__;
-const B = BOOT.batch, items = B.items, S = BOOT.state;
+const B = BOOT.batch, items = B.items, S = BOOT.state, I18N = BOOT.i18n;
 S.items = S.items || {};
 const $ = s => document.querySelector(s);
-const CMT0 = $('#cmtlbl').innerHTML;
-const LBL = {approved:'Aprovado', rejected:'Rejeitado', maybe:'Talvez'};
-const LB = B.labels || {}, CNT = {approved:'aprovados', rejected:'rejeitados', maybe:'talvez'};
+const LANGS = Object.keys(I18N);
+let lang = LANGS.includes(BOOT.lang) ? BOOT.lang : 'en';
+try{const saved = localStorage.getItem('ar-board:lang'); if(LANGS.includes(saved)) lang = saved;}catch(e){}
+function T(key, vars){let s = I18N[lang][key]; if(s === undefined) s = I18N.en[key]; if(s === undefined) s = key; return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;}
+let LBL = {}, CNT = {}, QLBL = {};
+const LB = B.labels || {};
 const TONE = {safe:['ok','--ok','--ok-bg'], danger:['no','--no','--no-bg'], caution:['mb','--mb','--mb-bg']};
-let armed = null;
-(function applyLabels(){
+let armed = null, liveOk = false;
+function applyLabels(){
   [['approve','approved','A'], ['reject','rejected','R'], ['maybe','maybe','M']].forEach(p => {
     const l = LB[p[0]]; if(!l) return;
     LBL[p[1]] = l.text; CNT[p[1]] = l.text.toLowerCase();
@@ -794,17 +801,33 @@ let armed = null;
     document.documentElement.style.setProperty('--c' + p[2], 'var(' + t[1] + ')');
     document.documentElement.style.setProperty('--c' + p[2] + 'b', 'var(' + t[2] + ')');
   });
-})();
+}
+function applyLang(){
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach(el => {el.textContent = T(el.dataset.t);});
+  document.querySelectorAll('[data-tp]').forEach(el => {el.placeholder = T(el.dataset.tp);});
+  document.querySelectorAll('#lang>button').forEach(b => b.classList.toggle('on', b.dataset.lang === lang));
+  $('#lang').setAttribute('aria-label', T('lang_label'));
+  LBL = {approved: T('state_approved'), rejected: T('state_rejected'), maybe: T('state_maybe')};
+  CNT = {approved: T('count_approved'), rejected: T('count_rejected'), maybe: T('count_maybe')};
+  QLBL = {answered: T('state_answered'), maybe: T('state_unsure')};
+  $('#kA').textContent = T('key_approve'); $('#kR').textContent = T('key_reject'); $('#kM').textContent = T('key_maybe');
+  applyLabels();
+  $('#bF').textContent = hasQ ? T('review_finish') : T('finish');
+  setLive(liveOk);
+}
+function setLang(l){if(!LANGS.includes(l)) return; lang = l; try{localStorage.setItem('ar-board:lang', l);}catch(e){} applyLang(); render();}
 const LS = 'ar-board:' + B.batch_id + ':r' + (B.round || 1);
 let idx = 0, timers = {};
 
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function rich(s){return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
-function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function norm(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+const RISK = Object.create(null);
+[['baixo','baixo'], ['low','baixo'], ['medio','medio'], ['medium','medio'], ['alto','alto'], ['high','alto']].forEach(p => {RISK[p[0]] = p[1];});
 function ent(id){return S.items[id] || (S.items[id] = {});}
 function tidy(id){const e=S.items[id]; if(e && !e.decision && !e.comment && !e.choice && !(e.choices && e.choices.length) && !e.other) delete S.items[id];}
 
-const QLBL = {answered:'Respondida', maybe:'Precisa de contexto'};
 const isQ = it => (it.choices != null || it.open === true);
 const hasQ = items.some(isQ), onlyQ = hasQ && items.every(isQ);
 document.body.classList.toggle('hasq', hasQ);
@@ -828,12 +851,12 @@ function qstatus(it){
 }
 function qanswer(it){
   const e = S.items[it.id] || {}, st = qstatus(it);
-  if(st === 'maybe') return 'Preciso de mais contexto';
+  if(st === 'maybe') return T('need_context');
   if(st !== 'answered') return null;
   const lab = qlabels(it);
   if(it.open === true) return cmtOf(e);
-  if(it.multiple){const p = (e.choices || []).filter(i => i in lab).map(i => lab[i]); if(e.other) p.push('Outra: ' + cmtOf(e)); return p.join(' + ');}
-  return e.other ? 'Outra: ' + cmtOf(e) : lab[e.choice];
+  if(it.multiple){const p = (e.choices || []).filter(i => i in lab).map(i => lab[i]); if(e.other) p.push(T('other_prefix') + cmtOf(e)); return p.join(' + ');}
+  return e.other ? T('other_prefix') + cmtOf(e) : lab[e.choice];
 }
 function status(it){return isQ(it) ? qstatus(it) : ((S.items[it.id] || {}).decision || '');}
 function answerText(it){
@@ -852,18 +875,18 @@ function qsave(it){
   post('/api/item', body);
 }
 function questionHtml(it, e){
-  if(it.open === true) return '<p class="how">Pergunta aberta: escreva a resposta ao lado (obrigatoria).</p>';
-  const opts = it.choices.concat([{id: null, label: 'Outra resposta...', effect: 'o texto do campo ao lado vira a resposta'}]);
+  if(it.open === true) return '<p class="how">' + T('open_question_how') + '</p>';
+  const opts = it.choices.concat([{id: null, label: T('other_answer'), effect: T('other_effect')}]);
   const rec = it.recommended || [];
-  let h = '<p class="how">' + (it.multiple ? 'Escolha de ' + (it.min || 1) + ' ate ' + qmax(it) + '. Enter confirma.' : 'Escolha uma opcao.') + '</p>';
+  let h = '<p class="how">' + (it.multiple ? T('choose_range', {min: it.min || 1, max: qmax(it)}) : T('choose_one')) + '</p>';
   h += '<div class="opts" role="' + (it.multiple ? 'group' : 'radiogroup') + '" aria-labelledby="qtitle">';
   opts.forEach((o, i) => {
     const other = i === opts.length - 1;
     const on = other ? !!e.other : (it.multiple ? (e.choices || []).includes(o.id) : e.choice === o.id);
-    h += '<button type="button" class="opt" role="' + (it.multiple ? 'checkbox' : 'radio') + '" aria-checked="' + on + '" data-n="' + (i+1) + '"><span class="k">' + (i+1) + '</span><span><span class="lbl">' + esc(o.label) + '</span>' + (o.effect ? '<span class="fx">' + (other ? '' : 'se escolher: ') + esc(o.effect) + '</span>' : '') + '</span>' + (!other && rec.includes(o.id) ? '<span class="rec">&#9733; recomendada</span>' : '<span></span>') + '</button>';
+    h += '<button type="button" class="opt" role="' + (it.multiple ? 'checkbox' : 'radio') + '" aria-checked="' + on + '" data-n="' + (i+1) + '"><span class="k">' + (i+1) + '</span><span><span class="lbl">' + esc(o.label) + '</span>' + (o.effect ? '<span class="fx">' + (other ? '' : T('if_chosen')) + esc(o.effect) + '</span>' : '') + '</span>' + (!other && rec.includes(o.id) ? '<span class="rec">&#9733; ' + T('recommended') + '</span>' : '<span></span>') + '</button>';
   });
   h += '</div>';
-  if(it.why) h += '<p class="why"><b>&#9733; Por que recomendamos:</b> ' + esc(it.why) + '</p>';
+  if(it.why) h += '<p class="why"><b>&#9733; ' + T('why_recommended') + '</b> ' + esc(it.why) + '</p>';
   return h;
 }
 function pick(n){
@@ -874,29 +897,29 @@ function pick(n){
   if(it.multiple){
     const lab = qlabels(it), sel = (e.choices || []).filter(i => i in lab);
     if(other){
-      if(!e.other && sel.length >= max){showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;}
+      if(!e.other && sel.length >= max){showHint(T('max_options', {max: max})); tidy(it.id); return;}
     } else if(!sel.includes(it.choices[n-1].id) && sel.length + (e.other ? 1 : 0) >= max){
-      showHint('Maximo de ' + max + ' opcoes. Desmarque uma antes.'); tidy(it.id); return;
+      showHint(T('max_options', {max: max})); tidy(it.id); return;
     }
     delete e.decision;
     e.choices = sel;
     if(other){e.other = !e.other;}
     else {const id = it.choices[n-1].id, p = sel.indexOf(id); if(p >= 0) sel.splice(p, 1); else sel.push(id);}
     qsave(it); render();
-    if(other && e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
+    if(other && e.other){$('#cmt').focus(); showHint(T('write_answer'));}
     return;
   }
   delete e.decision;
   if(other){
     e.other = !e.other; if(e.other) delete e.choice;
     qsave(it); render();
-    if(e.other){$('#cmt').focus(); showHint('Escreva sua resposta no campo ao lado.');}
+    if(e.other){$('#cmt').focus(); showHint(T('write_answer'));}
     return;
   }
   const id = it.choices[n-1].id;
   if(e.choice === id) delete e.choice; else {e.choice = id; delete e.other;}
   qsave(it);
-  if(auto && e.choice && idx < items.length - 1){idx++; showHint('Respondida: ' + it.id + ' — use ← para voltar e mudar');}
+  if(auto && e.choice && idx < items.length - 1){idx++; showHint(T('answered_hint', {id: it.id}));}
   render();
 }
 function askMore(){
@@ -905,40 +928,41 @@ function askMore(){
   if(e.decision === 'maybe') delete e.decision;
   else {delete e.choice; delete e.choices; delete e.other; e.decision = 'maybe';}
   qsave(it); render();
-  if(e.decision === 'maybe') showHint('Marcada: precisa de mais contexto. O agente volta a explicar na proxima rodada.');
+  if(e.decision === 'maybe') showHint(T('marked_unsure'));
 }
 function confirmCard(){
   const it = items[idx], st = qstatus(it);
-  if(!st){showHint(it.open === true ? 'Escreva a resposta no campo ao lado (ou use M).' : it.multiple ? 'Escolha pelo menos ' + (it.min || 1) + ' opcao (ou use M).' : 'Escolha uma opcao primeiro (ou M para pedir contexto).'); return;}
+  if(!st){showHint(it.open === true ? T('need_open_answer') : it.multiple ? T('need_min_options', {min: it.min || 1}) : T('need_one_option')); return;}
   if(idx < items.length - 1) go(idx + 1); else openReview();
 }
 function openReview(){reviewing = true; render();}
 function closeReview(){reviewing = false; render();}
 function renderReview(){
   const miss = items.filter(it => answerText(it) === null).length;
-  let h = '<h2>Revise suas respostas (' + (items.length - miss) + ' de ' + items.length + ')</h2><table>';
+  let h = '<h2>' + T('review_title', {n: items.length - miss, total: items.length}) + '</h2><table>';
   items.forEach((it, i) => {
     const a = answerText(it);
-    h += '<tr><td>' + (i+1) + '. ' + esc(it.title) + '</td><td>' + (a === null ? '<span class="none">(sem resposta)</span>' : esc(a)) + '<a data-i="' + i + '" role="button" tabindex="0">' + (a === null ? 'responder' : 'alterar') + '</a></td></tr>';
+    h += '<tr><td>' + (i+1) + '. ' + esc(it.title) + '</td><td>' + (a === null ? '<span class="none">' + T('no_answer') + '</span>' : esc(a)) + '<a data-i="' + i + '" role="button" tabindex="0">' + (a === null ? T('answer_link') : T('change_link')) + '</a></td></tr>';
   });
   h += '</table>';
-  if(miss) h += '<p class="sub">' + miss + ' sem resposta: o agente vai perguntar no chat e nunca assume a opcao recomendada.</p>';
-  h += '<div class="btns"><button id="rB" type="button">Voltar e corrigir</button><button class="go" id="rC" type="button">' + (BOOT.live ? 'Confirmar e avisar o agente' : 'Copiar resultado') + '</button></div>';
+  if(miss) h += '<p class="sub">' + T('review_missing', {n: miss}) + '</p>';
+  h += '<div class="btns"><button id="rB" type="button">' + T('back_fix') + '</button><button class="go" id="rC" type="button">' + (BOOT.live ? T('confirm_finish') : T('copy_result')) + '</button></div>';
   $('#rev').innerHTML = h;
 }
 function finishNow(){
   flushAll().then(() => post('/api/finish', {finished: true})).then(ok => {
     S.finished = ok; if(ok) reviewing = false; render();
-    if(!ok) alert('Sem conexao com o servidor. Use Copiar e cole o resultado no chat.');
+    if(!ok) alert(T('no_server'));
   });
 }
 
 function persistLocal(){try{localStorage.setItem(LS, JSON.stringify(S));}catch(e){}}
 function setLive(ok){
+  liveOk = ok;
   const b = $('#live');
-  if(!BOOT.live){b.className='badge off';b.textContent='arquivo local \u2014 use Copiar';return;}
+  if(!BOOT.live){b.className='badge off';b.textContent=T('offline_badge');return;}
   b.className = 'badge ' + (ok ? 'on' : 'off');
-  b.textContent = ok ? '\u25CF ao vivo' : 'sem conexao \u2014 use Copiar';
+  b.textContent = ok ? '● ' + T('live') : T('disconnected_badge');
 }
 const inflight = new Set();
 function post(path, body){
@@ -984,7 +1008,7 @@ function imgSrc(p){return /^data:/.test(p) ? p : '/files/' + p.split('/').map(en
 function render(){
   const it = items[idx], e = S.items[it.id] || {}, q = isQ(it), st = status(it);
   $('#ttl').textContent = B.title;
-  $('#sub').textContent = (B.subtitle ? B.subtitle + ' · ' : '') + 'Lote: ' + B.batch_id + ' · ' + items.length + ' itens · rodada ' + (B.round || 1);
+  $('#sub').textContent = (B.subtitle ? B.subtitle + ' · ' : '') + T('subtitle', {id: B.batch_id, n: items.length, round: B.round || 1});
   $('.grid').hidden = reviewing; $('#rev').hidden = !reviewing; $('.res').hidden = reviewing;
   let h = '<span class="pill">' + (idx+1) + '/' + items.length + ' · ' + esc(it.id) + (it.tag ? ' · ' + esc(it.tag) : '') + '</span>';
   if(st) h += '<span class="state ' + st + '">' + (q ? QLBL[st] : esc(LBL[st])) + '</span>';
@@ -993,35 +1017,35 @@ function render(){
   h += '<div class="box">';
   (it.fields || []).forEach(f => { h += '<div class="row"><b>' + esc(f.label) + '</b><div>' + rich(f.text) + '</div></div>'; });
   if(it.risk){
-    const lvl = norm(it.risk.level);
-    h += '<div class="row"><b>Risco</b><div><span class="risk ' + (['baixo','medio','alto'].includes(lvl) ? lvl : 'medio') + '">' + esc(it.risk.level || '') + (it.risk.text ? ' — ' + esc(it.risk.text) : '') + '</span></div></div>';
+    const lvl = RISK[norm(it.risk.level)] || 'medio';
+    h += '<div class="row"><b>' + T('risk') + '</b><div><span class="risk ' + lvl + '">' + esc(it.risk.level || '') + (it.risk.text ? ' — ' + esc(it.risk.text) : '') + '</span></div></div>';
   }
   h += '</div>';
-  if(armed === it.id) h += '<div class="armed" role="alert">' + rich(it.confirm) + '<b>Aperte A de novo (ou clique em Confirmar) para confirmar; Esc cancela.</b></div>';
+  if(armed === it.id) h += '<div class="armed" role="alert">' + rich(it.confirm) + '<b>' + T('armed_hint') + '</b></div>';
   if(q) h += questionHtml(it, e);
   $('#card').className = q ? 'card q' : 'card';
   $('#card').innerHTML = h;
   $('#meta').innerHTML = Object.entries(it.meta || {}).map(([k,v]) => '<div><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>').join('');
-  $('#cmtlbl').innerHTML = q ? ((it.open === true || e.other) ? 'Sua resposta <span class="req">(obrigatoria)</span>' : 'Comentario (opcional, salva sozinho)') : CMT0;
+  $('#cmtlbl').innerHTML = q ? ((it.open === true || e.other) ? T('your_answer') + ' <span class="req">' + T('required') + '</span>' : T('comment_optional')) : T('comment_label');
   const cm = $('#cmt'); if(cm.value !== (e.comment || '')) cm.value = e.comment || '';
   $('#bA').style.display = $('#bR').style.display = q ? 'none' : '';
   const sure = armed === it.id;
-  $('#bM').innerHTML = q ? 'Preciso de mais contexto<kbd>M</kbd>' : (LB.maybe ? esc(LB.maybe.text) : '&asymp; Talvez') + '<kbd>M</kbd>';
-  $('#bA').innerHTML = (sure ? 'Confirmar: ' + esc((LB.approve ? LB.approve.text : 'Aprovar').toLowerCase()) : (LB.approve ? esc(LB.approve.text) : '&#10003; Aprovar')) + '<kbd>A</kbd>';
+  $('#bM').innerHTML = q ? T('need_context') + '<kbd>M</kbd>' : (LB.maybe ? esc(LB.maybe.text) : '&asymp; ' + T('maybe')) + '<kbd>M</kbd>';
+  $('#bA').innerHTML = (sure ? T('confirm_label', {label: esc((LB.approve ? LB.approve.text : T('approve')).toLowerCase())}) : (LB.approve ? esc(LB.approve.text) : '&#10003; ' + T('approve'))) + '<kbd>A</kbd>';
   $('#bA').classList.toggle('sure', sure);
-  $('#bR').innerHTML = (LB.reject ? esc(LB.reject.text) : '&#10007; Rejeitar') + '<kbd>R</kbd>';
+  $('#bR').innerHTML = (LB.reject ? esc(LB.reject.text) : '&#10007; ' + T('reject')) + '<kbd>R</kbd>';
   ['A:approved','R:rejected','M:maybe'].forEach(p => { const [k,d] = p.split(':'); $('#b'+k).classList.toggle('on', e.decision === d); });
   $('#chips').innerHTML = items.map((x,i) => { const d = status(x); return '<button class="' + d + (i===idx?' cur':'') + '" data-i="' + i + '" title="' + esc(x.title) + '">' + (i+1) + '</button>'; }).join('');
   const c = counts();
   $('#prog').style.width = ((items.length - c.pending) / items.length * 100) + '%';
-  const base = '<span style="color:var(--cA)">✓ ' + c.approved + ' ' + esc(CNT.approved) + '</span><span style="color:var(--cR)">✗ ' + c.rejected + ' ' + esc(CNT.rejected) + '</span><span style="color:var(--cM)">≈ ' + c.maybe + ' ' + esc(CNT.maybe) + '</span><span style="color:var(--mut)">' + c.pending + ' sem decisao</span>';
+  const base = '<span style="color:var(--cA)">✓ ' + c.approved + ' ' + esc(CNT.approved) + '</span><span style="color:var(--cR)">✗ ' + c.rejected + ' ' + esc(CNT.rejected) + '</span><span style="color:var(--cM)">≈ ' + c.maybe + ' ' + esc(CNT.maybe) + '</span><span style="color:var(--mut)">' + c.pending + ' ' + T('count_pending') + '</span>';
   $('#counts').innerHTML = onlyQ
-    ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span><span style="color:var(--mb)">' + c.maybe + ' precisam de contexto</span><span style="color:var(--mut)">' + c.pending + ' sem resposta</span>'
-    : base + (hasQ ? '<span style="color:var(--acc)">' + c.answered + ' respondidas</span>' : '');
+    ? '<span style="color:var(--acc)">' + c.answered + ' ' + T('count_answered') + '</span><span style="color:var(--mb)">' + c.maybe + ' ' + T('count_unsure') + '</span><span style="color:var(--mut)">' + c.pending + ' ' + T('count_unanswered') + '</span>'
+    : base + (hasQ ? '<span style="color:var(--acc)">' + c.answered + ' ' + T('count_answered') + '</span>' : '');
   const n = $('#note'); if(n.value !== (S.batch_note || '')) n.value = S.batch_note || '';
   $('#bF').style.display = (BOOT.live || hasQ) ? '' : 'none';
   const dn = $('#done');
-  if(S.finished){dn.style.display='block';dn.textContent='Concluido. Volte ao Claude Code e diga "terminei" — o agente le as decisoes sozinho.';} else dn.style.display='none';
+  if(S.finished){dn.style.display='block';dn.textContent=T('done_banner');} else dn.style.display='none';
   if(reviewing) renderReview();
 }
 
@@ -1036,7 +1060,7 @@ function decide(d){
   const decided = S.items[it.id] && S.items[it.id].decision;
   if(auto && decided && idx < items.length-1){
     idx++;
-    showHint(LBL[decided] + ': ' + it.id + ' — use ← para voltar e comentar');
+    showHint(T('decided_hint', {label: LBL[decided], id: it.id}));
   }
   render();
 }
@@ -1057,6 +1081,7 @@ $('#note').addEventListener('input', ev => {
   queue('note', '/api/note', {text: S.batch_note});
 });
 $('#chips').addEventListener('click', ev => {const b = ev.target.closest('button'); if(b) go(+b.dataset.i);});
+$('#lang').addEventListener('click', ev => {const b = ev.target.closest('button[data-lang]'); if(b) setLang(b.dataset.lang);});
 $('#bA').onclick = () => decide('approved'); $('#bR').onclick = () => decide('rejected'); $('#bM').onclick = () => (isQ(items[idx]) ? askMore() : decide('maybe'));
 $('#bS').onclick = () => go(idx+1); $('#bN').onclick = () => go(idx+1); $('#bP').onclick = () => go(idx-1);
 
@@ -1065,7 +1090,7 @@ document.addEventListener('keydown', ev => {
   if(ev.repeat && ev.key === 'Enter' && ev.target.tagName === 'BUTTON'){ev.preventDefault(); return;}
   if(reviewing){if(ev.key === 'Escape') closeReview(); return;}
   const typing = (ev.target.tagName || '').toLowerCase() === 'textarea';
-  if(ev.key === 'Escape'){ if(typing) ev.target.blur(); else if(armed){armed = null; showHint('Confirmacao cancelada.'); render();} return; }
+  if(ev.key === 'Escape'){ if(typing) ev.target.blur(); else if(armed){armed = null; showHint(T('confirm_cancelled')); render();} return; }
   if(typing) return;
   const k = ev.key.toLowerCase();
   if(ev.repeat && (k === 'a' || k === 'r' || k === 'm')) return;
@@ -1088,7 +1113,7 @@ function flash(btn, txt){const o = btn.textContent; btn.textContent = txt; setTi
 $('#bC').onclick = () => {
   const txt = 'AR-BOARD-RESULT\n' + JSON.stringify(exportObj(), null, 2);
   const fallback = () => {const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); try{document.execCommand('copy');}catch(e){} t.remove();};
-  (navigator.clipboard ? navigator.clipboard.writeText(txt).catch(fallback) : Promise.resolve(fallback())).then(() => flash($('#bC'), 'Copiado!'));
+  (navigator.clipboard ? navigator.clipboard.writeText(txt).catch(fallback) : Promise.resolve(fallback())).then(() => flash($('#bC'), T('copied')));
 };
 $('#bD').onclick = () => {
   const a = document.createElement('a');
@@ -1096,21 +1121,20 @@ $('#bD').onclick = () => {
   a.download = 'ar-board-' + B.batch_id + '-r' + (B.round || 1) + '.json'; a.click();
 };
 $('#bX').onclick = () => {
-  if(!confirm('Limpar todas as decisoes e comentarios deste lote?')) return;
+  if(!confirm(T('clear_confirm'))) return;
   Object.keys(timers).forEach(k => clearTimeout(timers[k])); pend = {};
   S.items = {}; S.batch_note = ''; S.finished = false; Promise.all(Array.from(inflight)).then(() => post('/api/reset', {})); persistLocal(); idx = 0; render();
 };
 $('#bF').onclick = () => {
   const c = counts();
-  if(c.pending && !confirm(c.pending + ' itens sem decisao. Concluir mesmo assim?')) return;
+  if(c.pending && !confirm(T('finish_anyway', {n: c.pending}))) return;
   flushAll().then(() => post('/api/finish', {finished: true})).then(ok => {
     S.finished = ok; render();
-    if(!ok) alert('Sem conexao com o servidor. Use Copiar e cole o resultado no chat.');
+    if(!ok) alert(T('no_server'));
   });
 };
 
 if(hasQ){
-  $('#bF').textContent = 'Revisar e concluir';
   $('#bF').onclick = openReview;
 }
 $('#card').addEventListener('click', ev => {
@@ -1127,6 +1151,7 @@ $('#rev').addEventListener('click', ev => {
 });
 $('#rev').addEventListener('keydown', ev => {if(ev.key === 'Enter' && ev.target.matches('a[data-i]')){ev.preventDefault(); ev.target.click();}});
 setLive(BOOT.live);
+applyLang();
 const first = items.findIndex(it => !status(it));
 idx = first < 0 ? 0 : first;
 render();

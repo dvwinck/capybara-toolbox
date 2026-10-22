@@ -126,14 +126,14 @@ class LabelsPageGuardsTest(unittest.TestCase):
 
     def test_labels_are_applied_from_the_batch(self):
         self.assertIn("const LB = B.labels || {}", ab.PAGE)
-        self.assertIn("(function applyLabels(){", ab.PAGE)
+        self.assertIn("function applyLabels(){", ab.PAGE)
         self.assertIn("TONE = {safe:['ok','--ok','--ok-bg'], danger:['no','--no','--no-bg'], caution:['mb','--mb','--mb-bg']}", ab.PAGE)
 
     def test_default_wording_is_kept_when_there_are_no_labels(self):
-        self.assertIn("'&#10003; Aprovar'", ab.PAGE)
-        self.assertIn("'&#10007; Rejeitar'", ab.PAGE)
-        self.assertIn("'&asymp; Talvez'", ab.PAGE)
-        self.assertIn("maybe:'talvez'", ab.PAGE)
+        self.assertIn("'&#10003; ' + T('approve')", ab.PAGE)
+        self.assertIn("'&#10007; ' + T('reject')", ab.PAGE)
+        self.assertIn("'&asymp; ' + T('maybe')", ab.PAGE)
+        self.assertIn("maybe: T('count_maybe')", ab.PAGE)
 
     def test_the_key_bar_words_can_be_replaced(self):
         for i in ("kA", "kR", "kM"):
@@ -146,7 +146,7 @@ class LabelsPageGuardsTest(unittest.TestCase):
 
     def test_moving_or_pressing_escape_disarms_the_confirmation(self):
         self.assertIn("function go(i){armed = null;", ab.PAGE)
-        self.assertIn("else if(armed){armed = null; showHint('Confirmacao cancelada.'); render();}", ab.PAGE)
+        self.assertIn("else if(armed){armed = null; showHint(T('confirm_cancelled')); render();}", ab.PAGE)
 
     def test_label_text_is_escaped_wherever_it_reaches_the_dom(self):
         # labels come from batch.json, and the CSP allows inline scripts: the state chip and the counters are
