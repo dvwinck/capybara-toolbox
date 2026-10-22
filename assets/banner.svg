@@ -38,9 +38,11 @@
 </svg>
   <text x="344" y="150" font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="76" font-weight="800" fill="#3A2A20" letter-spacing="-1.5">Capybara Toolbox</text>
   <text x="346" y="200" font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="30" font-weight="500" fill="#6B5240">Calm, capable skills and plugins for Claude Code.</text>
-  <g font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="20" font-weight="600">
-    <rect x="346" y="226" width="168" height="40" rx="20" fill="#527D40"/><text x="430" y="253" text-anchor="middle" fill="#fff">ar-board</text>
-    <rect x="530" y="226" width="168" height="40" rx="20" fill="#E8A33D"/><text x="614" y="253" text-anchor="middle" fill="#3A2A20">publish-check</text>
-    <rect x="714" y="226" width="168" height="40" rx="20" fill="#B5452F"/><text x="798" y="253" text-anchor="middle" fill="#fff">tidy-board</text>
+  <g font-family="ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="17" font-weight="600">
+    <rect x="346" y="226" width="162" height="40" rx="20" fill="#527D40"/><text x="427" y="252" text-anchor="middle" fill="#fff">ar-board</text>
+    <rect x="518" y="226" width="162" height="40" rx="20" fill="#E8A33D"/><text x="599" y="252" text-anchor="middle" fill="#3A2A20">publish-check</text>
+    <rect x="690" y="226" width="162" height="40" rx="20" fill="#B5452F"/><text x="771" y="252" text-anchor="middle" fill="#fff">tidy-board</text>
+    <rect x="862" y="226" width="162" height="40" rx="20" fill="#7CC6C4"/><text x="943" y="252" text-anchor="middle" fill="#3A2A20">housekeeping</text>
+    <rect x="1034" y="226" width="162" height="40" rx="20" fill="#6B5240"/><text x="1115" y="252" text-anchor="middle" fill="#fff">header-footer</text>
   </g>
 </svg>
