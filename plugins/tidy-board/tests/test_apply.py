@@ -577,3 +577,41 @@ class DeletionMechanicsTest(ApplyCase):
                 self.apply()
         done = [e for e in self.applied().values() if e["action"] == "deleted"]
         self.assertEqual([e["name"] for e in done], ["feat/a"])
+
+
+class LanguageApplyTest(RepoCase):
+    """The cards' language changes nothing below the panel: apply and restore read ids, shas and proofs."""
+
+    def board_in(self, lang):
+        self.work("feat/m", {"m.txt": "m\n"})
+        git(self.repo, "merge", "-q", "--no-ff", "-m", "merge feat/m", "feat/m")
+        self.work("spike/u", {"u.txt": "u\n"}, message="wip: u")
+        board = self.tmp / ("board-" + lang)
+        rc, out, _ = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(board), "--lang", lang)
+        assert rc == 0, out
+        scan = json.loads((board / "scan.json").read_text(encoding="utf-8"))
+        batch = json.loads((board / "batch.json").read_text(encoding="utf-8"))
+        ids = {e["name"]: e["id"] for e in scan["items"]}
+        items = {ids["feat/m"]: {"decision": "approved"}, ids["spike/u"]: {"decision": "approved"}}
+        state = {"batch_id": batch["batch_id"], "round": 1, "finished": True, "batch_note": "", "items": items}
+        (board / "decisions.json").write_text(json.dumps(state), encoding="utf-8")
+        return board, ids
+
+    def test_a_pt_br_board_is_applied_and_restored_exactly_like_an_english_one(self):
+        board, ids = self.board_in("pt-BR")
+        rc, out, _ = run_cli("apply", str(board))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("APPLY: 2 apagados, 0 pulados", out)
+        applied = json.loads((board / "applied.json").read_text(encoding="utf-8"))
+        self.assertEqual({e["action"] for e in applied}, {"deleted"})
+        self.assertEqual(set(applied[0]), {"id", "kind", "name", "sha", "proof", "action", "at"})  # no language anywhere
+        self.assertNotIn("lang", json.dumps(applied))
+        branches = set(git(self.repo, "for-each-ref", "--format=%(refname:short)", "refs/heads").split())
+        self.assertNotIn("feat/m", branches)
+        self.assertNotIn("spike/u", branches)
+        rc, out, _ = run_cli("restore", str(board), ids["spike/u"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("RESTORE: branch spike/u recriada", out)
+        rc, _, err = run_cli("restore", str(board), ids["feat/m"])
+        self.assertEqual(rc, 2)
+        self.assertIn("nao tem backup", err)

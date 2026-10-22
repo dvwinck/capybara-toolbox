@@ -1,9 +1,10 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repo": "/path/to/example",
   "base": "main",
   "base_sha": "1111111111111111111111111111111111111111",
   "gh": true,
+  "lang": "en",
   "scanned_at": "2026-10-14T12:00:00+0000",
   "group": {"id": "G", "members": ["T01", "T02"]},
   "untouched": [

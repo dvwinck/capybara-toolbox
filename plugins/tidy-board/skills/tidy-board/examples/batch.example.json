@@ -3,10 +3,11 @@
   "title": "Cleanup of example",
   "subtitle": "base: main - gh: yes - 3 items",
   "round": 1,
+  "lang": "en",
   "labels": {
-    "approve": {"text": "Apagar", "tone": "danger"},
-    "reject": {"text": "Manter", "tone": "safe"},
-    "maybe": {"text": "Depois", "tone": "caution"}
+    "approve": {"text": "Delete", "tone": "danger"},
+    "reject": {"text": "Keep", "tone": "safe"},
+    "maybe": {"text": "Later", "tone": "caution"}
   },
   "items": [
     {
@@ -15,7 +16,7 @@
       "title": "Delete the 2 items proven as merged?",
       "fields": [
         {"label": "Items", "text": "`feat/login` (P1)\n`feat/search` (P2)"},
-        {"label": "Rule", "text": "Applies to the items below that you do not mark Manter or Depois. It does not include P3, P4 or stashes."}
+        {"label": "Rule", "text": "Applies to the items below that you do not mark Keep or Later. It does not include P3, P4 or stashes."}
       ],
       "meta": {"Base": "main", "gh": "yes", "Do not touch": "main (base branch of the repository); feat/current (current branch (in use by this worktree))"}
     },

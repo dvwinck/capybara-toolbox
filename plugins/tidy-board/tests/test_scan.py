@@ -47,7 +47,7 @@ class BuildScanTest(BoardRepo):
         by_id = {e["id"]: e for e in scan["items"]}
         self.assertTrue(all(by_id[m]["proof"] in ("P1", "P2") for m in members))
         self.assertEqual(sorted(by_id[m]["name"] for m in members), ["feat/a", "feat/b"])
-        self.assertIn("2 itens", batch["items"][0]["title"])
+        self.assertIn("2 items", batch["items"][0]["title"])
 
     def test_cards_and_entries_line_up_one_to_one(self):
         batch, scan = self.build()
@@ -64,6 +64,10 @@ class BuildScanTest(BoardRepo):
 
     def test_the_board_speaks_in_its_own_words_and_paints_delete_as_danger(self):
         batch, _ = self.build()
+        self.assertEqual(batch["labels"]["approve"], {"text": "Delete", "tone": "danger"})
+        self.assertEqual(batch["labels"]["reject"], {"text": "Keep", "tone": "safe"})
+        self.assertEqual(batch["labels"]["maybe"], {"text": "Later", "tone": "caution"})
+        batch, _ = self.build(lang="pt-BR")
         self.assertEqual(batch["labels"]["approve"], {"text": "Apagar", "tone": "danger"})
         self.assertEqual(batch["labels"]["reject"], {"text": "Manter", "tone": "safe"})
         self.assertEqual(batch["labels"]["maybe"], {"text": "Depois", "tone": "caution"})
@@ -71,11 +75,11 @@ class BuildScanTest(BoardRepo):
     def test_what_is_never_touched_is_a_field_of_the_first_card(self):
         batch, scan = self.build()
         first = batch["items"][0]
-        field = [f for f in first["fields"] if f["label"] == "Nao tocar"][0]["text"]
-        self.assertIn("`main`: branch base do repositorio", field)
+        field = [f for f in first["fields"] if f["label"] == "Do not touch"][0]["text"]
+        self.assertIn("`main`: base branch of the repository", field)
         self.assertIn("`dirty-wt`:", field)
         self.assertNotIn(str(self.tmp), field)  # a worktree is named by its folder, not its absolute path
-        self.assertEqual(first["meta"], {"Base": "main", "gh": "nao (so git local)"})
+        self.assertEqual(first["meta"], {"Base": "main", "gh": "no (git only)"})
         self.assertEqual(len(scan["untouched"]), 2)
 
     def test_a_worktree_card_is_titled_by_its_folder_and_keeps_the_full_path_in_a_field(self):
@@ -83,8 +87,8 @@ class BuildScanTest(BoardRepo):
         wt = self.tmp / "wtc"
         git(self.repo, "worktree", "add", "-q", str(wt), "wtc")
         batch, scan = self.build()
-        card = [c for c in batch["items"] if c["title"].startswith("Remover o worktree")][0]
-        self.assertEqual(card["title"], "Remover o worktree wtc?")
+        card = [c for c in batch["items"] if c["title"].startswith("Remove the worktree")][0]
+        self.assertEqual(card["title"], "Remove the worktree wtc?")
         self.assertIn(str(wt), [f for f in card["fields"] if f["label"] == "Worktree"][0]["text"])
         self.assertIn("`wtc` (worktree, P1)", batch["items"][0]["fields"][0]["text"])
 
@@ -218,7 +222,8 @@ class ScanCliTest(BoardRepo):
         self.assertEqual(rc, 0, stdout)
         self.assertIn(f"TIDY-BOARD DIR: {out}", stdout)
         self.assertIn("TIDY-BOARD ITENS:", stdout)
-        self.assertIn("NAO TOCAR: main (branch base do repositorio)", stdout)
+        self.assertIn("NAO TOCAR: main (branch base do repositório)", stdout)
+        self.assertIn("; idioma en", stdout)
         batch = json.loads((out / "batch.json").read_text(encoding="utf-8"))
         self.assertEqual(capy.validate(batch), [])
         rc, stdout, _ = run_cli("check", str(out))
@@ -293,3 +298,131 @@ class ScanCliTest(BoardRepo):
         rc, _, err = run_cli("check", str(out))
         self.assertEqual(rc, 0)
         self.assertIn("a revisao cansa", err)
+
+# ---------------------------------------------------------------- the cards' language (tidy-board 0.2.0)
+
+import re as _re
+
+PLACEHOLDER = _re.compile(r"\{(\w+)\}")
+
+
+class LanguageTableTest(unittest.TestCase):
+    def test_both_tables_have_the_same_keys_and_placeholders(self):
+        self.assertEqual(tb.LANGS, ("en", "pt-BR"))
+        self.assertEqual(tb.DEFAULT_LANG, "en")
+        en, pt = tb.TEXT["en"], tb.TEXT["pt-BR"]
+        self.assertEqual(set(en), set(pt))
+        for key in en:
+            with self.subTest(key=key):
+                self.assertEqual(set(PLACEHOLDER.findall(en[key])), set(PLACEHOLDER.findall(pt[key])))
+        self.assertEqual(set(tb.LABELS), set(tb.LANGS))
+        for code in tb.WHY_CODES:
+            self.assertIn("why_" + code, en)
+        for proof in tb.PROOFS:
+            self.assertIn("proof_" + proof, en)
+
+    def test_the_portuguese_table_has_accents(self):
+        text = " ".join(tb.TEXT["pt-BR"].values())
+        for word in ("repositório", "único", "Não tocar", "à frente"):
+            self.assertIn(word, text)
+
+    def test_reasons_pr_remote_and_age_render_in_both_languages(self):
+        self.assertEqual(tb.reason_text({"name": "x", "why": "base_branch"}, "en"), "base branch of the repository")
+        self.assertEqual(tb.reason_text({"name": "x", "why": "dirty", "count": 3}, "pt-BR"),
+                         "3 arquivo(s) alterado(s) ou não rastreado(s): apagar perderia trabalho sem sha para recuperar")
+        self.assertEqual(tb.reason_text({"name": "x", "why": "main_worktree", "path": "/w`t"}, "en"), "in use by the main worktree (/w't)")
+        self.assertEqual(tb.pr_text({"pr": None}, "en"), "")
+        self.assertEqual(tb.pr_text({"pr": {}}, "pt-BR"), "sem PR mergeado")
+        self.assertEqual(tb.pr_text({"pr": {"number": 7, "tip_matches": True}}, "en"), "#7 merged (the tip matches)")
+        self.assertEqual(tb.pr_text({"pr": {"number": 7, "tip_matches": False}}, "pt-BR"), "#7 mergeado (a ponta é DIFERENTE da do PR)")
+        self.assertEqual(tb.remote_text({"remote": None, "name": "x"}, "en"), "")
+        self.assertEqual(tb.remote_text({"remote": "exists", "name": "feat/x"}, "en"), "origin/feat/x still exists (it will not be touched)")
+        self.assertEqual(tb.remote_text({"remote": "removed", "name": "w", "branch": "feat/y"}, "pt-BR"), "origin/feat/y já foi removida")
+        now = 1_800_000_000
+        self.assertEqual([tb.age_text(now - d * 86400, now, "en") for d in (0, 1, 2)], ["today", "1 day ago", "2 days ago"])
+        self.assertEqual([tb.age_text(now - d * 86400, now, "pt-BR") for d in (0, 1, 2)], ["hoje", "há 1 dia", "há 2 dias"])
+
+    def test_an_unknown_language_is_refused_by_the_builder(self):
+        with self.assertRaises(tb.TidyError) as ctx:
+            tb.check_lang("xx")
+        self.assertIn("idioma invalido", str(ctx.exception))
+
+
+class LanguageBoardTest(BoardRepo):
+    def test_english_is_the_default_and_pt_br_is_the_old_wording_with_accents(self):
+        batch, scan = self.build()
+        self.assertEqual((batch["lang"], scan["lang"]), ("en", "en"))
+        titles = [c["title"] for c in batch["items"]]
+        self.assertIn("Delete the branch feat/a?", titles)
+        self.assertTrue(any(title.startswith("Discard the stash ") for title in titles), titles)
+        self.assertEqual(batch["title"], "Cleanup of r")
+        self.assertEqual(batch["subtitle"], "base: main - gh: no - 5 items")
+        self.assertEqual(batch["items"][0]["tag"], "group P1/P2")
+        batch, scan = self.build(lang="pt-BR")
+        self.assertEqual((batch["lang"], scan["lang"]), ("pt-BR", "pt-BR"))
+        titles = [c["title"] for c in batch["items"]]
+        self.assertIn("Apagar a branch feat/a?", titles)
+        self.assertEqual(batch["title"], "Limpeza de r")
+        self.assertEqual(batch["subtitle"], "base: main - gh: não - 5 itens")
+        self.assertEqual(batch["items"][0]["title"], "Apagar os 2 itens provados como mergeados?")
+        field = [f for f in batch["items"][0]["fields"] if f["label"] == "Não tocar"][0]["text"]
+        self.assertIn("`main`: branch base do repositório", field)
+        self.assertIn("Vale para os itens abaixo em que você não marcar Manter ou Depois.", [f["text"] for f in batch["items"][0]["fields"]][1])
+        self.assertEqual(batch["items"][0]["meta"], {"Base": "main", "gh": "não (só git local)"})
+
+    def test_both_languages_build_the_same_board_shape(self):
+        en, en_scan = self.build()
+        pt, pt_scan = self.build(lang="pt-BR")
+        self.assertEqual([c["id"] for c in en["items"]], [c["id"] for c in pt["items"]])
+        for a, b in zip(en["items"], pt["items"]):
+            with self.subTest(card=a["id"]):
+                self.assertEqual(len(a["fields"]), len(b["fields"]))
+                self.assertEqual("confirm" in a, "confirm" in b)
+                self.assertEqual(a.get("meta", {}).keys(), b.get("meta", {}).keys())
+        self.assertEqual({k: v for k, v in en_scan.items() if k not in ("lang", "untouched")},
+                         {k: v for k, v in pt_scan.items() if k not in ("lang", "untouched")})
+        self.assertEqual(capy.validate(pt), [])
+        self.assertEqual(tb.scan_problems(pt, pt_scan), [])
+
+    def test_a_scan_in_either_language_passes_check_and_the_older_shape_without_lang_still_does(self):
+        batch, scan = self.build(lang="pt-BR")
+        self.assertEqual(tb.scan_problems(batch, scan), [])
+        del scan["lang"]
+        self.assertEqual(tb.scan_problems(batch, scan), [])
+        scan["lang"] = "xx"
+        self.assertTrue(any("'lang' deve ser en ou pt-BR" in e for e in tb.scan_problems(batch, scan)))
+        scan["lang"] = None  # null counts as omitted
+        self.assertEqual(tb.scan_problems(batch, scan), [])
+
+
+class LanguageCliTest(BoardRepo):
+    def test_scan_lang_reaches_both_files_and_the_command_line_stays_portuguese(self):
+        out = self.tmp / "board"
+        rc, stdout, _ = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(out), "--lang", "pt-BR")
+        self.assertEqual(rc, 0, stdout)
+        batch = json.loads((out / "batch.json").read_text(encoding="utf-8"))
+        scan = json.loads((out / "scan.json").read_text(encoding="utf-8"))
+        self.assertEqual((batch["lang"], scan["lang"]), ("pt-BR", "pt-BR"))
+        self.assertEqual(batch["labels"]["approve"]["text"], "Apagar")
+        self.assertEqual(capy.validate(batch), [])
+        self.assertIn("NAO TOCAR: main (branch base do repositório)", stdout)
+        self.assertIn("; idioma pt-BR", stdout)
+        self.assertEqual(run_cli("check", str(out))[0], 0)
+
+    def test_an_unknown_lang_is_refused_before_anything_is_written(self):
+        out = self.tmp / "board"
+        with self.assertRaises(SystemExit) as ctx:
+            run_cli("scan", str(self.repo), "--gh", "off", "--out", str(out), "--lang", "xx")
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertFalse(out.exists())
+        self.assertFalse((self.repo / ".tidy-board").exists())
+
+    def test_check_rejects_a_bad_lang_edited_into_scan_json(self):
+        out = self.tmp / "board"
+        run_cli("scan", str(self.repo), "--gh", "off", "--out", str(out))
+        scan = json.loads((out / "scan.json").read_text(encoding="utf-8"))
+        scan["lang"] = "xx"
+        (out / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
+        rc, _, err = run_cli("check", str(out))
+        self.assertEqual(rc, 1)
+        self.assertIn("'lang' deve ser en ou pt-BR", err)

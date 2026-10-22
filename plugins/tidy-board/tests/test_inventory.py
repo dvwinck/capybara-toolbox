@@ -56,14 +56,14 @@ class ProofLevelTest(RepoCase):
         self.assertTrue(inv["gh"])
         item = self.by_name(inv)["feat/p"]
         self.assertEqual(item["proof"], "P2")
-        self.assertIn("#7 mergeado (a ponta confere)", item["pr"])
+        self.assertEqual(item["pr"], {"number": 7, "tip_matches": True})
 
     def test_a_pr_whose_head_is_not_the_tip_does_not_prove_anything(self):
         self.work("feat/q", {"q.txt": "q\n"})
         self.fake_gh([{"number": 8, "headRefName": "feat/q", "headRefOid": "0" * 40, "url": ""}])
         item = self.by_name(self.inv(gh="auto"))["feat/q"]
         self.assertEqual(item["proof"], "P4")
-        self.assertIn("DIFERENTE", item["pr"])
+        self.assertEqual(item["pr"], {"number": 8, "tip_matches": False})
 
     def test_gh_off_or_failing_leaves_the_proof_to_git_alone(self):
         sha = self.work("feat/r", {"r.txt": "r\n"})
@@ -71,7 +71,7 @@ class ProofLevelTest(RepoCase):
         inv = self.inv(gh="auto")
         self.assertFalse(inv["gh"])
         self.assertEqual(self.by_name(inv)["feat/r"]["proof"], "P4")
-        self.assertEqual(self.by_name(inv)["feat/r"]["pr"], "")
+        self.assertIsNone(self.by_name(inv)["feat/r"]["pr"])
         self.assertFalse(self.inv(gh="off")["gh"])
 
     def test_upstream_gone_alone_never_raises_the_level(self):
@@ -88,7 +88,7 @@ class ProofLevelTest(RepoCase):
         inv = tb.inventory(clone, tb.detect_base(clone), "off")
         item = {i["name"]: i for i in inv["items"]}["feat/g"]
         self.assertEqual(item["proof"], "P4")
-        self.assertIn("ja foi removida", item["remote"])
+        self.assertEqual(item["remote"], "removed")
 
     def test_a_remote_counterpart_is_reported_and_left_alone(self):
         clone = self.tmp / "clone"
@@ -98,7 +98,7 @@ class ProofLevelTest(RepoCase):
         git(clone, "push", "-q", "-u", "origin", "feat/h")
         git(clone, "checkout", "-q", "main")
         inv = tb.inventory(clone, tb.detect_base(clone), "off")
-        self.assertIn("ainda existe (nao sera tocada)", {i["name"]: i for i in inv["items"]}["feat/h"]["remote"])
+        self.assertEqual({i["name"]: i for i in inv["items"]}["feat/h"]["remote"], "exists")
 
 
 class NeverOfferedTest(RepoCase):
@@ -109,8 +109,8 @@ class NeverOfferedTest(RepoCase):
         self.assertNotIn("main", self.by_name(inv))
         self.assertNotIn("feat/cur", self.by_name(inv))
         why = {u["name"]: u["why"] for u in inv["untouched"]}
-        self.assertEqual(why["main"], "branch base do repositorio")
-        self.assertIn("branch atual", why["feat/cur"])
+        self.assertEqual(why["main"], "base_branch")
+        self.assertEqual(why["feat/cur"], "current_branch")
 
     def test_a_branch_checked_out_in_a_linked_worktree_is_carried_by_the_worktree_card(self):
         git(self.repo, "branch", "feat/w")
@@ -131,7 +131,7 @@ class NeverOfferedTest(RepoCase):
         self.assertEqual([i for i in inv["items"] if i["kind"] == "worktree"], [])
         reasons = [u["why"] for u in inv["untouched"] if u["name"].endswith(("d1", "d2"))]
         self.assertEqual(len(reasons), 2)
-        self.assertTrue(all("alterado(s) ou nao rastreado(s)" in r for r in reasons))
+        self.assertEqual(reasons, ["dirty", "dirty"])
 
     def test_a_locked_worktree_is_untouched(self):
         git(self.repo, "branch", "lk")
@@ -140,7 +140,7 @@ class NeverOfferedTest(RepoCase):
         git(self.repo, "worktree", "lock", str(wt))
         inv = self.inv()
         self.assertEqual([i for i in inv["items"] if i["kind"] == "worktree"], [])
-        self.assertTrue(any("bloqueado" in u["why"] for u in inv["untouched"]))
+        self.assertTrue(any(u["why"] == "locked" for u in inv["untouched"]))
 
 
 class WorktreeAndStashTest(RepoCase):

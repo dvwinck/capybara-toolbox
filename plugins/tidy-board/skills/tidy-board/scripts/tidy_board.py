@@ -26,12 +26,98 @@ SAFE_PROOFS = ("P1", "P2")  # provably merged: eligible for the group card
 RISKY_PROOFS = ("P3", "P4")  # probable or unique: extra confirmation and a backup ref
 PROOFS = ("P1", "P2", "P3", "P4")
 SQUASH_WINDOW = 500  # base commits compared when looking for a squash
-PROOF_TEXT = {
-    "P1": "provado: ancestral da base",
-    "P2": "provado: PR mergeado no GitHub",
-    "P3": "provavel: o mesmo patch ja esta na base",
-    "P4": "trabalho unico: existe so aqui",
+LANGS = ("en", "pt-BR")  # languages of the cards (`scan --lang`); the first is the default
+DEFAULT_LANG = "en"
+
+# Every card text, in both languages. The inventory never holds text: it holds codes (proof levels, reason
+# codes, PR and remote states) and `t()` renders them. The two tables have the same keys and placeholders.
+TEXT = {
+    "en": {
+        "proof_P1": "proven: ancestor of the base", "proof_P2": "proven: merged PR on GitHub",
+        "proof_P3": "probable: the same patch is already in the base", "proof_P4": "unique work: exists only here",
+        "why_base_branch": "base branch of the repository", "why_current_branch": "current branch (in use by this worktree)",
+        "why_main_worktree": "in use by the main worktree ({path})", "why_current_worktree": "current worktree",
+        "why_locked": "locked worktree", "why_missing_dir": "folder missing (git worktree prune fixes it)",
+        "why_unreadable": "could not read the state of the worktree",
+        "why_dirty": "{n} changed or untracked file(s): deleting would lose work with no sha to recover",
+        "pr_none": "no merged PR", "pr_merged": "#{n} merged (the tip matches)", "pr_differs": "#{n} merged (the tip is DIFFERENT from the PR's)",
+        "remote_exists": "origin/{name} still exists (it will not be touched)", "remote_removed": "origin/{name} was already removed",
+        "remote_none": "no counterpart",
+        "age_today": "today", "age_day": "{n} day ago", "age_days": "{n} days ago",
+        "confirm_stash": "Unique work: this stash exists nowhere else. A backup will be created before discarding.",
+        "confirm_ignored": "This worktree has files ignored by git (e.g. {shown}) that will be deleted with it and have no backup.",
+        "confirm_wt_branch": "The branch of this worktree has work that exists only there: it stays. Only the worktree folder is removed.",
+        "confirm_wt_detached": "This worktree has no branch and its commits exist only here. A backup will be created before removing.",
+        "confirm_p3": "Heuristic: the same patch seems to be in the base, but that is not proof. A backup will be created before deleting.",
+        "confirm_p4": "Unique work: these commits do not exist on any other branch, remote or tag. A backup will be created before deleting.",
+        "f_proof": "Proof", "f_worktree": "Worktree", "f_branch": "Branch", "f_ignored": "Ignored", "f_last": "Last",
+        "f_content": "Content", "f_vs_base": "Vs base", "f_pr": "PR", "f_remote": "Remote", "f_files": "Files",
+        "f_only_here": "Only here", "f_effect": "Effect", "f_items": "Items", "f_rule": "Rule", "f_untouched": "Do not touch",
+        "wt_text": "`{path}` ({size}, clean)", "branch_goes": " (goes too)", "branch_stays": " (stays)",
+        "no_branch": "none (detached HEAD)", "ignored_note": "(deleted with the folder, no backup)", "empty": "empty",
+        "vs_base": "{ahead} ahead, {behind} behind",
+        "effect_branch": "Deletes the local branch.", "effect_worktree": "Removes the worktree folder.",
+        "effect_worktree_branch": "Removes the worktree folder and the branch.", "effect_stash": "Discards the stash.",
+        "effect_backup": " First, it saves `{ref}`.",
+        "verb_branch": "Delete the branch", "verb_worktree": "Remove the worktree", "verb_stash": "Discard the stash",
+        "group_tag": "group P1/P2", "group_title": "Delete the {n} items proven as merged?",
+        "group_rule": "Applies to the items below that you do not mark {keep} or {later}. It does not include P3, P4 or stashes.",
+        "gh_yes": "yes", "gh_no": "no (git only)", "gh_short_yes": "yes", "gh_short_no": "no",
+        "batch_title": "Cleanup of {repo}", "subtitle": "base: {base} - gh: {gh} - {n} items",
+    },
+    "pt-BR": {
+        "proof_P1": "provado: ancestral da base", "proof_P2": "provado: PR mergeado no GitHub",
+        "proof_P3": "provável: o mesmo patch já está na base", "proof_P4": "trabalho único: existe só aqui",
+        "why_base_branch": "branch base do repositório", "why_current_branch": "branch atual (em uso por este worktree)",
+        "why_main_worktree": "em uso pelo worktree principal ({path})", "why_current_worktree": "worktree atual",
+        "why_locked": "worktree bloqueado (locked)", "why_missing_dir": "diretório ausente (git worktree prune resolve)",
+        "why_unreadable": "não consegui ler o estado do worktree",
+        "why_dirty": "{n} arquivo(s) alterado(s) ou não rastreado(s): apagar perderia trabalho sem sha para recuperar",
+        "pr_none": "sem PR mergeado", "pr_merged": "#{n} mergeado (a ponta confere)", "pr_differs": "#{n} mergeado (a ponta é DIFERENTE da do PR)",
+        "remote_exists": "origin/{name} ainda existe (não será tocada)", "remote_removed": "origin/{name} já foi removida",
+        "remote_none": "sem contraparte",
+        "age_today": "hoje", "age_day": "há {n} dia", "age_days": "há {n} dias",
+        "confirm_stash": "Trabalho único: este stash não existe em outro lugar. Um backup será criado antes de descartar.",
+        "confirm_ignored": "Este worktree tem arquivos ignorados pelo git (ex.: {shown}) que serão apagados junto e não têm backup.",
+        "confirm_wt_branch": "A branch deste worktree tem trabalho que só existe nela: ela fica. Remove só a pasta do worktree.",
+        "confirm_wt_detached": "Este worktree está sem branch e seus commits só existem aqui. Um backup será criado antes de remover.",
+        "confirm_p3": "Heurística: o mesmo patch parece estar na base, mas isso não é prova. Um backup será criado antes de apagar.",
+        "confirm_p4": "Trabalho único: estes commits não existem em nenhuma outra branch, remoto ou tag. Um backup será criado antes de apagar.",
+        "f_proof": "Prova", "f_worktree": "Worktree", "f_branch": "Branch", "f_ignored": "Ignorados", "f_last": "Último",
+        "f_content": "Conteúdo", "f_vs_base": "Vs base", "f_pr": "PR", "f_remote": "Remoto", "f_files": "Arquivos",
+        "f_only_here": "Só aqui", "f_effect": "Efeito", "f_items": "Itens", "f_rule": "Regra", "f_untouched": "Não tocar",
+        "wt_text": "`{path}` ({size}, limpo)", "branch_goes": " (sai junto)", "branch_stays": " (fica)",
+        "no_branch": "nenhuma (HEAD solto)", "ignored_note": "(apagados junto com a pasta, sem backup)", "empty": "vazio",
+        "vs_base": "{ahead} à frente, {behind} atrás",
+        "effect_branch": "Apaga a branch local.", "effect_worktree": "Remove a pasta do worktree.",
+        "effect_worktree_branch": "Remove a pasta do worktree e a branch.", "effect_stash": "Descarta o stash.",
+        "effect_backup": " Antes, guarda `{ref}`.",
+        "verb_branch": "Apagar a branch", "verb_worktree": "Remover o worktree", "verb_stash": "Descartar o stash",
+        "group_tag": "grupo P1/P2", "group_title": "Apagar os {n} itens provados como mergeados?",
+        "group_rule": "Vale para os itens abaixo em que você não marcar {keep} ou {later}. Não inclui P3, P4 nem stashes.",
+        "gh_yes": "sim", "gh_no": "não (só git local)", "gh_short_yes": "sim", "gh_short_no": "não",
+        "batch_title": "Limpeza de {repo}", "subtitle": "base: {base} - gh: {gh} - {n} itens",
+    },
 }
+LABELS = {  # the board's own wording per language; "approve" deletes, so it is painted as the dangerous action
+    "en": {"approve": {"text": "Delete", "tone": "danger"}, "reject": {"text": "Keep", "tone": "safe"},
+           "maybe": {"text": "Later", "tone": "caution"}},
+    "pt-BR": {"approve": {"text": "Apagar", "tone": "danger"}, "reject": {"text": "Manter", "tone": "safe"},
+              "maybe": {"text": "Depois", "tone": "caution"}},
+}
+
+
+def check_lang(lang):
+    """A language is one of LANGS; anything else (a typo, a value edited into a file) is the person's error."""
+    if lang not in LANGS:
+        raise TidyError(f"idioma invalido: {lang!r} (use en ou pt-BR)")
+    return lang
+
+
+def t(lang, key, **values):
+    """One card text in `lang`. The template is ours; the values are data, substituted and never parsed."""
+    return TEXT[lang][key].format(**values)
+
 
 # Every git call is deaf to what the repository's own config asks git to run (a filesystem monitor,
 # hooks; external diff programs are switched off per command below), never prompts, never fetches
@@ -250,20 +336,22 @@ def classify(root, sha, name, refs, prs):
     return "P4"
 
 
-def pr_note(prs, name, sha):
+def pr_info(prs, name, sha):
+    """None when gh was off or unusable; {} when gh knows no merged PR for the branch; else the first PR's number
+    and whether its head is the branch tip. Text comes later, from the table (`pr_text`)."""
     if prs is None:
-        return ""
+        return None
     found = prs.get(name or "", [])
     if not found:
-        return "sem PR mergeado"
-    pr = found[0]
-    return f"#{pr['number']} mergeado" + (" (a ponta confere)" if pr["oid"] == sha else " (a ponta e DIFERENTE da do PR)")
+        return {}
+    return {"number": found[0]["number"], "tip_matches": found[0]["oid"] == sha}
 
 
-def remote_note(root, name, gone):
+def remote_state(root, name, gone):
+    """'exists', 'removed' or 'none': the state of origin/<name>, rendered by `remote_text`."""
     if rev(root, "refs/remotes/origin/" + name):
-        return f"origin/{name} ainda existe (nao sera tocada)"
-    return f"origin/{name} ja foi removida" if gone else "sem contraparte"
+        return "exists"
+    return "removed" if gone else "none"
 
 
 # ---------------------------------------------------------------- inventory
@@ -295,43 +383,43 @@ def inventory(root, base, gh_mode="auto"):
     for b in list_branches(root):
         name = b["name"]
         if name in base_names:
-            untouched.append({"name": name, "why": "branch base do repositorio"})
+            untouched.append({"name": name, "why": "base_branch"})
             continue
         wt = checked_out.get(name)
         if wt:  # a linked worktree carries its branch in its own card
             real = Path(os.path.realpath(wt))
             if real == here:
-                untouched.append({"name": name, "why": "branch atual (em uso por este worktree)"})
+                untouched.append({"name": name, "why": "current_branch"})
             elif real == main_path:
-                untouched.append({"name": name, "why": f"em uso pelo worktree principal ({wt})"})
+                untouched.append({"name": name, "why": "main_worktree", "path": wt})
             continue
         proof = classify(root, b["sha"], name, refs, prs)
         ahead, behind = ahead_behind(root, refs[0], b["sha"])
         count, lines = unique_commits(root, b["sha"], name) if proof in RISKY_PROOFS else (0, [])
         items.append({"kind": "branch", "name": name, "sha": b["sha"], "proof": proof, "ts": b["ts"],
                       "author": b["author"], "subject": b["subject"], "ahead": ahead, "behind": behind,
-                      "unique": lines, "unique_count": count, "pr": pr_note(prs, name, b["sha"]),
-                      "remote": remote_note(root, name, b["gone"]), "backup": proof in RISKY_PROOFS})
+                      "unique": lines, "unique_count": count, "pr": pr_info(prs, name, b["sha"]),
+                      "remote": remote_state(root, name, b["gone"]), "backup": proof in RISKY_PROOFS})
 
     for wt in trees[1:]:
         path = wt["worktree"]
         if "bare" in wt:
             continue
         if Path(os.path.realpath(path)) == here:
-            untouched.append({"name": path, "why": "worktree atual"})
+            untouched.append({"name": path, "why": "current_worktree"})
             continue
         if "locked" in wt:
-            untouched.append({"name": path, "why": "worktree bloqueado (locked)"})
+            untouched.append({"name": path, "why": "locked"})
             continue
         if "prunable" in wt or not Path(path).is_dir():
-            untouched.append({"name": path, "why": "diretorio ausente (git worktree prune resolve)"})
+            untouched.append({"name": path, "why": "missing_dir"})
             continue
         dirty = dirty_files(path)
         if dirty is None:
-            untouched.append({"name": path, "why": "nao consegui ler o estado do worktree"})
+            untouched.append({"name": path, "why": "unreadable"})
             continue
         if dirty:
-            untouched.append({"name": path, "why": f"{len(dirty)} arquivo(s) alterado(s) ou nao rastreado(s): apagar perderia trabalho sem sha para recuperar"})
+            untouched.append({"name": path, "why": "dirty", "count": len(dirty)})
             continue
         sha = wt["HEAD"]
         branch = wt["branch"][len("refs/heads/"):] if wt.get("branch", "").startswith("refs/heads/") else None
@@ -342,7 +430,7 @@ def inventory(root, base, gh_mode="auto"):
         items.append({"kind": "worktree", "name": path, "path": path, "sha": sha, "branch": branch, "proof": proof,
                       "drop_branch": bool(branch) and proof in SAFE_PROOFS and branch not in base_names, "ts": ts, "author": author,
                       "subject": subject, "ahead": ahead, "behind": behind, "unique": lines, "unique_count": count,
-                      "pr": pr_note(prs, branch, sha), "remote": remote_note(root, branch, False) if branch else "",
+                      "pr": pr_info(prs, branch, sha) if branch else None, "remote": remote_state(root, branch, False) if branch else None,
                       "size": dir_size(path), "ignored": ignored_entries(path), "backup": branch is None and proof in RISKY_PROOFS})
 
     for s in list_stashes(root):
@@ -361,11 +449,7 @@ def inventory(root, base, gh_mode="auto"):
 WARN_CARDS = 40  # `check` warns above this many cards: a long board is a tiring one
 SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 KINDS = ("branch", "worktree", "stash")
-LABELS = {  # the board's own wording; "approve" deletes, so it is painted as the dangerous action
-    "approve": {"text": "Apagar", "tone": "danger"},
-    "reject": {"text": "Manter", "tone": "safe"},
-    "maybe": {"text": "Depois", "tone": "caution"},
-}
+WHY_CODES = ("base_branch", "current_branch", "main_worktree", "current_worktree", "locked", "missing_dir", "unreadable", "dirty")
 
 
 def short_name(name):
@@ -378,9 +462,11 @@ def safe_text(text):
     return str(text).replace("`", "'")
 
 
-def age_text(ts, now):
+def age_text(ts, now, lang):
     days = int((now - ts) // 86400)
-    return "hoje" if days <= 0 else f"ha {days} dia" + ("" if days == 1 else "s")
+    if days <= 0:
+        return t(lang, "age_today")
+    return t(lang, "age_day" if days == 1 else "age_days", n=days)
 
 
 def human_size(n):
@@ -388,6 +474,27 @@ def human_size(n):
         if n < 1024 or unit == "GB":
             return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
         n /= 1024
+
+
+def reason_text(u, lang):
+    """The reason an item is never offered, from its code (see `inventory`)."""
+    return t(lang, "why_" + u["why"], path=safe_text(u.get("path", "")), n=u.get("count", 0))
+
+
+def pr_text(it, lang):
+    pr = it.get("pr")
+    if pr is None:  # gh off or unusable, or a worktree with no branch
+        return ""
+    if not pr:
+        return t(lang, "pr_none")
+    return t(lang, "pr_merged" if pr["tip_matches"] else "pr_differs", n=pr["number"])
+
+
+def remote_text(it, lang):
+    state = it.get("remote")
+    if not state:
+        return ""
+    return t(lang, "remote_" + state, name=safe_text(it.get("branch") or it["name"]))
 
 
 def backup_name(it):
@@ -398,76 +505,75 @@ def backup_name(it):
     return BACKUP + it["name"]
 
 
-def confirm_text(it):
+def confirm_text(it, lang):
     """The second-press warning of a card that is not provably merged (None for P1 and P2)."""
     if it["kind"] == "stash":
-        return "Trabalho unico: este stash nao existe em outro lugar. Um backup sera criado antes de descartar."
+        return t(lang, "confirm_stash")
     if it["kind"] == "worktree" and it.get("ignored"):
-        shown = ", ".join(safe_text(e) for e in it["ignored"][:3])
-        return f"Este worktree tem arquivos ignorados pelo git (ex.: {shown}) que serao apagados junto e nao tem backup."
+        return t(lang, "confirm_ignored", shown=", ".join(safe_text(e) for e in it["ignored"][:3]))
     if it["kind"] == "worktree":
         if it["proof"] in SAFE_PROOFS:
             return None
-        if it["branch"]:
-            return "A branch deste worktree tem trabalho que so existe nela: ela fica. Remove so a pasta do worktree."
-        return "Este worktree esta sem branch e seus commits so existem aqui. Um backup sera criado antes de remover."
+        return t(lang, "confirm_wt_branch" if it["branch"] else "confirm_wt_detached")
     if it["proof"] == "P3":
-        return "Heuristica: o mesmo patch parece estar na base, mas isso nao e prova. Um backup sera criado antes de apagar."
+        return t(lang, "confirm_p3")
     if it["proof"] == "P4":
-        return "Trabalho unico: estes commits nao existem em nenhuma outra branch, remoto ou tag. Um backup sera criado antes de apagar."
+        return t(lang, "confirm_p4")
     return None
 
 
-def card_for(it, iid, now):
+def card_for(it, iid, now, lang):
     kind, name = it["kind"], it["name"]
-    fields = [{"label": "Prova", "text": f"{it['proof']} - {PROOF_TEXT[it['proof']]}"}]
+    fields = [{"label": t(lang, "f_proof"), "text": f"{it['proof']} - {t(lang, 'proof_' + it['proof'])}"}]
     if kind == "worktree":
-        fields.append({"label": "Worktree", "text": f"`{safe_text(it['path'])}` ({human_size(it['size'])}, limpo)"})
+        fields.append({"label": t(lang, "f_worktree"), "text": t(lang, "wt_text", path=safe_text(it["path"]), size=human_size(it["size"]))})
         if it["branch"]:
-            tail = " (sai junto)" if it["drop_branch"] else " (fica)"
-            fields.append({"label": "Branch", "text": f"`{safe_text(it['branch'])}`{tail}"})
+            tail = t(lang, "branch_goes" if it["drop_branch"] else "branch_stays")
+            fields.append({"label": t(lang, "f_branch"), "text": f"`{safe_text(it['branch'])}`{tail}"})
         else:
-            fields.append({"label": "Branch", "text": "nenhuma (HEAD solto)"})
+            fields.append({"label": t(lang, "f_branch"), "text": t(lang, "no_branch")})
         if it.get("ignored"):
             body = "\n".join(f"`{safe_text(e)}`" for e in it["ignored"][:5])
-            fields.append({"label": "Ignorados", "text": body + "\n(apagados junto com a pasta, sem backup)"})
+            fields.append({"label": t(lang, "f_ignored"), "text": body + "\n" + t(lang, "ignored_note")})
     who = f", {safe_text(it['author'])}" if it["author"] else ""
-    fields.append({"label": "Ultimo", "text": f"{safe_text(it['subject'])} ({age_text(it['ts'], now)}{who})"})
+    fields.append({"label": t(lang, "f_last"), "text": f"{safe_text(it['subject'])} ({age_text(it['ts'], now, lang)}{who})"})
     if kind == "stash":
-        fields.append({"label": "Conteudo", "text": safe_text(it["shortstat"] or "vazio")})
+        fields.append({"label": t(lang, "f_content"), "text": safe_text(it["shortstat"]) or t(lang, "empty")})
     else:
-        fields.append({"label": "Vs base", "text": f"{it['ahead']} a frente, {it['behind']} atras"})
-        if it["pr"]:
-            fields.append({"label": "PR", "text": it["pr"]})
-        if it["remote"]:
-            fields.append({"label": "Remoto", "text": safe_text(it["remote"])})
+        fields.append({"label": t(lang, "f_vs_base"), "text": t(lang, "vs_base", ahead=it["ahead"], behind=it["behind"])})
+        pr = pr_text(it, lang)
+        if pr:
+            fields.append({"label": t(lang, "f_pr"), "text": pr})
+        remote = remote_text(it, lang)
+        if remote:
+            fields.append({"label": t(lang, "f_remote"), "text": remote})
     if kind == "stash" and it["files"]:
         more = it["file_count"] - len(it["files"])
         body = "\n".join(f"`{safe_text(f)}`" for f in it["files"]) + (f"\n(+{more})" if more > 0 else "")
-        fields.append({"label": "Arquivos", "text": body})
+        fields.append({"label": t(lang, "f_files"), "text": body})
     elif kind != "stash" and it["unique"]:
         more = it["unique_count"] - len(it["unique"])
         body = "\n".join(f"`{safe_text(line)}`" for line in it["unique"]) + (f"\n(+{more})" if more > 0 else "")
-        fields.append({"label": "So aqui", "text": body})
+        fields.append({"label": t(lang, "f_only_here"), "text": body})
     if kind == "branch":
-        effect = "Apaga a branch local."
+        effect = t(lang, "effect_branch")
     elif kind == "worktree":
-        effect = "Remove a pasta do worktree" + (" e a branch." if it["drop_branch"] else ".")
+        effect = t(lang, "effect_worktree_branch" if it["drop_branch"] else "effect_worktree")
     else:
-        effect = "Descarta o stash."
+        effect = t(lang, "effect_stash")
     if it["backup"]:
-        effect += f" Antes, guarda `{safe_text(backup_name(it))}`."
-    fields.append({"label": "Efeito", "text": effect})
-    verb = {"branch": "Apagar a branch", "worktree": "Remover o worktree", "stash": "Descartar o stash"}[kind]
-    card = {"id": iid, "tag": it["proof"], "title": f"{verb} {safe_text(short_name(name))}?", "fields": fields}
-    confirm = confirm_text(it)
+        effect += t(lang, "effect_backup", ref=safe_text(backup_name(it)))
+    fields.append({"label": t(lang, "f_effect"), "text": effect})
+    card = {"id": iid, "tag": it["proof"], "title": f"{t(lang, 'verb_' + kind)} {safe_text(short_name(name))}?", "fields": fields}
+    confirm = confirm_text(it, lang)
     if confirm:
         card["confirm"] = confirm
     return card
 
 
-def build_scan(root, inv, now=None, stamp=None):
-    """(batch, scan) for an inventory, or None when there is nothing to offer."""
+def build_scan(root, inv, now=None, stamp=None, lang=DEFAULT_LANG):
+    """(batch, scan) for an inventory in `lang`, or None when there is nothing to offer."""
+    check_lang(lang)
     if not inv["items"]:
         return None
     now = now or time.time()
@@ -477,7 +583,7 @@ def build_scan(root, inv, now=None, stamp=None):
     cards, entries, safe_ids, safe_lines = [], [], [], []
     for n, it in enumerate(inv["items"], 1):
         iid = f"T{n:02d}"
-        cards.append(card_for(it, iid, now))
+        cards.append(card_for(it, iid, now, lang))
         entries.append({"id": iid, "kind": it["kind"], "name": it["name"], "sha": it["sha"], "proof": it["proof"],
                         "branch": it.get("branch"), "path": it.get("path"), "drop_branch": bool(it.get("drop_branch")),
                         "backup": bool(it["backup"])})
@@ -486,22 +592,23 @@ def build_scan(root, inv, now=None, stamp=None):
             safe_lines.append(f"`{safe_text(short_name(it['name']))}` ({it['kind']}, {it['proof']})")
     group = None
     if len(safe_ids) >= 2:
-        lines = "\n".join(safe_lines)
-        cards.insert(0, {"id": "G", "tag": "grupo P1/P2",
-                         "title": f"Apagar os {len(safe_ids)} itens provados como mergeados?",
-                         "fields": [{"label": "Itens", "text": lines},
-                                    {"label": "Regra", "text": "Vale para os itens abaixo em que voce nao marcar Manter ou Depois. Nao inclui P3, P4 nem stashes."}]})
+        labels = LABELS[lang]
+        cards.insert(0, {"id": "G", "tag": t(lang, "group_tag"),
+                         "title": t(lang, "group_title", n=len(safe_ids)),
+                         "fields": [{"label": t(lang, "f_items"), "text": "\n".join(safe_lines)},
+                                    {"label": t(lang, "f_rule"), "text": t(lang, "group_rule", keep=labels["reject"]["text"], later=labels["maybe"]["text"])}]})
         group = {"id": "G", "members": safe_ids}
-    if inv["untouched"]:  # a field, not meta: the side panel's key column is too narrow for this label
-        lines = "\n".join(f"`{safe_text(short_name(u['name']))}`: {safe_text(u['why'])}" for u in inv["untouched"])
-        cards[0]["fields"].append({"label": "Nao tocar", "text": lines})
-    cards[0]["meta"] = {"Base": inv["base"], "gh": "sim" if inv["gh"] else "nao (so git local)"}
-    batch = {"batch_id": f"tidy-{slug}-{stamp}", "title": f"Limpeza de {repo_name}",
-             "subtitle": f"base: {inv['base']} - gh: {'sim' if inv['gh'] else 'nao'} - {len(inv['items'])} itens",
-             "round": 1, "labels": LABELS, "items": cards}
-    scan = {"version": VERSION, "repo": str(root), "base": inv["base"], "base_sha": inv["base_sha"], "gh": inv["gh"],
+    untouched = [{"name": u["name"], "why": reason_text(u, lang)} for u in inv["untouched"]]
+    if untouched:  # a field, not meta: the side panel's key column is too narrow for this label
+        lines = "\n".join(f"`{safe_text(short_name(u['name']))}`: {u['why']}" for u in untouched)
+        cards[0]["fields"].append({"label": t(lang, "f_untouched"), "text": lines})
+    cards[0]["meta"] = {"Base": inv["base"], "gh": t(lang, "gh_yes" if inv["gh"] else "gh_no")}
+    batch = {"batch_id": f"tidy-{slug}-{stamp}", "title": t(lang, "batch_title", repo=repo_name),
+             "subtitle": t(lang, "subtitle", base=inv["base"], gh=t(lang, "gh_short_yes" if inv["gh"] else "gh_short_no"), n=len(inv["items"])),
+             "round": 1, "lang": lang, "labels": LABELS[lang], "items": cards}
+    scan = {"version": VERSION, "repo": str(root), "base": inv["base"], "base_sha": inv["base_sha"], "gh": inv["gh"], "lang": lang,
             "scanned_at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now)), "group": group,
-            "untouched": inv["untouched"], "items": entries}
+            "untouched": untouched, "items": entries}
     return batch, scan
 
 
@@ -576,6 +683,8 @@ def scan_problems(batch, scan):
             errs.append(f"{where}: 'name' obrigatorio")
         if it.get("kind") == "worktree" and not it.get("path"):
             errs.append(f"{where}: um worktree precisa de 'path'")
+    if scan.get("lang") is not None and scan["lang"] not in LANGS:  # an older scan has no lang: that is English
+        errs.append("scan.json: 'lang' deve ser en ou pt-BR")
     group = scan.get("group")
     if group is not None:
         if not isinstance(group, dict) or group.get("id") != "G" or not isinstance(group.get("members"), list):
@@ -598,9 +707,9 @@ def cmd_scan(a):
     root = repo_root(a.repo)
     base = detect_base(root, a.base)
     inv = inventory(root, base, a.gh)
-    built = build_scan(root, inv)
-    for u in inv["untouched"]:
-        print(f"NAO TOCAR: {u['name']} ({u['why']})")
+    built = build_scan(root, inv, lang=a.lang)
+    for u in inv["untouched"]:  # transient: Task 4b moves every line of the command line to its own table
+        print(f"NAO TOCAR: {u['name']} ({reason_text(u, 'pt-BR')})")
     if built is None:
         print("TIDY-BOARD: nada para limpar")
         return 0
@@ -611,7 +720,7 @@ def cmd_scan(a):
     write_dir(out, batch, scan)
     counts = ", ".join(f"{p} {n}" for p in PROOFS if (n := sum(1 for i in scan["items"] if i["proof"] == p)))
     print(f"TIDY-BOARD DIR: {out}")
-    print(f"TIDY-BOARD ITENS: {len(scan['items'])} ({counts}); base {base}; gh {'sim' if scan['gh'] else 'nao'}")
+    print(f"TIDY-BOARD ITENS: {len(scan['items'])} ({counts}); base {base}; gh {'sim' if scan['gh'] else 'nao'}; idioma {a.lang}")
     return 0
 
 
@@ -637,6 +746,7 @@ def parser():
     s.add_argument("--base", help="branch base (padrao: origin/HEAD, depois main, master, base, trunk)")
     s.add_argument("--gh", choices=("auto", "off"), default="auto", help="usar o gh para provar PRs mergeados")
     s.add_argument("--out", help="pasta do lote (padrao: <repo>/.tidy-board/<batch_id>)")
+    s.add_argument("--lang", choices=LANGS, default=DEFAULT_LANG, help="idioma dos cards: en (padrao) ou pt-BR")
     c = sub.add_parser("check", help="valida batch.json + scan.json")
     c.add_argument("dir")
     a = sub.add_parser("apply", help="reconfere cada item aprovado e apaga")
