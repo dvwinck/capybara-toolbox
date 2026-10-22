@@ -23,7 +23,7 @@ Do NOT use it when:
 ### 0. Install the script (once per machine)
 
 ```bash
-test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.3.1' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
+test -f "$HOME/.claude/ar-board/ar_board.py" && grep -q 'ar-board 1.4.0' "$HOME/.claude/ar-board/ar_board.py" && echo OK || echo FALTA
 ```
 
 `OK` means the script is installed and its version matches. `FALTA` means "missing".
@@ -151,7 +151,7 @@ Write this content, unchanged, to `~/.claude/ar-board/ar_board.py`:
 
 ```python
 #!/usr/bin/env python3
-# ar-board 1.3.1 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
+# ar-board 1.4.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -178,7 +178,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
