@@ -288,7 +288,7 @@ footer p { margin: 0; }
         <li><h3>It checks your preferences</h3><p>The agent opens <code>.ar-board/preferences.md</code> first, so it knows which patterns you have already rejected.</p></li>
         <li><h3>It opens the board</h3><p>The agent serves a panel at <code>127.0.0.1</code>, with one card per proposal: what changes, why, and the risk.</p></li>
         <li><h3>You decide</h3><p><kbd>A</kbd>, <kbd>R</kbd>, or <kbd>M</kbd> per card, plus a comment saying why. Press the same key again to undo.</p></li>
-        <li><h3>It acts on what you approved</h3><p>The agent reads the decisions with <code>summary</code>, follows its instructions to work only on the approved cards, and asks you to confirm the rules it inferred from your comments.</p></li>
+        <li><h3>It acts on what you approved</h3><p>The agent reads the decisions with <code>summary</code>, is told by its skill to work only on the approved cards, and asks you to confirm the rules it inferred from your comments.</p></li>
       </ol>
       <figure class="shot">
         <img src="panel.png" width="1280" height="836" loading="lazy" alt="The real ar-board panel: a card showing what, why, and risk; the approve, reject, and maybe buttons; a comment box; and the round's tally. Its labels are in Portuguese.">
@@ -341,7 +341,7 @@ footer p { margin: 0; }
 <pre id="cmds"><span class="prompt">&gt; </span>/plugin marketplace add dvwinck/capybara-toolbox
 <span class="prompt">&gt; </span>/plugin install ar-board@capybara-toolbox</pre>
       </div>
-      <p class="install-note">Swap <code>ar-board</code> for any plugin above, then restart Claude Code. You need Python 3.9 or later; publish-check, tidy-board, and housekeeping also need <code>git</code>. For header-footer, the status line needs one more step: ask Claude to turn the footer on. The panels, tool-generated cards, and most CLI messages are in Portuguese for now (publish-check’s output is in English); an English ar-board panel is planned for version 1.4.0. CI covers macOS and Linux; Windows is not tested yet.</p>
+      <p class="install-note">Swap <code>ar-board</code> for any plugin above, then restart Claude Code. You need Python 3.9 or later; publish-check, tidy-board, and housekeeping also need <code>git</code>. For header-footer, the status line needs one more step: ask Claude to turn the footer on. The panels, tool-generated cards, and most CLI messages are in Portuguese for now (publish-check’s output is in English); an English ar-board panel is planned for version 1.4.0. CI covers Ubuntu and macOS; Windows is not tested yet.</p>
     </div>
   </section>
 
