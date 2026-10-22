@@ -1,6 +1,6 @@
 # housekeeping
 
-Ferramentas pequenas que mantêm um repositório e uma sessão de trabalho honestos. Um plugin, várias skills, acrescentadas uma por versão: o **doc-truth** confere se o que os documentos de um repositório dizem existe de verdade, o **handoff** escreve uma nota de fim de sessão com os fatos do git e as citações conferidos, e o **todo-sweep** faz a triagem de comentários `TODO` e `FIXME` num painel local. Tudo é somente leitura, sem rede, com a biblioteca padrão do Python e `git`.
+Ferramentas pequenas que mantêm um repositório e uma sessão de trabalho honestos. Um plugin, várias skills, acrescentadas uma por versão: o **doc-truth** confere se o que os documentos de um repositório dizem existe de verdade, o **handoff** escreve uma nota de fim de sessão com os fatos do git e as citações conferidos, e o **todo-sweep** faz a triagem de comentários `TODO` e `FIXME` num painel local. Tudo funciona sem rede, com a biblioteca padrão do Python e `git`, e não mexe nos seus arquivos versionados: o doc-truth não grava nada, e o handoff e o todo-sweep gravam só nas próprias pastas.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (somente biblioteca padrão) e `git`.
 - **Idiomas:** as skills estão em inglês; a saída das ferramentas, o painel do todo-sweep e seus cards estão em português; a documentação está em inglês e este arquivo é a versão em português ([README.md](README.md)).
