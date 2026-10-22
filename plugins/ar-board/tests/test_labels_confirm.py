@@ -30,30 +30,31 @@ class LabelsValidateTest(unittest.TestCase):
         self.assertEqual(ab.validate(board(labels=None)), [])
 
     def test_labels_must_be_an_object(self):
-        self.assertTrue(has(ab.validate(board(labels=["Apagar"])), "'labels' deve ser objeto"))
+        self.assertTrue(has(ab.validate(board(labels=["Apagar"])), "'labels' must be an object"))
+        self.assertTrue(has(ab.validate(board(labels=["Apagar"]), "pt-BR"), "'labels' deve ser objeto"))
 
     def test_an_unknown_key_is_rejected_so_a_typo_is_not_silent(self):
         errs = ab.validate(board(labels={"aprove": {"text": "Apagar"}}))
-        self.assertTrue(has(errs, "chave desconhecida 'aprove'"), errs)
+        self.assertTrue(has(errs, "unknown key 'aprove'"), errs)
 
     def test_each_label_must_be_an_object(self):
-        self.assertTrue(has(ab.validate(board(labels={"approve": "Apagar"})), "labels.approve: deve ser objeto"))
+        self.assertTrue(has(ab.validate(board(labels={"approve": "Apagar"})), "labels.approve: must be an object"))
 
     def test_each_label_needs_a_short_non_empty_text(self):
         for bad in (None, "", "   ", 7, "x" * (ab.MAX_LABEL + 1)):
             with self.subTest(text=bad):
                 errs = ab.validate(board(labels={"reject": {"text": bad}}))
-                self.assertTrue(has(errs, "labels.reject: 'text' obrigatorio"), errs)
+                self.assertTrue(has(errs, "labels.reject: 'text' is required"), errs)
         self.assertEqual(ab.validate(board(labels={"reject": {"text": "x" * ab.MAX_LABEL}})), [])
 
     def test_an_unknown_tone_is_rejected(self):
         errs = ab.validate(board(labels={"maybe": {"text": "Depois", "tone": "red"}}))
-        self.assertTrue(has(errs, "labels.maybe: 'tone' deve ser safe, danger ou caution"), errs)
+        self.assertTrue(has(errs, "labels.maybe: 'tone' must be safe, danger or caution"), errs)
 
     def test_label_errors_do_not_hide_item_errors(self):
         errs = ab.validate(board(items=[{"id": "A01"}], labels={"x": {}}))
-        self.assertTrue(has(errs, "chave desconhecida"), errs)
-        self.assertTrue(has(errs, "'title' obrigatorio"), errs)
+        self.assertTrue(has(errs, "unknown key"), errs)
+        self.assertTrue(has(errs, "'title' is required"), errs)
 
 
 class ConfirmValidateTest(unittest.TestCase):
@@ -69,11 +70,11 @@ class ConfirmValidateTest(unittest.TestCase):
     def test_confirm_must_be_non_empty_text(self):
         for bad in ("", "   ", 3, ["x"]):
             with self.subTest(confirm=bad):
-                self.assertTrue(has(ab.validate(self.item(confirm=bad)), "'confirm' deve ser texto nao vazio"))
+                self.assertTrue(has(ab.validate(self.item(confirm=bad)), "'confirm' must be non-empty text"))
 
     def test_confirm_is_rejected_on_question_cards(self):
         errs = ab.validate(self.item(confirm="certeza?", open=True, fields=[{"label": "Contexto", "text": "c"}]))
-        self.assertTrue(has(errs, "'confirm' nao vale em card de pergunta"), errs)
+        self.assertTrue(has(errs, "'confirm' does not apply to a question card"), errs)
 
 
 class LabelsSummaryTest(unittest.TestCase):
@@ -87,7 +88,7 @@ class LabelsSummaryTest(unittest.TestCase):
         self.assertIn("## Apagar (1)", out)
         self.assertIn("## Manter (1)", out)
         self.assertIn("## Depois (0)", out)
-        self.assertNotIn("## Aprovados", out)
+        self.assertNotIn("## Approved", out)
 
     def test_the_json_summary_keeps_its_keys(self):
         import json
@@ -100,12 +101,19 @@ class LabelsSummaryTest(unittest.TestCase):
         b = {**self.BATCH, "labels": {"approve": {"text": "Apagar"}}}
         out = ab.render_summary(b, self.STATE)
         self.assertIn("## Apagar (1)", out)
+        self.assertIn("## Rejected (1)", out)
+        self.assertIn("## Maybe (0)", out)
+        out = ab.render_summary(b, self.STATE, lang="pt-BR")
+        self.assertIn("## Apagar (1)", out)
         self.assertIn("## Rejeitados (1)", out)
         self.assertIn("## Talvez (0)", out)
 
     def test_boards_without_labels_are_unchanged(self):
         b = {k: v for k, v in self.BATCH.items() if k != "labels"}
         out = ab.render_summary(b, self.STATE)
+        self.assertIn("## Approved (1)", out)
+        self.assertIn("## Rejected (1)", out)
+        out = ab.render_summary(b, self.STATE, lang="pt-BR")
         self.assertIn("## Aprovados (1)", out)
         self.assertIn("## Rejeitados (1)", out)
 

@@ -29,4 +29,4 @@ class HelpTest(unittest.TestCase):
     def test_help_has_a_description(self):
         r = subprocess.run([sys.executable, "-I", str(SCRIPT), "--help"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("painel local de aprovar/rejeitar", r.stdout)
+        self.assertIn("a local approve/reject panel", r.stdout)

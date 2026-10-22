@@ -78,7 +78,7 @@ class ChoicesTest(unittest.TestCase):
                 self.assertEqual(errors(choices=[{"id": name, "label": "A"}, {"id": "b", "label": "B"}]), [])
 
     def test_duplicate_ids_are_rejected(self):
-        self.assertTrue(has(errors(choices=[{"id": "a", "label": "A"}, {"id": "a", "label": "B"}]), "duplicado"))
+        self.assertTrue(has(errors(choices=[{"id": "a", "label": "A"}, {"id": "a", "label": "B"}]), "duplicate"))
 
     def test_label_is_required_and_text(self):
         for bad in (None, "", "   ", 3):
@@ -90,18 +90,18 @@ class ChoicesTest(unittest.TestCase):
         self.assertTrue(has(errors(choices=[{"id": "a", "label": "A", "effect": 1}, {"id": "b", "label": "B"}]), "'effect'"))
 
     def test_option_must_be_an_object(self):
-        self.assertTrue(has(errors(choices=["a", "b"]), "deve ser objeto"))
+        self.assertTrue(has(errors(choices=["a", "b"]), "must be an object"))
 
 
 class OpenCardTest(unittest.TestCase):
     def test_open_card_has_no_choices(self):
         self.assertEqual(errors(choices=None, open=True), [])
-        self.assertTrue(has(errors(open=True), "'open' nao combina com 'choices'"))
+        self.assertTrue(has(errors(open=True), "'open' does not go with 'choices'"))
 
     def test_open_card_rejects_multiple_recommended_and_limits(self):
         for key, value in (("multiple", True), ("min", 1), ("max", 2), ("recommended", ["a"]), ("why", "x")):
             with self.subTest(key=key):
-                self.assertTrue(has(errors(choices=None, open=True, **{key: value}), "'open' nao combina com '%s'" % key))
+                self.assertTrue(has(errors(choices=None, open=True, **{key: value}), "'open' does not go with '%s'" % key))
 
 
 class MultipleTest(unittest.TestCase):
@@ -124,7 +124,7 @@ class MultipleTest(unittest.TestCase):
     def test_min_and_max_need_multiple(self):
         for key in ("min", "max"):
             with self.subTest(key=key):
-                self.assertTrue(has(errors(**{key: 1}), "so vale com 'multiple'"))
+                self.assertTrue(has(errors(**{key: 1}), "only applies with 'multiple'"))
 
     def test_range_must_fit_the_option_count(self):
         for kw in ({"min": 0}, {"min": 2, "max": 1}, {"max": 4}, {"min": 4}):
@@ -163,10 +163,10 @@ class ContextTest(unittest.TestCase):
     def test_question_needs_context(self):
         for bad in (None, [], [{"label": "Contexto", "text": "   "}]):
             with self.subTest(fields=bad):
-                self.assertTrue(has(errors(fields=bad), "contexto"))
+                self.assertTrue(has(errors(fields=bad), "context"))
 
     def test_open_card_needs_context_too(self):
-        self.assertTrue(has(errors(choices=None, open=True, fields=None), "contexto"))
+        self.assertTrue(has(errors(choices=None, open=True, fields=None), "context"))
 
     def test_proposal_does_not_need_context(self):
         self.assertEqual(ab.validate(board({"id": "A01", "title": "x"})), [])
@@ -184,14 +184,13 @@ class CheckWarningTest(unittest.TestCase):
     def test_eight_questions_do_not_warn(self):
         rc, out, err = self.run_check(8)
         self.assertEqual(rc, 0)
-        self.assertIn("ok: 8 itens", out)
+        self.assertIn("ok: 8 items", out)
         self.assertEqual(err, "")
 
     def test_nine_questions_warn_but_pass(self):
         rc, out, err = self.run_check(9)
         self.assertEqual(rc, 0)
-        self.assertIn("aviso", err)
-        self.assertIn("9 perguntas", err)
+        self.assertIn("warning: 9 questions in the round", err)
 
     def test_shipped_question_example_is_valid(self):
         from helpers import ROOT

@@ -2,6 +2,10 @@ import sys
 
 sys.dont_write_bytecode = True  # never leave __pycache__ inside the plugin (it would ship with it)
 
+import os
+
+os.environ.pop("CAPYBARA_LANG", None)  # the defaults the suite pins must not depend on the shell that runs it
+
 import importlib.util
 import json
 import threading

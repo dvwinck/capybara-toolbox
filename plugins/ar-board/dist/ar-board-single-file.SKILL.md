@@ -156,11 +156,12 @@ Write this content, unchanged, to `~/.claude/ar-board/ar_board.py`:
 # Copyright (c) 2026 Diogo Winck
 #
 # Uso:
-#   ar_board.py serve   DIR [--port N] [--open] [--exit-on-finish] [--lang en|pt-BR]
+#   ar_board.py serve   DIR [--port N] [--open] [--exit-on-finish]
 #   ar_board.py wait    DIR [--timeout SEGUNDOS]     # bloqueia ate o usuario clicar "Concluir"
 #   ar_board.py summary DIR [--json]                  # resumo das decisoes (le decisions.json)
-#   ar_board.py build   DIR [--lang en|pt-BR]         # gera board.html offline (fallback sem localhost)
+#   ar_board.py build   DIR                           # gera board.html offline (fallback sem localhost)
 #   ar_board.py check   DIR                           # valida batch.json
+# Todo comando aceita --lang en|pt-BR (padrao: o lang do batch, depois CAPYBARA_LANG, depois en).
 import argparse
 import base64
 import json
@@ -214,6 +215,120 @@ def write_private(path, text):
         f.write(text)
 
 
+# ---------------------------------------------------------------- mensagens da linha de comando
+
+ENV_LANG = "CAPYBARA_LANG"  # one shell-wide default for every Capybara Toolbox script
+
+# Every message the command line prints, in both languages (the panel's own text is I18N, below). The two tables
+# have the same keys and {placeholders} (a test enforces it); both are plain ASCII, so the pt-BR side is the
+# accent-free Portuguese these commands always printed. A key ending in `_1` is the form used when n == 1.
+# The HTTP error bodies are not here: they are part of the API the page reads.
+MSG = {
+    "en": {
+        "q_open_bool": "item {i}: 'open' must be a boolean", "q_open_conflict": "item {i}: 'open' does not go with '{k}'",
+        "q_choices": "item {i}: 'choices' must be a list of 2 to {max} options",
+        "q_choice_obj": "item {i}: choices[{j}] must be an object",
+        "q_choice_id": "item {i}: choices[{j}] 'id' must match [A-Za-z0-9_-]{{1,32}}",
+        "q_choice_dup": "item {i}: choices[{j}] duplicate id '{cid}'",
+        "q_choice_label": "item {i}: choices[{j}] 'label' is required",
+        "q_choice_effect": "item {i}: choices[{j}] 'effect' must be a string",
+        "q_multiple_bool": "item {i}: 'multiple' must be a boolean", "q_int": "item {i}: '{k}' must be an integer",
+        "q_only_multiple": "item {i}: '{k}' only applies with 'multiple': true",
+        "q_range": "item {i}: needs 1 <= min <= max <= {count} (the number of options)",
+        "q_rec_list": "item {i}: 'recommended' must be a list of ids (text)",
+        "q_rec_unknown": "item {i}: 'recommended' names an id that is not in 'choices'",
+        "q_rec_repeat": "item {i}: 'recommended' repeats an id",
+        "q_rec_limit": "item {i}: 'recommended' has more ids than the limit ({limit})",
+        "q_why_required": "item {i}: 'why' is required when there is 'recommended'",
+        "q_why_str": "item {i}: 'why' must be a string",
+        "q_context": "item {i}: a question needs context (an entry in 'fields' with text)",
+        "labels_obj": "field 'labels' must be an object",
+        "labels_key": "labels: unknown key '{k}' (use approve, reject or maybe)",
+        "labels_entry": "labels.{k}: must be an object with 'text' and, optionally, 'tone'",
+        "labels_text": "labels.{k}: 'text' is required (1 to {max} characters)",
+        "labels_tone": "labels.{k}: 'tone' must be safe, danger or caution",
+        "root_obj": "the root of batch.json must be an object", "field_required": "field '{k}' is required (string)",
+        "field_round": "field 'round' must be an integer >= 1", "field_lang": "field 'lang' must be en or pt-BR",
+        "field_items": "'items' must be a non-empty list",
+        "item_obj": "item {i}: must be an object", "item_id": "item {i}: 'id' is required",
+        "item_dup": "item {i}: duplicate id '{iid}'", "item_title": "item {i}: 'title' is required",
+        "item_str": "item {i}: '{k}' must be a string", "item_meta": "item {i}: 'meta' must be an object",
+        "item_risk": "item {i}: 'risk' must be an object with 'level' and 'text' as text",
+        "item_fields": "item {i}: 'fields' must be a list of {{label, text}} (text)",
+        "item_confirm": "item {i}: 'confirm' must be non-empty text",
+        "item_confirm_q": "item {i}: 'confirm' does not apply to a question card",
+        "no_batch": "could not find {path}", "bad_json": "batch.json is not valid JSON: {e}", "invalid": "invalid batch.json:",
+        "port": "could not open port {port}: {e}", "timeout": "TIMEOUT: the user has not finished the batch yet.",
+        "many_questions": "warning: {n} questions in the round; the ideal is up to {max} (the dependent ones wait for the next round)",
+        "ok": "ok: {n} items, batch {id}, round {round}", "ok_1": "ok: {n} item, batch {id}, round {round}",
+        "s_head": "# AR board - {title} (batch {id}, round {round})", "s_finished": "Finished by the user: {value}",
+        "s_yes": "yes", "s_partial": "NO (partial)", "s_comment": "user comment: {comment}",
+        "s_answer": "answer: {answer}", "s_recommended": "(recommended)", "s_other": "Other: {text}",
+        "s_approved": "Approved", "s_rejected": "Rejected", "s_maybe": "Maybe", "s_answered": "Answered",
+        "s_unsure": "Need context", "s_pending": "No decision", "s_note": "General note on the batch",
+    },
+    "pt-BR": {
+        "q_open_bool": "item {i}: 'open' deve ser booleano", "q_open_conflict": "item {i}: 'open' nao combina com '{k}'",
+        "q_choices": "item {i}: 'choices' deve ser uma lista de 2 a {max} opcoes",
+        "q_choice_obj": "item {i}: choices[{j}] deve ser objeto",
+        "q_choice_id": "item {i}: choices[{j}] 'id' deve casar [A-Za-z0-9_-]{{1,32}}",
+        "q_choice_dup": "item {i}: choices[{j}] id duplicado '{cid}'",
+        "q_choice_label": "item {i}: choices[{j}] 'label' obrigatorio",
+        "q_choice_effect": "item {i}: choices[{j}] 'effect' deve ser string",
+        "q_multiple_bool": "item {i}: 'multiple' deve ser booleano", "q_int": "item {i}: '{k}' deve ser inteiro",
+        "q_only_multiple": "item {i}: '{k}' so vale com 'multiple': true",
+        "q_range": "item {i}: precisa 1 <= min <= max <= {count} (numero de opcoes)",
+        "q_rec_list": "item {i}: 'recommended' deve ser lista de ids (texto)",
+        "q_rec_unknown": "item {i}: 'recommended' cita id que nao esta em 'choices'",
+        "q_rec_repeat": "item {i}: 'recommended' tem id repetido",
+        "q_rec_limit": "item {i}: 'recommended' tem mais ids do que o limite ({limit})",
+        "q_why_required": "item {i}: 'why' e obrigatorio quando ha 'recommended'",
+        "q_why_str": "item {i}: 'why' deve ser string",
+        "q_context": "item {i}: pergunta precisa de contexto (um item em 'fields' com texto)",
+        "labels_obj": "campo 'labels' deve ser objeto",
+        "labels_key": "labels: chave desconhecida '{k}' (use approve, reject ou maybe)",
+        "labels_entry": "labels.{k}: deve ser objeto com 'text' e, opcional, 'tone'",
+        "labels_text": "labels.{k}: 'text' obrigatorio (1 a {max} caracteres)",
+        "labels_tone": "labels.{k}: 'tone' deve ser safe, danger ou caution",
+        "root_obj": "a raiz do batch.json deve ser um objeto", "field_required": "campo '{k}' e obrigatorio (string)",
+        "field_round": "campo 'round' deve ser inteiro >= 1", "field_lang": "campo 'lang' deve ser en ou pt-BR",
+        "field_items": "'items' deve ser uma lista nao vazia",
+        "item_obj": "item {i}: deve ser objeto", "item_id": "item {i}: 'id' obrigatorio",
+        "item_dup": "item {i}: id duplicado '{iid}'", "item_title": "item {i}: 'title' obrigatorio",
+        "item_str": "item {i}: '{k}' deve ser string", "item_meta": "item {i}: 'meta' deve ser objeto",
+        "item_risk": "item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto",
+        "item_fields": "item {i}: 'fields' deve ser lista de {{label, text}} (texto)",
+        "item_confirm": "item {i}: 'confirm' deve ser texto nao vazio",
+        "item_confirm_q": "item {i}: 'confirm' nao vale em card de pergunta",
+        "no_batch": "nao encontrei {path}", "bad_json": "batch.json nao e JSON valido: {e}", "invalid": "batch.json invalido:",
+        "port": "nao consegui abrir a porta {port}: {e}", "timeout": "TIMEOUT: o usuario ainda nao concluiu o lote.",
+        "many_questions": "aviso: {n} perguntas na rodada; o ideal e ate {max} (as dependentes ficam para a proxima rodada)",
+        "ok": "ok: {n} itens, lote {id}, rodada {round}", "ok_1": "ok: {n} item, lote {id}, rodada {round}",
+        "s_head": "# AR board - {title} (lote {id}, rodada {round})", "s_finished": "Concluido pelo usuario: {value}",
+        "s_yes": "sim", "s_partial": "NAO (parcial)", "s_comment": "comentario do usuario: {comment}",
+        "s_answer": "resposta: {answer}", "s_recommended": "(recomendada)", "s_other": "Outra: {text}",
+        "s_approved": "Aprovados", "s_rejected": "Rejeitados", "s_maybe": "Talvez", "s_answered": "Respondidas",
+        "s_unsure": "Precisam de contexto", "s_pending": "Sem decisao", "s_note": "Nota geral do lote",
+    },
+}
+
+
+def env_lang():
+    """CAPYBARA_LANG when it is exactly one of LANGS. Any other value is ignored, silently: a shell setting must
+    never break a command, and a warning on every run would be noise in the agent's context."""
+    value = os.environ.get(ENV_LANG)
+    return value if value in LANGS else None
+
+
+def say(lang, msg_id, /, **values):
+    """One command-line message in `lang`; with n == 1 the `_1` form wins when the table has one. The template is
+    ours, the values are data (substituted, never parsed)."""
+    table = MSG[lang] if lang in LANGS else MSG[DEFAULT_LANG]
+    if values.get("n") == 1 and msg_id + "_1" in table:
+        msg_id += "_1"
+    return table[msg_id].format(**values)
+
+
 # ---------------------------------------------------------------- batch
 
 def is_question(it):
@@ -225,133 +340,134 @@ def _int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def validate_question(i, it, errs):
+def validate_question(i, it, errs, lang=DEFAULT_LANG):
     opened = it.get("open")
     if opened is not None and not isinstance(opened, bool):
-        errs.append(f"item {i}: 'open' deve ser booleano")
+        errs.append(say(lang, "q_open_bool", i=i))
     if not is_question(it):
         return
     if opened is True:
         for k in ("choices", "multiple", "min", "max", "recommended", "why"):
             if it.get(k) is not None:
-                errs.append(f"item {i}: 'open' nao combina com '{k}'")
+                errs.append(say(lang, "q_open_conflict", i=i, k=k))
     else:
         choices = it.get("choices")
         listed = choices if isinstance(choices, list) else []
         if not isinstance(choices, list) or not 2 <= len(choices) <= MAX_CHOICES:
-            errs.append(f"item {i}: 'choices' deve ser uma lista de 2 a {MAX_CHOICES} opcoes")
+            errs.append(say(lang, "q_choices", i=i, max=MAX_CHOICES))
         ids = []
         for j, c in enumerate(listed):
             if not isinstance(c, dict):
-                errs.append(f"item {i}: choices[{j}] deve ser objeto")
+                errs.append(say(lang, "q_choice_obj", i=i, j=j))
                 continue
             cid = c.get("id")
             if not isinstance(cid, str) or not CHOICE_ID.fullmatch(cid):
-                errs.append(f"item {i}: choices[{j}] 'id' deve casar [A-Za-z0-9_-]{{1,32}}")
+                errs.append(say(lang, "q_choice_id", i=i, j=j))
             elif cid in ids:
-                errs.append(f"item {i}: choices[{j}] id duplicado '{cid}'")
+                errs.append(say(lang, "q_choice_dup", i=i, j=j, cid=cid))
             else:
                 ids.append(cid)
             if not isinstance(c.get("label"), str) or not c["label"].strip():
-                errs.append(f"item {i}: choices[{j}] 'label' obrigatorio")
+                errs.append(say(lang, "q_choice_label", i=i, j=j))
             if c.get("effect") is not None and not isinstance(c["effect"], str):
-                errs.append(f"item {i}: choices[{j}] 'effect' deve ser string")
+                errs.append(say(lang, "q_choice_effect", i=i, j=j))
         n = len(listed)
         multiple = it.get("multiple")
         if multiple is not None and not isinstance(multiple, bool):
-            errs.append(f"item {i}: 'multiple' deve ser booleano")
+            errs.append(say(lang, "q_multiple_bool", i=i))
         mn, mx = it.get("min"), it.get("max")
         for k, v in (("min", mn), ("max", mx)):
             if v is not None and not _int(v):
-                errs.append(f"item {i}: '{k}' deve ser inteiro")
+                errs.append(say(lang, "q_int", i=i, k=k))
             elif v is not None and multiple is not True:
-                errs.append(f"item {i}: '{k}' so vale com 'multiple': true")
+                errs.append(say(lang, "q_only_multiple", i=i, k=k))
         if multiple is True and n and (mn is None or _int(mn)) and (mx is None or _int(mx)):
             lo, hi = (1 if mn is None else mn), (n if mx is None else mx)
             if not 1 <= lo <= hi <= n:
-                errs.append(f"item {i}: precisa 1 <= min <= max <= {n} (numero de opcoes)")
+                errs.append(say(lang, "q_range", i=i, count=n))
         rec = it.get("recommended")
         if rec is not None:
             if not isinstance(rec, list) or any(not isinstance(x, str) for x in rec):
-                errs.append(f"item {i}: 'recommended' deve ser lista de ids (texto)")
+                errs.append(say(lang, "q_rec_list", i=i))
             else:
                 if any(x not in ids for x in rec):
-                    errs.append(f"item {i}: 'recommended' cita id que nao esta em 'choices'")
+                    errs.append(say(lang, "q_rec_unknown", i=i))
                 if len(set(rec)) != len(rec):
-                    errs.append(f"item {i}: 'recommended' tem id repetido")
+                    errs.append(say(lang, "q_rec_repeat", i=i))
                 limit = (mx if _int(mx) else n) if multiple is True else 1
                 if len(rec) > limit:
-                    errs.append(f"item {i}: 'recommended' tem mais ids do que o limite ({limit})")
+                    errs.append(say(lang, "q_rec_limit", i=i, limit=limit))
                 if rec and not (isinstance(it.get("why"), str) and it["why"].strip()):
-                    errs.append(f"item {i}: 'why' e obrigatorio quando ha 'recommended'")
+                    errs.append(say(lang, "q_why_required", i=i))
         if it.get("why") is not None and not isinstance(it["why"], str):
-            errs.append(f"item {i}: 'why' deve ser string")
+            errs.append(say(lang, "q_why_str", i=i))
     fields = it.get("fields")
     fields = fields if isinstance(fields, list) else []
     if not any(isinstance(f, dict) and isinstance(f.get("text"), str) and f["text"].strip() for f in fields):
-        errs.append(f"item {i}: pergunta precisa de contexto (um item em 'fields' com texto)")
+        errs.append(say(lang, "q_context", i=i))
 
 
-def validate_labels(b, errs):
+def validate_labels(b, errs, lang=DEFAULT_LANG):
     """Optional batch-level `labels`: {"approve": {"text": "Apagar", "tone": "danger"}, ...}."""
     lb = b.get("labels")
     if lb is None:
         return
     if not isinstance(lb, dict):
-        errs.append("campo 'labels' deve ser objeto")
+        errs.append(say(lang, "labels_obj"))
         return
     for k, v in lb.items():
         if k not in LABEL_KEYS:
-            errs.append(f"labels: chave desconhecida '{k}' (use approve, reject ou maybe)")
+            errs.append(say(lang, "labels_key", k=k))
             continue
         if not isinstance(v, dict):
-            errs.append(f"labels.{k}: deve ser objeto com 'text' e, opcional, 'tone'")
+            errs.append(say(lang, "labels_entry", k=k))
             continue
         t = v.get("text")
         if not isinstance(t, str) or not t.strip() or len(t) > MAX_LABEL:
-            errs.append(f"labels.{k}: 'text' obrigatorio (1 a {MAX_LABEL} caracteres)")
+            errs.append(say(lang, "labels_text", k=k, max=MAX_LABEL))
         if v.get("tone") is not None and v["tone"] not in TONES:
-            errs.append(f"labels.{k}: 'tone' deve ser safe, danger ou caution")
+            errs.append(say(lang, "labels_tone", k=k))
 
 
-def validate(b):
+def validate(b, lang=DEFAULT_LANG):
+    """Every problem of a batch, as messages in `lang` (empty when the batch is valid)."""
     errs = []
     if not isinstance(b, dict):
-        return ["a raiz do batch.json deve ser um objeto"]
+        return [say(lang, "root_obj")]
     for k in ("batch_id", "title"):
         if not isinstance(b.get(k), str) or not b[k].strip():
-            errs.append(f"campo '{k}' e obrigatorio (string)")
+            errs.append(say(lang, "field_required", k=k))
     if "round" in b and (not isinstance(b["round"], int) or isinstance(b["round"], bool) or b["round"] < 1):
-        errs.append("campo 'round' deve ser inteiro >= 1")
-    validate_labels(b, errs)
-    lang = b.get("lang")  # null counts as omitted, like every optional key
-    if lang is not None and (not isinstance(lang, str) or lang not in LANGS):
-        errs.append("campo 'lang' deve ser en ou pt-BR")
+        errs.append(say(lang, "field_round"))
+    validate_labels(b, errs, lang)
+    lang_value = b.get("lang")  # null counts as omitted, like every optional key
+    if lang_value is not None and (not isinstance(lang_value, str) or lang_value not in LANGS):
+        errs.append(say(lang, "field_lang"))
     items = b.get("items")
     if not isinstance(items, list) or not items:
-        return errs + ["'items' deve ser uma lista nao vazia"]
+        return errs + [say(lang, "field_items")]
     seen = set()
     for i, it in enumerate(items):
         if not isinstance(it, dict):
-            errs.append(f"item {i}: deve ser objeto")
+            errs.append(say(lang, "item_obj", i=i))
             continue
         iid = it.get("id")
         if not isinstance(iid, str) or not iid:
-            errs.append(f"item {i}: 'id' obrigatorio")
+            errs.append(say(lang, "item_id", i=i))
         elif iid in seen:
-            errs.append(f"item {i}: id duplicado '{iid}'")
+            errs.append(say(lang, "item_dup", i=i, iid=iid))
         else:
             seen.add(iid)
         if not isinstance(it.get("title"), str) or not it["title"].strip():
-            errs.append(f"item {i}: 'title' obrigatorio")
+            errs.append(say(lang, "item_title", i=i))
         for k in ("tag", "image"):
             if it.get(k) is not None and not isinstance(it[k], str):
-                errs.append(f"item {i}: '{k}' deve ser string")
+                errs.append(say(lang, "item_str", i=i, k=k))
         if it.get("meta") is not None and not isinstance(it["meta"], dict):
-            errs.append(f"item {i}: 'meta' deve ser objeto")
+            errs.append(say(lang, "item_meta", i=i))
         r = it.get("risk")
         if r is not None and (not isinstance(r, dict) or any(k in r and not isinstance(r[k], str) for k in ("level", "text"))):
-            errs.append(f"item {i}: 'risk' deve ser objeto com 'level' e 'text' em texto")
+            errs.append(say(lang, "item_risk", i=i))
         f = it.get("fields")
         if f is None:  # null conta como omitido, como nos outros campos opcionais
             f = []
@@ -359,28 +475,31 @@ def validate(b):
             not isinstance(x, dict) or not isinstance(x.get("label"), str) or not isinstance(x.get("text"), str)
             for x in f
         ):
-            errs.append(f"item {i}: 'fields' deve ser lista de {{label, text}} (texto)")
+            errs.append(say(lang, "item_fields", i=i))
         cf = it.get("confirm")  # null counts as omitted
         if cf is not None:
             if not isinstance(cf, str) or not cf.strip():
-                errs.append(f"item {i}: 'confirm' deve ser texto nao vazio")
+                errs.append(say(lang, "item_confirm", i=i))
             elif is_question(it):
-                errs.append(f"item {i}: 'confirm' nao vale em card de pergunta")
-        validate_question(i, it, errs)
+                errs.append(say(lang, "item_confirm_q", i=i))
+        validate_question(i, it, errs, lang)
     return errs
 
 
-def load_batch(d):
+def load_batch(d, flag=None):
+    """The valid batch.json of `d`, or SystemExit with the reasons in the language of the run (`flag` is --lang)."""
     p = Path(d) / "batch.json"
+    lang = resolve_lang(None, flag)
     if not p.exists():
-        raise SystemExit(f"nao encontrei {p}")
+        raise SystemExit(say(lang, "no_batch", path=p))
     try:
         b = json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        raise SystemExit(f"batch.json nao e JSON valido: {e}")
-    errs = validate(b)
+        raise SystemExit(say(lang, "bad_json", e=e))
+    lang = resolve_lang(b, flag)
+    errs = validate(b, lang)
     if errs:
-        raise SystemExit("batch.json invalido:\n- " + "\n- ".join(errs))
+        raise SystemExit(say(lang, "invalid") + "\n- " + "\n- ".join(errs))
     return b
 
 
@@ -462,10 +581,10 @@ def answer_of(card, entry):
 # ---------------------------------------------------------------- estado
 
 class Store:
-    def __init__(self, d):
+    def __init__(self, d, lang=None):
         self.dir = Path(d).resolve()
         self.lock = threading.Lock()
-        self.batch = load_batch(self.dir)
+        self.batch = load_batch(self.dir, lang)
         self.path = self.dir / "decisions.json"
         self.ids = {it["id"] for it in self.batch["items"]}
         self.cards = {it["id"]: it for it in self.batch["items"]}
@@ -633,21 +752,22 @@ def recommended_taken(card, answer):
     return sorted(chosen) == sorted(rec)
 
 
-def answer_text(answer):
+def answer_text(answer, lang=DEFAULT_LANG):
     k = answer["kind"]
     if k == "choice":
         return answer["label"]
     if k == "choices":
         parts = list(answer["labels"])
         if "other" in answer:
-            parts.append("Outra: " + answer["other"])
+            parts.append(say(lang, "s_other", text=answer["other"]))
         return " + ".join(parts)
     if k == "other":
-        return "Outra: " + answer["text"]
+        return say(lang, "s_other", text=answer["text"])
     return answer["text"]
 
 
-def render_summary(batch, state, as_json=False):
+def render_summary(batch, state, as_json=False, lang=DEFAULT_LANG):
+    """The decisions as JSON (no language in it) or as text in `lang`."""
     groups = {"approved": [], "rejected": [], "maybe": [], "pending": []}
     answered, unsure = [], []
     has_questions = any(is_question(it) for it in batch["items"])
@@ -682,34 +802,34 @@ def render_summary(batch, state, as_json=False):
             indent=2,
         )
     lab = batch.get("labels") or {}
-    names = [(k, (lab.get(lk) or {}).get("text") or dflt) for k, lk, dflt in
-             (("approved", "approve", "Aprovados"), ("rejected", "reject", "Rejeitados"), ("maybe", "maybe", "Talvez"))]
-    out = [f"# AR board - {batch['title']} (lote {batch['batch_id']}, rodada {state.get('round')})"]
-    out.append(f"Concluido pelo usuario: {'sim' if state.get('finished') else 'NAO (parcial)'}")
+    names = [(k, (lab.get(lk) or {}).get("text") or say(lang, dflt)) for k, lk, dflt in
+             (("approved", "approve", "s_approved"), ("rejected", "reject", "s_rejected"), ("maybe", "maybe", "s_maybe"))]
+    out = [say(lang, "s_head", title=batch["title"], id=batch["batch_id"], round=state.get("round"))]
+    out.append(say(lang, "s_finished", value=say(lang, "s_yes" if state.get("finished") else "s_partial")))
 
     def section(label, rows, fmt):
         out.append(f"\n## {label} ({len(rows)})")
         for r in rows:
             line = fmt(r)
             if r["comment"]:
-                line += f"\n    comentario do usuario: {r['comment']!r}"
+                line += "\n    " + say(lang, "s_comment", comment=repr(r["comment"]))
             out.append(line)
 
     def plain(r):
         return f"- {r['id']} - {r['title']}"
 
     def with_answer(r):
-        mark = " (recomendada)" if r["recommended_taken"] else ""
-        return f"- {r['id']} - {r['title']}\n    resposta: {answer_text(r['answer'])}{mark}"
+        mark = " " + say(lang, "s_recommended") if r["recommended_taken"] else ""
+        return f"- {r['id']} - {r['title']}\n    " + say(lang, "s_answer", answer=answer_text(r["answer"], lang)) + mark
 
     for key, label in names:
         section(label, groups[key], plain)
     if has_questions:
-        section("Respondidas", answered, with_answer)
-        section("Precisam de contexto", unsure, plain)
-    section("Sem decisao", groups["pending"], plain)
+        section(say(lang, "s_answered"), answered, with_answer)
+        section(say(lang, "s_unsure"), unsure, plain)
+    section(say(lang, "s_pending"), groups["pending"], plain)
     if state.get("batch_note"):
-        out.append(f"\n## Nota geral do lote\n{state['batch_note']}")
+        out.append(f"\n## {say(lang, 's_note')}\n{state['batch_note']}")
     return "\n".join(out)
 
 
@@ -807,9 +927,10 @@ I18N = {
 
 
 def resolve_lang(batch, flag=None):
-    """The language the page opens in before the browser's own choice: --lang, then the batch's `lang`, then English."""
-    for cand in (flag, batch.get("lang")):
-        if cand in LANGS:
+    """The language of a run: --lang, then the batch's `lang`, then CAPYBARA_LANG, then English. The command line
+    uses it as it is; the page opens in it and then applies the browser's saved toggle on top (R1)."""
+    for cand in (flag, batch.get("lang") if isinstance(batch, dict) else None, env_lang()):
+        if isinstance(cand, str) and cand in LANGS:
             return cand
     return DEFAULT_LANG
 
@@ -1422,24 +1543,25 @@ def make_handler(store, token, lang=None):
 # ---------------------------------------------------------------- comandos
 
 def cmd_serve(a):
+    flag = getattr(a, "lang", None)
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", a.port), BaseHTTPRequestHandler)
     except OSError as e:
-        raise SystemExit(f"nao consegui abrir a porta {a.port}: {e}")
+        raise SystemExit(say(resolve_lang(None, flag), "port", port=a.port, e=e))
     try:
-        store = Store(a.dir)
+        store = Store(a.dir, flag)
     except BaseException:
         srv.server_close()
         raise
     token = secrets.token_urlsafe(16)
-    srv.RequestHandlerClass = make_handler(store, token, a.lang)
+    srv.RequestHandlerClass = make_handler(store, token, flag)
     if a.exit_on_finish:
         store.exit_cb = lambda: (time.sleep(0.6), srv.shutdown())
     signal.signal(signal.SIGTERM, lambda s, f: threading.Thread(target=srv.shutdown, daemon=True).start())
     url = f"http://127.0.0.1:{srv.server_address[1]}/?t={token}"
     info = store.dir / "server.json"
     write_private(info, json.dumps({"url": url, "pid": os.getpid(), "started_at": now()}))
-    print(f"AR-BOARD URL: {url}", flush=True)
+    print(f"AR-BOARD URL: {url}", flush=True)  # the line tags are the same in both languages: agents look for them
     print(f"AR-BOARD DECISOES: {store.path}", flush=True)
     if a.open:
         webbrowser.open(url)
@@ -1455,28 +1577,29 @@ def cmd_serve(a):
 
 
 def cmd_wait(a):
-    batch = load_batch(a.dir)
+    batch = load_batch(a.dir, getattr(a, "lang", None))
+    lang = resolve_lang(batch, getattr(a, "lang", None))
     end = time.time() + a.timeout if a.timeout else None
     while True:
         s = read_state(a.dir, batch)
         if s and s.get("finished"):
-            print(render_summary(batch, s))
+            print(render_summary(batch, s, lang=lang))
             return 0
         if end and time.time() > end:
-            print("TIMEOUT: o usuario ainda nao concluiu o lote.")
+            print(say(lang, "timeout"))
             return 2
         time.sleep(1)
 
 
 def cmd_summary(a):
-    batch = load_batch(a.dir)
+    batch = load_batch(a.dir, getattr(a, "lang", None))
     state = read_state(a.dir, batch) or {"round": round_of(batch), "items": {}}
-    print(render_summary(batch, state, as_json=a.json))
+    print(render_summary(batch, state, as_json=a.json, lang=resolve_lang(batch, getattr(a, "lang", None))))
     return 0
 
 
 def cmd_build(a):
-    batch = json.loads(json.dumps(load_batch(a.dir)))
+    batch = json.loads(json.dumps(load_batch(a.dir, getattr(a, "lang", None))))
     root = Path(a.dir).resolve()
     for it in batch["items"]:
         img = it.get("image")
@@ -1489,44 +1612,49 @@ def cmd_build(a):
                 it.pop("image")
     state = {"batch_id": batch["batch_id"], "round": int(batch.get("round", 1)), "items": {}, "batch_note": ""}
     out = root / "board.html"
-    out.write_bytes(render_page(batch, state, "", False, a.lang))
+    out.write_bytes(render_page(batch, state, "", False, getattr(a, "lang", None)))
     print(f"AR-BOARD ARQUIVO: {out}")
     return 0
 
 
 def cmd_check(a):
-    b = load_batch(a.dir)
+    b = load_batch(a.dir, getattr(a, "lang", None))
+    lang = resolve_lang(b, getattr(a, "lang", None))
     nq = sum(1 for it in b["items"] if is_question(it))
     if nq > MAX_QUESTIONS:
-        print(f"aviso: {nq} perguntas na rodada; o ideal e ate {MAX_QUESTIONS} (as dependentes ficam para a proxima rodada)", file=sys.stderr)
-    print(f"ok: {len(b['items'])} itens, lote {b['batch_id']}, rodada {b.get('round', 1)}")
+        print(say(lang, "many_questions", n=nq, max=MAX_QUESTIONS), file=sys.stderr)
+    print(say(lang, "ok", n=len(b["items"]), id=b["batch_id"], round=b.get("round", 1)))
     return 0
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="ar_board.py", description="ar-board: painel local de aprovar/rejeitar (somente stdlib).")
+    ap = argparse.ArgumentParser(prog="ar_board.py", description="ar-board: a local approve/reject panel (standard library only).")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    lang_help = "language of the panel and of the messages (default: the batch's lang, then CAPYBARA_LANG, then en)"
     s = sub.add_parser("serve")
     s.add_argument("dir")
     s.add_argument("--port", type=int, default=0)
     s.add_argument("--open", action="store_true")
     s.add_argument("--exit-on-finish", action="store_true")
-    s.add_argument("--lang", choices=LANGS, default=None, help="idioma inicial do painel (padrao: o lang do batch, senao en)")
+    s.add_argument("--lang", choices=LANGS, default=None, help=lang_help)
     s.set_defaults(fn=cmd_serve)
     w = sub.add_parser("wait")
     w.add_argument("dir")
     w.add_argument("--timeout", type=int, default=0)
+    w.add_argument("--lang", choices=LANGS, default=None, help=lang_help)
     w.set_defaults(fn=cmd_wait)
     m = sub.add_parser("summary")
     m.add_argument("dir")
     m.add_argument("--json", action="store_true")
+    m.add_argument("--lang", choices=LANGS, default=None, help=lang_help)
     m.set_defaults(fn=cmd_summary)
     b = sub.add_parser("build")
     b.add_argument("dir")
-    b.add_argument("--lang", choices=LANGS, default=None, help="idioma inicial do painel (padrao: o lang do batch, senao en)")
+    b.add_argument("--lang", choices=LANGS, default=None, help=lang_help)
     b.set_defaults(fn=cmd_build)
     c = sub.add_parser("check")
     c.add_argument("dir")
+    c.add_argument("--lang", choices=LANGS, default=None, help=lang_help)
     c.set_defaults(fn=cmd_check)
     a = ap.parse_args()
     sys.exit(a.fn(a) or 0)

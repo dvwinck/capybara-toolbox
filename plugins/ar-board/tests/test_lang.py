@@ -68,12 +68,13 @@ class ValidateLangTest(unittest.TestCase):
         for bad in ("pt", "EN", "en-US", "", " en", 1, True, ["en"], {"en": 1}):
             with self.subTest(lang=bad):
                 errs = ab.validate(board(lang=bad))
-                self.assertEqual(errs, ["campo 'lang' deve ser en ou pt-BR"])
+                self.assertEqual(errs, ["field 'lang' must be en or pt-BR"])
+                self.assertEqual(ab.validate(board(lang=bad), "pt-BR"), ["campo 'lang' deve ser en ou pt-BR"])
 
     def test_a_lang_error_does_not_hide_item_errors(self):
         errs = ab.validate(board(lang="xx", items=[{"id": "A01"}]))
         self.assertTrue(any("'lang'" in e for e in errs), errs)
-        self.assertTrue(any("'title' obrigatorio" in e for e in errs), errs)
+        self.assertTrue(any("'title' is required" in e for e in errs), errs)
 
     def test_every_shipped_example_batch_still_validates(self):
         examples = sorted((REPO / "plugins").glob("*/skills/*/examples/batch.example.json"))
@@ -151,7 +152,7 @@ class CommandLineTest(unittest.TestCase):
             d = make_batch(tmp, lang="xx")
             r = subprocess.run([sys.executable, "-I", str(SCRIPT), "check", str(d)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 1)
-            self.assertIn("campo 'lang' deve ser en ou pt-BR", r.stderr)
+            self.assertIn("field 'lang' must be en or pt-BR", r.stderr)
             self.assertNotIn("Traceback", r.stderr)
 
     def test_an_unknown_lang_flag_is_refused_before_anything_is_written(self):

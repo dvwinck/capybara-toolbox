@@ -98,33 +98,41 @@ class TextSummaryTest(unittest.TestCase):
         b = batch(Q1, Q3, Q4)
         s = state(Q01={"choice": "a", "comment": "gostei"}, Q03={"decision": "maybe"})
         out = ab.render_summary(b, s)
-        self.assertIn("## Respondidas (1)", out)
+        self.assertIn("## Answered (1)", out)
         self.assertIn("- Q01 - Um", out)
+        self.assertIn("answer: Opcao A (recommended)", out)
+        self.assertIn("user comment: 'gostei'", out)
+        self.assertIn("## Need context (1)", out)
+        self.assertIn("- Q03 - Tres", out)
+        self.assertIn("## No decision (1)", out)
+        self.assertLess(out.index("## Answered"), out.index("## No decision"))
+        out = ab.render_summary(b, s, lang="pt-BR")  # the pt-BR summary is the one the engine printed before
+        self.assertIn("## Respondidas (1)", out)
         self.assertIn("resposta: Opcao A (recomendada)", out)
         self.assertIn("comentario do usuario: 'gostei'", out)
         self.assertIn("## Precisam de contexto (1)", out)
-        self.assertIn("- Q03 - Tres", out)
         self.assertIn("## Sem decisao (1)", out)
         self.assertLess(out.index("## Respondidas"), out.index("## Sem decisao"))
 
     def test_other_and_open_lines(self):
         out = ab.render_summary(batch(Q3, Q4), state(Q03={"comment": "limpar"}, Q04={"other": True, "comment": "x y"}))
-        self.assertIn("resposta: limpar", out)
-        self.assertIn("resposta: Outra: x y", out)
+        self.assertIn("answer: limpar", out)
+        self.assertIn("answer: Other: x y", out)
 
     def test_proposal_only_text_has_no_question_sections(self):
         out = ab.render_summary(batch(A1), state(A01={"decision": "approved"}))
-        self.assertNotIn("Respondidas", out)
-        self.assertNotIn("Precisam de contexto", out)
-        self.assertIn("## Aprovados (1)", out)
+        self.assertNotIn("Answered", out)
+        self.assertNotIn("Need context", out)
+        self.assertIn("## Approved (1)", out)
 
 
 class HelpersTest(unittest.TestCase):
     def test_answer_text(self):
         self.assertEqual(ab.answer_text({"kind": "choice", "id": "a", "label": "A"}), "A")
         self.assertEqual(ab.answer_text({"kind": "choices", "ids": ["a", "b"], "labels": ["A", "B"]}), "A + B")
-        self.assertEqual(ab.answer_text({"kind": "choices", "ids": ["a"], "labels": ["A"], "other": "z"}), "A + Outra: z")
-        self.assertEqual(ab.answer_text({"kind": "other", "text": "z"}), "Outra: z")
+        self.assertEqual(ab.answer_text({"kind": "choices", "ids": ["a"], "labels": ["A"], "other": "z"}), "A + Other: z")
+        self.assertEqual(ab.answer_text({"kind": "other", "text": "z"}), "Other: z")
+        self.assertEqual(ab.answer_text({"kind": "other", "text": "z"}, "pt-BR"), "Outra: z")
         self.assertEqual(ab.answer_text({"kind": "open", "text": "z"}), "z")
 
 
