@@ -64,14 +64,14 @@ class ValidateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = make_batch(tmp, items=[{"id": "A01", "title": "x", "fields": None}])
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(ab.cmd_build(Namespace(dir=str(d))), 0)
+                self.assertEqual(ab.cmd_build(Namespace(dir=str(d), lang=None)), 0)
             self.assertIn("(it.fields || [])", ab.PAGE)  # the page treats null fields as none
 
     def test_build_works_with_null_image(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = make_batch(tmp, items=[{"id": "A01", "title": "x", "image": None}])
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(ab.cmd_build(Namespace(dir=str(d))), 0)
+                self.assertEqual(ab.cmd_build(Namespace(dir=str(d), lang=None)), 0)
 
     def test_load_batch_rejects_bad_round(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -142,10 +142,10 @@ Write this content, unchanged, to `~/.claude/ar-board/ar_board.py`:
 # Copyright (c) 2026 Diogo Winck
 #
 # Uso:
-#   ar_board.py serve   DIR [--port N] [--open] [--exit-on-finish]
+#   ar_board.py serve   DIR [--port N] [--open] [--exit-on-finish] [--lang en|pt-BR]
 #   ar_board.py wait    DIR [--timeout SEGUNDOS]     # bloqueia ate o usuario clicar "Concluir"
 #   ar_board.py summary DIR [--json]                  # resumo das decisoes (le decisions.json)
-#   ar_board.py build   DIR                           # gera board.html offline (fallback sem localhost)
+#   ar_board.py build   DIR [--lang en|pt-BR]         # gera board.html offline (fallback sem localhost)
 #   ar_board.py check   DIR                           # valida batch.json
 import argparse
 import base64
@@ -174,6 +174,8 @@ CHOICE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
 LABEL_KEYS = ("approve", "reject", "maybe")  # batch-level `labels`: custom wording for A / R / M
 TONES = ("safe", "danger", "caution")  # colour meaning of a label: green, red, amber
 MAX_LABEL = 24
+LANGS = ("en", "pt-BR")  # panel languages accepted by `lang`, --lang and the header toggle
+DEFAULT_LANG = "en"
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
 MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
@@ -308,6 +310,9 @@ def validate(b):
     if "round" in b and (not isinstance(b["round"], int) or isinstance(b["round"], bool) or b["round"] < 1):
         errs.append("campo 'round' deve ser inteiro >= 1")
     validate_labels(b, errs)
+    lang = b.get("lang")  # null counts as omitted, like every optional key
+    if lang is not None and (not isinstance(lang, str) or lang not in LANGS):
+        errs.append("campo 'lang' deve ser en ou pt-BR")
     items = b.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["'items' deve ser uma lista nao vazia"]
@@ -692,6 +697,107 @@ def render_summary(batch, state, as_json=False):
     if state.get("batch_note"):
         out.append(f"\n## Nota geral do lote\n{state['batch_note']}")
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------- textos do painel
+
+# Every user-visible string of the page, in both languages: the markup and the JavaScript only ever ask
+# T('key'). The two tables have the same keys and the same {placeholders} (a test enforces it). Values
+# are plain text (no markup: some reach innerHTML unescaped) and the pt-BR side is written with accents.
+I18N = {
+    "en": {
+        "lang_label": "Language",
+        "key_approve": "approve", "key_reject": "reject", "key_maybe": "maybe", "key_choose": "choose",
+        "key_confirm": "confirm", "key_more_context": "more context", "key_skip": "skip", "key_comment": "comment",
+        "key_leave_field": "leave the field", "key_navigate": "navigate", "auto_advance": "advance on decide",
+        "comment_label": "Comment on this item (C focuses · saves by itself). Valid for any decision.",
+        "comment_placeholder": "Why did you approve, reject or hesitate? This is what trains the agent most.",
+        "comment_optional": "Comment (optional, saves by itself)", "your_answer": "Your answer", "required": "(required)",
+        "approve": "Approve", "reject": "Reject", "maybe": "Maybe", "skip": "Skip", "prev": "Previous", "next": "Next",
+        "confirm_label": "Confirm: {label}",
+        "armed_hint": "Press A again (or click Confirm) to confirm; Esc cancels.", "confirm_cancelled": "Confirmation cancelled.",
+        "state_approved": "Approved", "state_rejected": "Rejected", "state_maybe": "Maybe",
+        "state_answered": "Answered", "state_unsure": "Needs context",
+        "count_approved": "approved", "count_rejected": "rejected", "count_maybe": "maybe", "count_pending": "undecided",
+        "count_answered": "answered", "count_unsure": "need context", "count_unanswered": "unanswered",
+        "subtitle": "Batch: {id} · items: {n} · round {round}", "risk": "Risk",
+        "decided_hint": "{label}: {id} — use ← to go back and comment",
+        "result": "Result", "note_label": "General note on the batch (batch_note)",
+        "note_placeholder": "General remark about this whole batch...",
+        "finish": "Finish and notify the agent", "review_finish": "Review and finish", "download": "Download JSON",
+        "copy": "Copy", "copied": "Copied!", "clear": "Clear",
+        "clear_confirm": "Clear every decision and comment of this batch?",
+        "finish_anyway": "Undecided items: {n}. Finish anyway?",
+        "done_banner": "Finished. Go back to Claude Code and say \"done\" — the agent reads the decisions by itself.",
+        "no_server": "No connection to the server. Use Copy and paste the result in the chat.",
+        "live": "live", "disconnected_badge": "no connection — use Copy", "offline_badge": "local file — use Copy",
+        "need_context": "I need more context", "other_prefix": "Other: ", "other_answer": "Other answer...",
+        "other_effect": "the text of the field beside becomes the answer",
+        "open_question_how": "Open question: write the answer in the field beside (required).",
+        "choose_range": "Choose from {min} to {max}. Enter confirms.", "choose_one": "Choose one option.",
+        "if_chosen": "if chosen: ", "recommended": "recommended", "why_recommended": "Why we recommend it:",
+        "max_options": "At most {max} options. Unselect one first.", "write_answer": "Write your answer in the field beside.",
+        "answered_hint": "Answered: {id} — use ← to go back and change",
+        "marked_unsure": "Marked: needs more context. The agent explains again in the next round.",
+        "need_open_answer": "Write the answer in the field beside (or use M).",
+        "need_min_options": "Choose at least {min} option(s) (or use M).",
+        "need_one_option": "Choose an option first (or M to ask for context).",
+        "review_title": "Review your answers ({n} of {total})", "no_answer": "(no answer)",
+        "answer_link": "answer", "change_link": "change",
+        "review_missing": "{n} without an answer: the agent will ask in the chat and never assumes the recommended option.",
+        "back_fix": "Go back and fix", "confirm_finish": "Confirm and notify the agent", "copy_result": "Copy the result",
+    },
+    "pt-BR": {
+        "lang_label": "Idioma",
+        "key_approve": "aprovar", "key_reject": "rejeitar", "key_maybe": "talvez", "key_choose": "escolher",
+        "key_confirm": "confirmar", "key_more_context": "mais contexto", "key_skip": "pular", "key_comment": "comentar",
+        "key_leave_field": "sair do campo", "key_navigate": "navegar", "auto_advance": "avançar ao decidir",
+        "comment_label": "Comentário deste item (C foca · salva sozinho). Vale para qualquer decisão.",
+        "comment_placeholder": "Por que aprovou, rejeitou ou ficou em dúvida? Isso é o que mais treina o agente.",
+        "comment_optional": "Comentário (opcional, salva sozinho)", "your_answer": "Sua resposta", "required": "(obrigatória)",
+        "approve": "Aprovar", "reject": "Rejeitar", "maybe": "Talvez", "skip": "Pular", "prev": "Anterior", "next": "Próximo",
+        "confirm_label": "Confirmar: {label}",
+        "armed_hint": "Aperte A de novo (ou clique em Confirmar) para confirmar; Esc cancela.", "confirm_cancelled": "Confirmação cancelada.",
+        "state_approved": "Aprovado", "state_rejected": "Rejeitado", "state_maybe": "Talvez",
+        "state_answered": "Respondida", "state_unsure": "Precisa de contexto",
+        "count_approved": "aprovados", "count_rejected": "rejeitados", "count_maybe": "talvez", "count_pending": "sem decisão",
+        "count_answered": "respondidas", "count_unsure": "precisam de contexto", "count_unanswered": "sem resposta",
+        "subtitle": "Lote: {id} · itens: {n} · rodada {round}", "risk": "Risco",
+        "decided_hint": "{label}: {id} — use ← para voltar e comentar",
+        "result": "Resultado", "note_label": "Nota geral do lote (batch_note)",
+        "note_placeholder": "Observação geral sobre este lote inteiro...",
+        "finish": "Concluir e avisar o agente", "review_finish": "Revisar e concluir", "download": "Baixar JSON",
+        "copy": "Copiar", "copied": "Copiado!", "clear": "Limpar",
+        "clear_confirm": "Limpar todas as decisões e comentários deste lote?",
+        "finish_anyway": "Itens sem decisão: {n}. Concluir mesmo assim?",
+        "done_banner": "Concluído. Volte ao Claude Code e diga \"terminei\" — o agente lê as decisões sozinho.",
+        "no_server": "Sem conexão com o servidor. Use Copiar e cole o resultado no chat.",
+        "live": "ao vivo", "disconnected_badge": "sem conexão — use Copiar", "offline_badge": "arquivo local — use Copiar",
+        "need_context": "Preciso de mais contexto", "other_prefix": "Outra: ", "other_answer": "Outra resposta...",
+        "other_effect": "o texto do campo ao lado vira a resposta",
+        "open_question_how": "Pergunta aberta: escreva a resposta ao lado (obrigatória).",
+        "choose_range": "Escolha de {min} até {max}. Enter confirma.", "choose_one": "Escolha uma opção.",
+        "if_chosen": "se escolher: ", "recommended": "recomendada", "why_recommended": "Por que recomendamos:",
+        "max_options": "Máximo de {max} opções. Desmarque uma antes.", "write_answer": "Escreva sua resposta no campo ao lado.",
+        "answered_hint": "Respondida: {id} — use ← para voltar e mudar",
+        "marked_unsure": "Marcada: precisa de mais contexto. O agente volta a explicar na próxima rodada.",
+        "need_open_answer": "Escreva a resposta no campo ao lado (ou use M).",
+        "need_min_options": "Escolha pelo menos {min} opção(ões) (ou use M).",
+        "need_one_option": "Escolha uma opção primeiro (ou M para pedir contexto).",
+        "review_title": "Revise suas respostas ({n} de {total})", "no_answer": "(sem resposta)",
+        "answer_link": "responder", "change_link": "alterar",
+        "review_missing": "{n} sem resposta: o agente vai perguntar no chat e nunca assume a opção recomendada.",
+        "back_fix": "Voltar e corrigir", "confirm_finish": "Confirmar e avisar o agente", "copy_result": "Copiar resultado",
+    },
+}
+
+
+def resolve_lang(batch, flag=None):
+    """The language the page opens in before the browser's own choice: --lang, then the batch's `lang`, then English."""
+    for cand in (flag, batch.get("lang")):
+        if cand in LANGS:
+            return cand
+    return DEFAULT_LANG
 
 
 # ---------------------------------------------------------------- pagina
@@ -1167,8 +1273,10 @@ render();
 """
 
 
-def render_page(batch, state, token, live):
-    boot = json.dumps({"batch": batch, "state": state, "token": token, "live": live}, ensure_ascii=False)
+def render_page(batch, state, token, live, lang=None):
+    """`lang` is the --lang of serve/build (None: the batch decides); the page itself applies the saved toggle on top."""
+    boot = json.dumps({"batch": batch, "state": state, "token": token, "live": live, "lang": resolve_lang(batch, lang), "i18n": I18N},
+                      ensure_ascii=False)
     boot = boot.replace("</", "<\\/").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     title = batch["title"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     values = {"TITLE": title, "BOOT": boot, "MASCOT": MASCOT_SVG, "FAVICON": FAVICON}
@@ -1178,7 +1286,7 @@ def render_page(batch, state, token, live):
 
 # ---------------------------------------------------------------- servidor
 
-def make_handler(store, token):
+def make_handler(store, token, lang=None):
     class H(BaseHTTPRequestHandler):
         server_version = "ar-board"
         sys_version = ""  # o cabecalho Server nao revela a versao do Python
@@ -1222,7 +1330,7 @@ def make_handler(store, token):
                        "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
                        "frame-ancestors 'none'")
                 with store.lock:
-                    page = render_page(store.batch, store.state, token, True)
+                    page = render_page(store.batch, store.state, token, True, lang)
                 return self._send(200, page, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
             if u.path == "/api/state":
                 with store.lock:
@@ -1285,7 +1393,7 @@ def cmd_serve(a):
         srv.server_close()
         raise
     token = secrets.token_urlsafe(16)
-    srv.RequestHandlerClass = make_handler(store, token)
+    srv.RequestHandlerClass = make_handler(store, token, a.lang)
     if a.exit_on_finish:
         store.exit_cb = lambda: (time.sleep(0.6), srv.shutdown())
     signal.signal(signal.SIGTERM, lambda s, f: threading.Thread(target=srv.shutdown, daemon=True).start())
@@ -1342,7 +1450,7 @@ def cmd_build(a):
                 it.pop("image")
     state = {"batch_id": batch["batch_id"], "round": int(batch.get("round", 1)), "items": {}, "batch_note": ""}
     out = root / "board.html"
-    out.write_bytes(render_page(batch, state, "", False))
+    out.write_bytes(render_page(batch, state, "", False, a.lang))
     print(f"AR-BOARD ARQUIVO: {out}")
     return 0
 
@@ -1364,6 +1472,7 @@ def main():
     s.add_argument("--port", type=int, default=0)
     s.add_argument("--open", action="store_true")
     s.add_argument("--exit-on-finish", action="store_true")
+    s.add_argument("--lang", choices=LANGS, default=None, help="idioma inicial do painel (padrao: o lang do batch, senao en)")
     s.set_defaults(fn=cmd_serve)
     w = sub.add_parser("wait")
     w.add_argument("dir")
@@ -1375,6 +1484,7 @@ def main():
     m.set_defaults(fn=cmd_summary)
     b = sub.add_parser("build")
     b.add_argument("dir")
+    b.add_argument("--lang", choices=LANGS, default=None, help="idioma inicial do painel (padrao: o lang do batch, senao en)")
     b.set_defaults(fn=cmd_build)
     c = sub.add_parser("check")
     c.add_argument("dir")
