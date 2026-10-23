@@ -51,7 +51,7 @@ class FieldCommandsTest(ConfigDirCase):
         (self.home / "header-footer.json").write_text("{oops", encoding="utf-8")
         rc, _, err = self.run_cli("header-fields", "time")
         self.assertEqual(rc, 2)
-        self.assertIn("nao e JSON valido", err)
+        self.assertIn("is not valid JSON", err)
         self.assertEqual((self.home / "header-footer.json").read_text(encoding="utf-8"), "{oops")
 
     def test_a_wrongly_typed_config_value_is_a_usage_error_naming_the_key(self):
@@ -230,12 +230,12 @@ class StatusTest(ConfigDirCase):
         self.write_config({"footer": {"enabled": False}})
         rc, st = self.status()
         self.assertEqual(rc, 1)
-        self.assertTrue(any("duplicado" in p for p in st["problems"]))
+        self.assertTrue(any("comes out twice" in p for p in st["problems"]))
 
     def header_problems(self, settings, header_on=True):
         (self.home / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
         self.write_config({"header": {"enabled": header_on}})
-        return [p for p in self.status()[1]["problems"] if "nenhum hook" in p]
+        return [p for p in self.status()[1]["problems"] if "no hook runs it" in p]
 
     def test_a_header_with_no_hook_to_drive_it_is_reported(self):
         self.assertEqual(len(self.header_problems({})), 1)
@@ -271,6 +271,8 @@ class StatusTest(ConfigDirCase):
         rc, st = self.status()
         self.assertEqual((rc, st["problems"]), (0, []))
         rc, out, _ = self.run_cli("status")
+        self.assertIn("all good", strip_ansi(out))
+        rc, out, _ = self.run_cli("status", "--lang", "pt-BR")
         self.assertIn("tudo certo", strip_ansi(out))
 
     def test_preview_and_fields_list(self):
@@ -284,3 +286,105 @@ class StatusTest(ConfigDirCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- the language (header-footer 0.4.0)
+
+import ast
+import re
+from datetime import datetime
+
+from helpers import SCRIPT
+
+FRIDAY = datetime(2026, 10, 16, 9, 5, 7)
+HF_PRINTING = ("load_config", "type_name", "state_hook", "load_settings", "collect_status", "preview_header",
+               "preview_footer", "print_status", "parse_fields", "toggle", "main", "run_command", "split_lang")
+HF_PT_WORDS = {"nao", "valido", "precisa", "objeto", "texto", "lista", "textos", "evento", "estado", "invalido", "antigo",
+               "duplicado", "remova", "entrada", "campo", "desconhecido", "ligado", "desligado", "nenhum", "executa",
+               "habilitado", "usuario", "projeto", "aponta", "rode", "copia", "versao", "novo", "gravado", "existe",
+               "instalado", "sai", "vazio", "linha", "topo", "resposta", "quando", "diagnostico", "tudo", "certo",
+               "informe", "menos", "disponiveis", "vale", "proximo", "outra", "troca", "ganha", "deste", "vou", "mao",
+               "reinicie", "mudar", "registrados", "removidos", "uso", "formato", "funciona", "plataforma", "comando",
+               "erro", "idioma", "padrao", "depois"}
+
+
+class LanguageTablesTest(ConfigDirCase):
+    def test_the_tables_agree_in_both_languages_and_the_messages_are_plain_ascii(self):
+        en, pt = self.hf.MSG["en"], self.hf.MSG["pt-BR"]
+        self.assertEqual(set(en), set(pt))
+        for key in en:
+            with self.subTest(key=key):
+                self.assertEqual(set(re.findall(r"\{(\w+)\}", en[key])), set(re.findall(r"\{(\w+)\}", pt[key])))
+                self.assertTrue(en[key].isascii() and pt[key].isascii(), key)
+        for section in ("header", "footer"):
+            self.assertEqual(list(self.hf.FIELD_HELP["en"][section]), list(self.hf.FIELD_HELP["pt-BR"][section]))
+        self.assertEqual([len(days) for days in self.hf.WEEKDAYS.values()], [7, 7])
+        self.assertEqual((pt["s_all_good"], pt["s_diagnosis"]), ("tudo certo", "DIAGNOSTICO"))  # the 0.3.0 output
+
+    def test_no_portuguese_literal_is_left_in_the_functions_that_print(self):
+        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+        found = []
+        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in HF_PRINTING):
+            body = fn.body[1:] if isinstance(fn.body[0], ast.Expr) and isinstance(fn.body[0].value, ast.Constant) else fn.body
+            for node in (n for stmt in body for n in ast.walk(stmt)):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    if set(re.split(r"[^a-z]+", node.value.lower())) & HF_PT_WORDS:
+                        found.append(f"{fn.name}: {node.value!r}")
+        self.assertEqual(found, [], "Portuguese left outside MSG:\n" + "\n".join(found))
+
+
+class LanguageTest(ConfigDirCase):
+    def hook(self, prompt_id):
+        payload = json.dumps({"session_id": "s1", "prompt": "hi", "prompt_id": prompt_id, "cwd": "/nonexistent"})
+        return self.hf.header_hook(payload, now=FRIDAY)
+
+    def test_the_weekday_follows_the_config_then_capybara_lang_and_the_instruction_stays_english(self):
+        self.write_config({"header": {"fields": ["weekday"]}})
+        self.assertTrue(self.hook("p1").startswith("<reply-header>🕐 Fri</reply-header>\n"))
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "pt-BR"}):
+            out = self.hook("p2")
+        self.assertTrue(out.startswith("<reply-header>🕐 sex</reply-header>\n"))
+        self.assertIn(self.hf.INSTRUCTION, out)  # addressed to the model: English in both languages
+        self.write_config({"lang": "en", "header": {"fields": ["weekday"]}})
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "pt-BR"}):
+            self.assertTrue(self.hook("p3").startswith("<reply-header>🕐 Fri</reply-header>\n"))
+
+    def test_the_footer_is_the_same_in_both_languages(self):
+        payload = json.dumps({"model": {"display_name": "Opus"}, "context_window": {"remaining_percentage": 62},
+                              "cost": {"total_cost_usd": 1.84}})
+        outputs = []
+        for lang in ("en", "pt-BR"):
+            self.write_config({"lang": lang, "footer": {"fields": ["model", "context", "cost"]}})
+            outputs.append(self.run_cli("footer", stdin=payload)[1])
+        self.assertEqual(outputs[0], outputs[1])
+        self.assertIn("Opus", outputs[0])
+
+    def test_the_lang_command_saves_and_clears_the_config(self):
+        rc, out, _ = self.run_cli("lang", "pt-BR")
+        self.assertEqual((rc, out), (0, "lang: pt-BR\n"))
+        self.assertEqual(self.read_json("header-footer.json")["lang"], "pt-BR")
+        self.assertIn("IDIOMA: pt-BR (header-footer.json)", strip_ansi(self.run_cli("status")[1]))
+        self.assertIn("  time     hora (header-format)", self.run_cli("fields")[1])
+        self.assertIn("  time     time (header-format)", self.run_cli("fields", "--lang", "en")[1])
+        rc, out, _ = self.run_cli("lang", "auto")
+        self.assertEqual((rc, out), (0, "lang: auto (CAPYBARA_LANG, then en)\n"))
+        self.assertNotIn("lang", self.read_json("header-footer.json"))
+        rc, _, err = self.run_cli("lang", "pt")
+        self.assertEqual((rc, err), (2, "error: usage: lang en|pt-BR|auto\n"))
+
+    def test_a_bad_flag_or_a_bad_config_lang_is_a_usage_error_but_the_hooks_keep_working(self):
+        rc, _, err = self.run_cli("status", "--lang", "xx")
+        self.assertEqual((rc, err), (2, "error: --lang must be en or pt-BR\n"))
+        self.write_config({"lang": "pt", "header": {"fields": ["weekday"]}})
+        rc, _, err = self.run_cli("status")
+        self.assertEqual(rc, 2)
+        self.assertIn("lang must be en or pt-BR", err)
+        self.assertTrue(self.hook("p1").startswith("<reply-header>🕐 Fri</reply-header>\n"))
+
+    def test_a_bad_capybara_lang_is_a_status_problem_and_nothing_else(self):
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "pt_BR"}):
+            rc, out, err = self.run_cli("status", "--json")
+            self.assertEqual(err, "")
+            self.assertTrue(any("CAPYBARA_LANG=pt_BR is not en or pt-BR" in p for p in json.loads(out)["problems"]))
+            self.assertEqual(json.loads(out)["lang"], "en")
+        self.assertEqual(self.hf.CLI_LANG, "en")  # main() put the default back

@@ -107,7 +107,7 @@
         "skill"
       ],
       "category": "productivity",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "description": "A verified header line at the top of every Claude reply (time, date, branch...) and a configurable status-line footer (session tokens, plan limits, clock...), both from one config file. Python standard library only.",
       "homepage": "https://github.com/dvwinck/capybara-toolbox",
       "repository": "https://github.com/dvwinck/capybara-toolbox"

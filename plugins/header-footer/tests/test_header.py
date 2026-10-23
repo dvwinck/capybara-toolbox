@@ -21,7 +21,8 @@ class RenderHeaderTest(ConfigDirCase):
     def test_fields_keep_their_order_and_skip_the_empty_ones(self):
         h = self.header(fields=["weekday", "branch", "date", "time"], date_format="%d/%m")
         # /nonexistent is no git repository, so branch is empty and leaves no double separator
-        self.assertEqual(self.hf.render_header(h, "/nonexistent", NOW), "🕐 sex · 16/10 · 09:05")
+        self.assertEqual(self.hf.render_header(h, "/nonexistent", NOW), "🕐 Fri · 16/10 · 09:05")
+        self.assertEqual(self.hf.render_header(h, "/nonexistent", NOW, "pt-BR"), "🕐 sex · 16/10 · 09:05")
 
     def test_branch_and_repo_come_from_git(self):
         with tempfile.TemporaryDirectory() as tmp:
