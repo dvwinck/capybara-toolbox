@@ -291,8 +291,8 @@ footer p { margin: 0; }
         <li><h3>It acts on what you approved</h3><p>The agent reads the decisions with <code>summary</code>, is told by its skill to work only on the approved cards, and asks you to confirm the rules it inferred from your comments.</p></li>
       </ol>
       <figure class="shot">
-        <img src="panel.png" width="1280" height="836" loading="lazy" alt="The real ar-board panel: a card showing what, why, and risk; the approve, reject, and maybe buttons; a comment box; and the round's tally. Its labels are in Portuguese.">
-        <figcaption>The real panel on <code>127.0.0.1</code>, with a comment on the current card. Its labels are in Portuguese for now: Aprovar, Rejeitar, and Talvez mean approve, reject, and maybe.</figcaption>
+        <img src="panel.png" width="1280" height="836" loading="lazy" alt="The real ar-board panel: a card showing what, why, and risk; the approve, reject, and maybe buttons; a comment box; and the round's tally. It opens in English; the EN/PT toggle in its header switches it to Portuguese.">
+        <figcaption>The real panel on <code>127.0.0.1</code>, with a comment on the current card. It opens in English, and the EN/PT toggle in its header switches it to Portuguese.</figcaption>
       </figure>
     </div>
   </section>
@@ -301,10 +301,10 @@ footer p { margin: 0; }
     <div class="wrap">
       <p class="kicker">The toolbox</p>
       <h2 class="display">Five plugins, one marketplace</h2>
-      <p class="intro">Each plugin installs on its own, is tested in CI, and is documented in English and Portuguese.</p>
+      <p class="intro">Each plugin installs on its own, is tested in CI, and is documented in English and Portuguese. Panels, cards, and messages are in English by default, with pt-BR on request.</p>
       <div class="grid">
         <article class="plugin wide">
-          <header><h3><span class="dot" style="background:#527D40"></span>ar-board</h3><span class="ver">v1.3.1</span></header>
+          <header><h3><span class="dot" style="background:#527D40"></span>ar-board</h3><span class="ver">v1.4.0</span></header>
           <p>The approve/reject board above, plus custom labels, a confirm step for risky cards, an offline mode for remote sessions, and question-board for answering several questions on one screen.</p>
           <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/ar-board">Read about ar-board</a>
         </article>
@@ -314,17 +314,17 @@ footer p { margin: 0; }
           <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/publish-check">Read about publish-check</a>
         </article>
         <article class="plugin">
-          <header><h3><span class="dot" style="background:#B5452F"></span>tidy-board</h3><span class="ver">v0.1.1</span></header>
+          <header><h3><span class="dot" style="background:#B5452F"></span>tidy-board</h3><span class="ver">v0.2.0</span></header>
           <p>Stale branches, worktrees, and stashes as cards that show how sure the tool is that each is merged. Only what you approve is deleted, after a fresh check, and work that exists nowhere else is backed up first.</p>
           <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/tidy-board">Read about tidy-board</a>
         </article>
         <article class="plugin">
-          <header><h3><span class="dot" style="background:#7CC6C4"></span>housekeeping</h3><span class="ver">v0.3.1</span></header>
+          <header><h3><span class="dot" style="background:#7CC6C4"></span>housekeeping</h3><span class="ver">v0.4.0</span></header>
           <p>doc-truth checks that your docs cite files and links that exist, handoff writes a verified end-of-session note, and todo-sweep triages TODO and FIXME comments on a board, each with its age from <code>git blame</code>.</p>
           <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/housekeeping">Read about housekeeping</a>
         </article>
         <article class="plugin">
-          <header><h3><span class="dot" style="background:#6B5240"></span>header-footer</h3><span class="ver">v0.3.0</span></header>
+          <header><h3><span class="dot" style="background:#6B5240"></span>header-footer</h3><span class="ver">v0.4.0</span></header>
           <p>A hook-computed header line with the time and branch, which Claude copies to the top of each reply, plus an optional status line showing token usage and plan limits.</p>
           <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/header-footer">Read about header-footer</a>
         </article>
@@ -341,7 +341,7 @@ footer p { margin: 0; }
 <pre id="cmds"><span class="prompt">&gt; </span>/plugin marketplace add dvwinck/capybara-toolbox
 <span class="prompt">&gt; </span>/plugin install ar-board@capybara-toolbox</pre>
       </div>
-      <p class="install-note">Swap <code>ar-board</code> for any plugin above, then restart Claude Code. You need Python 3.9 or later; publish-check, tidy-board, and housekeeping also need <code>git</code>. For header-footer, the status line needs one more step: ask Claude to turn the footer on. The panels, tool-generated cards, and most CLI messages are in Portuguese for now (publish-check’s output is in English); an English ar-board panel is planned for version 1.4.0. CI covers Ubuntu and macOS; Windows is not tested yet.</p>
+      <p class="install-note">Swap <code>ar-board</code> for any plugin above, then restart Claude Code. You need Python 3.9 or later; publish-check, tidy-board, and housekeeping also need <code>git</code>. For header-footer, the status line needs one more step: ask Claude to turn the footer on. Everything the tools show you is in English by default; pass <code>--lang pt-BR</code> or set <code>CAPYBARA_LANG=pt-BR</code> for Portuguese (publish-check is English only). CI covers Ubuntu and macOS; Windows is not tested yet.</p>
     </div>
   </section>
 
@@ -352,7 +352,7 @@ footer p { margin: 0; }
       <div class="principles">
         <div><h3>The tools stay local</h3><p>Panels bind to <code>127.0.0.1</code> with a fresh token per run. No telemetry; the only network call is tidy-board asking <code>gh</code> about merged pull requests.</p></div>
         <div><h3>No packages to install</h3><p>Python standard library and <code>git</code>. No <code>pip</code> and no build step; <code>gh</code> (for tidy-board) and Node (for header-footer) are optional.</p></div>
-        <div><h3>Tested</h3><p>CI runs 915 tests on Ubuntu and macOS with Python 3.9, 3.11, 3.13, and 3.14.</p></div>
+        <div><h3>Tested</h3><p>CI runs 1,031 tests on Ubuntu and macOS with Python 3.9, 3.11, 3.13, and 3.14.</p></div>
         <div><h3>You decide</h3><p>Nothing is deleted without your approval, and no tool edits your source files. Only header-footer touches your Claude settings, and only when you turn it on.</p></div>
       </div>
     </div>
@@ -434,7 +434,7 @@ footer p { margin: 0; }
   }
 
   function finish() {
-    var lines = ["What the agent gets back (simplified; the real summary is in Portuguese):", ""];
+    var lines = ["What the agent gets back (simplified):", ""];
     ["approved", "rejected", "maybe"].forEach(function (d) {
       var ids = CARDS.filter(function (c) { return decisions[c.id] === d; });
       lines.push(LABEL[d] + " (" + ids.length + ")");
