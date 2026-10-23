@@ -6,6 +6,21 @@ All notable changes to the **tidy-board** plugin are documented here. The format
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-23
+
+### Added
+- `scan --lang en|pt-BR` chooses the language of the cards: field labels, titles, effects, the group card, the "do not touch" reasons, the button wording (`labels`), the `confirm` texts, the subtitle and the age wording. The language is written to `batch.json` (`lang`, so the panel opens in it) and to `scan.json`. `check` rejects any other value in `scan.json`; an older scan without `lang` is read as English.
+- The pt-BR cards are now written with accents.
+- The card of a worktree with a detached HEAD no longer shows a merged-PR field (0.1.1 showed "sem PR mergeado" there, though a worktree with no branch has no PR to look up); every other card keeps its fields.
+- **Every command takes `--lang en|pt-BR`** for its messages (`scan`, `check`, `apply`, `restore`). Without it, `check`, `apply` and `restore` speak the language recorded in `scan.json`; `scan` uses one language for its cards and its output alike.
+- **`CAPYBARA_LANG`** (`en` or `pt-BR`) is the default language when no flag and no recorded language decide; any other value is ignored. Every Capybara Toolbox script reads the same variable.
+
+### Changed
+- **The default is English**, for the cards and for the command line. A `scan` without `--lang` (and without `CAPYBARA_LANG`) writes English cards and prints English lines; pass `--lang pt-BR` for the Portuguese ones. The pt-BR command-line text is the accent-free Portuguese of 0.1.1, except that a count of one now takes the singular (`1 item`, `1 apagado`).
+- In English `NAO TOCAR:` reads `DO NOT TOUCH:`, the error prefix is `error:` (pt-BR `erro:`) and the scan summary line ends with `; language <lang>` (pt-BR `; idioma <lang>`). The tags `TIDY-BOARD DIR:`, `TIDY-BOARD ITENS:`, `TIDY-BOARD:`, `APPLY:`, `RESTORE:` and `ok:` and the action words `deleted`, `skipped` and `would-delete` are the same in both languages. The `--help` text is English.
+- The inventory holds codes, not text: the reasons an item is never offered, the merged-PR note and the remote note are rendered from a per-language table when the cards are built. `apply`, `restore` and `applied.json` are unchanged in shape: they read ids, shas and proofs, never a label; the `reason` of a skipped item is written in the language of the run.
+- Requires ar-board 1.4.0 (the vendored engine) for the panel to honour `lang`.
+
 ## [0.1.1] - 2026-10-15
 
 ### Changed

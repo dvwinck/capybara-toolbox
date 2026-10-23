@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-# tidy-board 0.1.1 - cards para limpar branches, worktrees e stashes; o apply reconfere e apaga (somente stdlib e git)
+# tidy-board 0.2.0 - cards para limpar branches, worktrees e stashes; o apply reconfere e apaga (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
 # Uso:
-#   tidy_board.py scan    [REPO] [--base REF] [--gh auto|off] [--out DIR]   # le o git e escreve batch.json + scan.json
+#   tidy_board.py scan    [REPO] [--base REF] [--gh auto|off] [--out DIR] [--lang en|pt-BR]   # le o git e escreve batch.json + scan.json
 #   tidy_board.py check   DIR                                              # valida batch.json + scan.json
 #   tidy_board.py apply   DIR [--dry-run]                                  # reconfere cada item aprovado e apaga
 #   tidy_board.py restore DIR ID                                           # recria o que foi apagado (backup ou sha)
+# Todo comando aceita --lang en|pt-BR (padrao: o lang do scan.json, depois CAPYBARA_LANG, depois en).
 import argparse
 import json
 import os
@@ -18,7 +19,7 @@ import time
 from collections import namedtuple
 from pathlib import Path
 
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 
 BACKUP = "refs/tidy-board/backup/"  # where apply keeps what could not be recreated from another ref
@@ -107,10 +108,180 @@ LABELS = {  # the board's own wording per language; "approve" deletes, so it is 
 }
 
 
+ENV_LANG = "CAPYBARA_LANG"  # one shell-wide default for every Capybara Toolbox script
+CLI_LANG = DEFAULT_LANG  # the language of this run's messages: set by main(), refined by the scan a command reads
+
+# Every message the command line prints, in both languages (the cards are TEXT, above). Same keys and
+# {placeholders} in both (a test enforces it); both plain ASCII, so the pt-BR side is the accent-free Portuguese
+# these commands always printed, and a key ending in `_1` is the form used when n == 1.
+MSG = {
+    "en": {
+        "git_missing": "git not found in PATH", "git_failed": "git {args} failed: {err}",
+        "not_repo": "not a git repository: {path}", "no_base": "the base '{base}' does not exist",
+        "base_unknown": "could not detect the base branch; pass --base REF",
+        "bad_lang": "invalid language: {lang} (use en or pt-BR)",
+        "unreadable_dir": "could not read batch.json and scan.json in {d}: {e}",
+        "p_scan_items": "scan.json: 'items' must be a list", "p_batch_items": "batch.json: 'items' must be a list",
+        "p_required": "scan.json: '{key}' is required (text)", "p_obj": "{where}: must be an object",
+        "p_id": "{where}: invalid 'id'", "p_dup": "{where}: duplicate id '{iid}'",
+        "p_no_card": "{where}: '{iid}' has no card in batch.json",
+        "p_kind": "{where}: 'kind' must be branch, worktree or stash", "p_proof": "{where}: 'proof' must be P1, P2, P3 or P4",
+        "p_sha": "{where}: 'sha' must be a full commit id", "p_name": "{where}: 'name' is required",
+        "p_path": "{where}: a worktree needs 'path'", "p_lang": "scan.json: 'lang' must be en or pt-BR",
+        "p_group": "scan.json: invalid 'group'", "p_group_card": "batch.json: the group card G is missing",
+        "p_group_proof": "scan.json: the group only takes P1 or P2 items ('{m}')",
+        "p_no_entry": "batch.json: the card '{cid}' has no entry in scan.json",
+        "untouched": "DO NOT TOUCH: {name} ({why})",
+        "why_base_branch": "base branch of the repository", "why_current_branch": "current branch (in use by this worktree)",
+        "why_main_worktree": "in use by the main worktree ({path})", "why_current_worktree": "current worktree",
+        "why_locked": "locked worktree", "why_missing_dir": "folder missing (git worktree prune fixes it)",
+        "why_unreadable": "could not read the state of the worktree",
+        "why_dirty": "{n} changed or untracked file(s): deleting would lose work with no sha to recover",
+        "nothing": "TIDY-BOARD: nothing to clean up",
+        "dir_exists": "the folder {out} already exists (two scans in the same second); try again",
+        "scan_items": "TIDY-BOARD ITENS: {n} ({counts}); base {base}; gh {gh}; language {lang}", "yes": "yes", "no": "no",
+        "invalid": "invalid scan.json/batch.json:",
+        "many_cards": "warning: {n} items; above {max} the review gets tiring (consider cleaning in two rounds)",
+        "ok": "ok: {n} items, batch {id}", "ok_1": "ok: {n} item, batch {id}",
+        "backup_other": "a backup with another sha already exists", "backup_failed": "could not create the backup: {err}",
+        "gh_down": "gh unavailable: could not re-check the merged PR",
+        "pr_moved": "the merged PR no longer matches the branch tip",
+        "branch_gone": "the branch no longer exists", "tip_moved": "the tip changed since the scan",
+        "is_base": "it is the base branch", "in_use": "it is in use in {path}",
+        "unmerged": "it is no longer merged into the base", "branch_changed": "the branch changed during apply",
+        "wt_gone": "the worktree no longer exists", "wt_main": "it is the main or the current worktree",
+        "wt_locked": "the worktree is locked", "wt_unreadable": "could not read the state of the worktree",
+        "wt_dirty": "it has {n} changed or untracked file(s)", "wt_head": "HEAD changed since the scan",
+        "wt_switched": "the worktree switched branches since the scan", "wt_branch": "the branch {name}: {why}",
+        "wt_remove_failed": "git worktree remove failed", "wt_branch_stayed": "worktree removed; the branch stayed: {err}",
+        "stash_gone": "the stash no longer exists", "stash_changed": "the stash changed during apply",
+        "stash_drop_failed": "git stash drop failed",
+        "no_decisions": "decisions.json missing or unreadable: open the panel and finish it before apply",
+        "bad_decisions": "decisions.json has an invalid shape",
+        "old_decisions": "decisions.json belongs to another batch or round: I will not act on old decisions",
+        "not_finished": "the panel was not finished (click Finish before apply)",
+        "invalid_inline": "invalid scan.json/batch.json: {errs}", "repo_gone": "the repository of the scan no longer exists: {root}",
+        "nothing_approved": "APPLY: nothing approved; nothing was deleted",
+        "apply": "APPLY: {deleted}, {skipped}", "apply_dry": "APPLY (dry run): {deleted}, {skipped}",
+        "n_deleted": "{n} deleted", "n_deleted_1": "{n} deleted", "n_would": "{n} would be deleted",
+        "n_would_1": "{n} would be deleted", "n_skipped": "{n} skipped", "n_skipped_1": "{n} skipped",
+        "not_deleted": "'{id}' was not deleted by this batch (see applied.json)",
+        "commit_gone": "the commit {sha} no longer exists in this repository",
+        "no_backup": "'{id}' has no backup (it was proven merged and its commits are in the base): "
+                     "if you need it, recreate it with `git branch {target} {sha}`",
+        "name_placeholder": "<name>", "stash_restored": "stash recreated", "branch_restored": "branch {name} recreated at {sha}",
+        "wt_not_restored": " (the worktree is not recreated: git worktree add {path} {name})",
+        "restore_failed": "git failed to restore", "error": "error: {e}",
+    },
+    "pt-BR": {
+        "git_missing": "git nao encontrado no PATH", "git_failed": "git {args} falhou: {err}",
+        "not_repo": "nao e um repositorio git: {path}", "no_base": "a base '{base}' nao existe",
+        "base_unknown": "nao consegui detectar a branch base; passe --base REF",
+        "bad_lang": "idioma invalido: {lang} (use en ou pt-BR)",
+        "unreadable_dir": "nao consegui ler batch.json e scan.json em {d}: {e}",
+        "p_scan_items": "scan.json: 'items' deve ser uma lista", "p_batch_items": "batch.json: 'items' deve ser uma lista",
+        "p_required": "scan.json: '{key}' obrigatorio (texto)", "p_obj": "{where}: deve ser objeto",
+        "p_id": "{where}: 'id' invalido", "p_dup": "{where}: id duplicado '{iid}'",
+        "p_no_card": "{where}: '{iid}' nao tem card no batch.json",
+        "p_kind": "{where}: 'kind' deve ser branch, worktree ou stash", "p_proof": "{where}: 'proof' deve ser P1, P2, P3 ou P4",
+        "p_sha": "{where}: 'sha' deve ser um id de commit completo", "p_name": "{where}: 'name' obrigatorio",
+        "p_path": "{where}: um worktree precisa de 'path'", "p_lang": "scan.json: 'lang' deve ser en ou pt-BR",
+        "p_group": "scan.json: 'group' invalido", "p_group_card": "batch.json: falta o card G do grupo",
+        "p_group_proof": "scan.json: o grupo so aceita itens P1 ou P2 ('{m}')",
+        "p_no_entry": "batch.json: o card '{cid}' nao tem entrada no scan.json",
+        "untouched": "NAO TOCAR: {name} ({why})",
+        "why_base_branch": "branch base do repositorio", "why_current_branch": "branch atual (em uso por este worktree)",
+        "why_main_worktree": "em uso pelo worktree principal ({path})", "why_current_worktree": "worktree atual",
+        "why_locked": "worktree bloqueado (locked)", "why_missing_dir": "diretorio ausente (git worktree prune resolve)",
+        "why_unreadable": "nao consegui ler o estado do worktree",
+        "why_dirty": "{n} arquivo(s) alterado(s) ou nao rastreado(s): apagar perderia trabalho sem sha para recuperar",
+        "nothing": "TIDY-BOARD: nada para limpar",
+        "dir_exists": "a pasta {out} ja existe (dois scans no mesmo segundo); tente de novo",
+        "scan_items": "TIDY-BOARD ITENS: {n} ({counts}); base {base}; gh {gh}; idioma {lang}", "yes": "sim", "no": "nao",
+        "invalid": "scan.json/batch.json invalidos:",
+        "many_cards": "aviso: {n} itens; acima de {max} a revisao cansa (considere limpar em duas rodadas)",
+        "ok": "ok: {n} itens, lote {id}", "ok_1": "ok: {n} item, lote {id}",
+        "backup_other": "ja existe um backup com outro sha", "backup_failed": "nao consegui criar o backup: {err}",
+        "gh_down": "gh indisponivel: nao consegui reconferir o PR mergeado",
+        "pr_moved": "o PR mergeado nao confere mais com a ponta da branch",
+        "branch_gone": "a branch nao existe mais", "tip_moved": "a ponta mudou desde o scan",
+        "is_base": "e a branch base", "in_use": "esta em uso em {path}",
+        "unmerged": "deixou de estar mesclada na base", "branch_changed": "a branch mudou durante o apply",
+        "wt_gone": "o worktree nao existe mais", "wt_main": "e o worktree principal ou o atual",
+        "wt_locked": "o worktree esta bloqueado (locked)", "wt_unreadable": "nao consegui ler o estado do worktree",
+        "wt_dirty": "tem {n} arquivo(s) alterado(s) ou nao rastreado(s)", "wt_head": "o HEAD mudou desde o scan",
+        "wt_switched": "o worktree mudou de branch desde o scan", "wt_branch": "a branch {name}: {why}",
+        "wt_remove_failed": "git worktree remove falhou", "wt_branch_stayed": "worktree removido; a branch ficou: {err}",
+        "stash_gone": "o stash nao existe mais", "stash_changed": "o stash mudou durante o apply",
+        "stash_drop_failed": "git stash drop falhou",
+        "no_decisions": "decisions.json ausente ou ilegivel: suba o painel e conclua antes do apply",
+        "bad_decisions": "decisions.json com formato invalido",
+        "old_decisions": "decisions.json e de outro lote ou rodada: nao vou agir sobre decisoes antigas",
+        "not_finished": "o painel nao foi concluido (clique em Concluir antes do apply)",
+        "invalid_inline": "scan.json/batch.json invalidos: {errs}", "repo_gone": "o repositorio do scan nao existe mais: {root}",
+        "nothing_approved": "APPLY: nada aprovado; nada foi apagado",
+        "apply": "APPLY: {deleted}, {skipped}", "apply_dry": "APPLY (simulado): {deleted}, {skipped}",
+        "n_deleted": "{n} apagados", "n_deleted_1": "{n} apagado", "n_would": "{n} seriam apagados",
+        "n_would_1": "{n} seria apagado", "n_skipped": "{n} pulados", "n_skipped_1": "{n} pulado",
+        "not_deleted": "'{id}' nao foi apagado por este lote (veja applied.json)",
+        "commit_gone": "o commit {sha} nao existe mais neste repositorio",
+        "no_backup": "'{id}' nao tem backup (estava provado como mesclado e seus commits estao na base): "
+                     "se precisar, recrie com `git branch {target} {sha}`",
+        "name_placeholder": "<nome>", "stash_restored": "stash recriado", "branch_restored": "branch {name} recriada em {sha}",
+        "wt_not_restored": " (o worktree nao e recriado: git worktree add {path} {name})",
+        "restore_failed": "git falhou ao restaurar", "error": "erro: {e}",
+    },
+}
+
+
+def env_lang():
+    """CAPYBARA_LANG when it is exactly one of LANGS. Any other value is ignored, silently: a shell setting must
+    never break a command, and a warning on every run would be noise in the agent's context."""
+    value = os.environ.get(ENV_LANG)
+    return value if value in LANGS else None
+
+
+def pick_lang(*candidates):
+    """The first candidate that is one of LANGS (--lang, then the language a scan recorded), then CAPYBARA_LANG,
+    then English. A recorded value is data: anything else is ignored here and refused by `check`."""
+    for cand in candidates:
+        if isinstance(cand, str) and cand in LANGS:
+            return cand
+    return env_lang() or DEFAULT_LANG
+
+
+def use_lang(*candidates):
+    """Set the language of this run's messages (see pick_lang) and return it. Only main() calls it."""
+    global CLI_LANG
+    CLI_LANG = pick_lang(*candidates)
+    return CLI_LANG
+
+
+def recorded_lang(folder):
+    """The `lang` the scan in `folder` recorded, or None (no folder, no scan.json, not JSON). main() reads it before
+    the command runs, so the command's lines and its errors speak the language of the board it works on."""
+    if not folder:
+        return None
+    try:
+        data = json.loads((Path(folder) / "scan.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, RecursionError):
+        return None
+    return data.get("lang") if isinstance(data, dict) else None
+
+
+def say(msg_id, /, **values):
+    """One command-line message in the language of this run; with n == 1 the `_1` form wins when there is one.
+    The template is ours, the values are data (substituted, never parsed)."""
+    table = MSG[CLI_LANG]
+    if values.get("n") == 1 and msg_id + "_1" in table:
+        msg_id += "_1"
+    return table[msg_id].format(**values)
+
+
 def check_lang(lang):
     """A language is one of LANGS; anything else (a typo, a value edited into a file) is the person's error."""
     if lang not in LANGS:
-        raise TidyError(f"idioma invalido: {lang!r} (use en ou pt-BR)")
+        raise TidyError(say("bad_lang", lang=repr(lang)))
     return lang
 
 
@@ -141,21 +312,21 @@ def git(root, *args, input=None):
         r = subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, input=data,
                            env={**os.environ, **GIT_ENV})
     except FileNotFoundError:
-        raise TidyError("git nao encontrado no PATH")
+        raise TidyError(say("git_missing"))
     return Result(r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace"))
 
 
 def git_ok(root, *args, input=None):
     r = git(root, *args, input=input)
     if r.rc != 0:
-        raise TidyError(f"git {' '.join(args)} falhou: {r.err.strip()}")
+        raise TidyError(say("git_failed", args=" ".join(args), err=r.err.strip()))
     return r.out
 
 
 def repo_root(path):
     r = git(path, "rev-parse", "--show-toplevel")
     if r.rc != 0:
-        raise TidyError(f"nao e um repositorio git: {path}")
+        raise TidyError(say("not_repo", path=path))
     return Path(r.out.strip())
 
 
@@ -169,7 +340,7 @@ def detect_base(root, override=None):
     """--base, else the branch origin/HEAD points to, else the first of main, master, base, trunk."""
     if override:
         if rev(root, override) is None:
-            raise TidyError(f"a base '{override}' nao existe")
+            raise TidyError(say("no_base", base=override))
         full = git(root, "rev-parse", "--symbolic-full-name", override).out.strip()
         return full[len("refs/heads/"):] if full.startswith("refs/heads/") else override
     r = git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
@@ -180,7 +351,7 @@ def detect_base(root, override=None):
     for name in ("main", "master", "base", "trunk"):
         if rev(root, "refs/heads/" + name):
             return name
-    raise TidyError("nao consegui detectar a branch base; passe --base REF")
+    raise TidyError(say("base_unknown"))
 
 
 def base_refs(root, base):
@@ -642,62 +813,62 @@ def load_dir(d):
         batch = json.loads((d / "batch.json").read_text(encoding="utf-8"))
         scan = json.loads((d / "scan.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        raise TidyError(f"nao consegui ler batch.json e scan.json em {d}: {e}")
+        raise TidyError(say("unreadable_dir", d=d, e=e))
     return batch, scan
 
 
 def scan_problems(batch, scan):
     """What is wrong with a batch.json + scan.json pair; empty when `apply` may trust it."""
     if not isinstance(scan, dict) or not isinstance(scan.get("items"), list):
-        return ["scan.json: 'items' deve ser uma lista"]
+        return [say("p_scan_items")]
     if not isinstance(batch, dict) or not isinstance(batch.get("items"), list):
-        return ["batch.json: 'items' deve ser uma lista"]
+        return [say("p_batch_items")]
     errs = []
     for key in ("repo", "base"):
         if not isinstance(scan.get(key), str) or not scan[key]:
-            errs.append(f"scan.json: '{key}' obrigatorio (texto)")
+            errs.append(say("p_required", key=key))
     card_ids = {c.get("id") for c in batch["items"] if isinstance(c, dict)}
     entries, seen = {}, set()
     for i, it in enumerate(scan["items"]):
         where = f"scan.json item {i}"
         if not isinstance(it, dict):
-            errs.append(f"{where}: deve ser objeto")
+            errs.append(say("p_obj", where=where))
             continue
         iid = it.get("id")
         if not isinstance(iid, str) or not iid or iid == "G":
-            errs.append(f"{where}: 'id' invalido")
+            errs.append(say("p_id", where=where))
             continue
         if iid in seen:
-            errs.append(f"{where}: id duplicado '{iid}'")
+            errs.append(say("p_dup", where=where, iid=iid))
         seen.add(iid)
         entries[iid] = it
         if iid not in card_ids:
-            errs.append(f"{where}: '{iid}' nao tem card no batch.json")
+            errs.append(say("p_no_card", where=where, iid=iid))
         if it.get("kind") not in KINDS:
-            errs.append(f"{where}: 'kind' deve ser branch, worktree ou stash")
+            errs.append(say("p_kind", where=where))
         if it.get("proof") not in PROOFS:
-            errs.append(f"{where}: 'proof' deve ser P1, P2, P3 ou P4")
+            errs.append(say("p_proof", where=where))
         if not isinstance(it.get("sha"), str) or not SHA.fullmatch(it["sha"]):
-            errs.append(f"{where}: 'sha' deve ser um id de commit completo")
+            errs.append(say("p_sha", where=where))
         if not isinstance(it.get("name"), str) or not it["name"]:
-            errs.append(f"{where}: 'name' obrigatorio")
+            errs.append(say("p_name", where=where))
         if it.get("kind") == "worktree" and not it.get("path"):
-            errs.append(f"{where}: um worktree precisa de 'path'")
+            errs.append(say("p_path", where=where))
     if scan.get("lang") is not None and scan["lang"] not in LANGS:  # an older scan has no lang: that is English
-        errs.append("scan.json: 'lang' deve ser en ou pt-BR")
+        errs.append(say("p_lang"))
     group = scan.get("group")
     if group is not None:
         if not isinstance(group, dict) or group.get("id") != "G" or not isinstance(group.get("members"), list):
-            errs.append("scan.json: 'group' invalido")
+            errs.append(say("p_group"))
         else:
             if "G" not in card_ids:
-                errs.append("batch.json: falta o card G do grupo")
+                errs.append(say("p_group_card"))
             for m in group["members"]:
                 if m not in entries or entries[m].get("proof") not in SAFE_PROOFS:
-                    errs.append(f"scan.json: o grupo so aceita itens P1 ou P2 ('{m}')")
+                    errs.append(say("p_group_proof", m=m))
     for cid in sorted(c for c in card_ids if isinstance(c, str) and c != "G"):
         if cid not in entries:
-            errs.append(f"batch.json: o card '{cid}' nao tem entrada no scan.json")
+            errs.append(say("p_no_entry", cid=cid))
     return errs
 
 
@@ -707,20 +878,20 @@ def cmd_scan(a):
     root = repo_root(a.repo)
     base = detect_base(root, a.base)
     inv = inventory(root, base, a.gh)
-    built = build_scan(root, inv, lang=a.lang)
-    for u in inv["untouched"]:  # transient: Task 4b moves every line of the command line to its own table
-        print(f"NAO TOCAR: {u['name']} ({reason_text(u, 'pt-BR')})")
+    built = build_scan(root, inv, lang=CLI_LANG)  # one language per run: the cards, the files and these lines
+    for u in inv["untouched"]:  # the reason comes from MSG (plain ASCII), not from the card table
+        print(say("untouched", name=u["name"], why=say("why_" + u["why"], path=u.get("path", ""), n=u.get("count", 0))))
     if built is None:
-        print("TIDY-BOARD: nada para limpar")
+        print(say("nothing"))
         return 0
     batch, scan = built
     out = Path(a.out) if a.out else root / ".tidy-board" / batch["batch_id"]
     if not a.out and out.exists():  # same batch id: the panel would resume decisions made for other cards
-        raise TidyError(f"a pasta {out} ja existe (dois scans no mesmo segundo); tente de novo")
+        raise TidyError(say("dir_exists", out=out))
     write_dir(out, batch, scan)
     counts = ", ".join(f"{p} {n}" for p in PROOFS if (n := sum(1 for i in scan["items"] if i["proof"] == p)))
-    print(f"TIDY-BOARD DIR: {out}")
-    print(f"TIDY-BOARD ITENS: {len(scan['items'])} ({counts}); base {base}; gh {'sim' if scan['gh'] else 'nao'}; idioma {a.lang}")
+    print(f"TIDY-BOARD DIR: {out}")  # the line tags are the same in both languages: the skill looks for them
+    print(say("scan_items", n=len(scan["items"]), counts=counts, base=base, gh=say("yes" if scan["gh"] else "no"), lang=CLI_LANG))
     return 0
 
 
@@ -728,31 +899,33 @@ def cmd_check(a):
     batch, scan = load_dir(a.dir)
     errs = scan_problems(batch, scan)
     if errs:
-        print("scan.json/batch.json invalidos:\n- " + "\n- ".join(errs), file=sys.stderr)
+        print(say("invalid") + "\n- " + "\n- ".join(errs), file=sys.stderr)
         return 1
     n = len(scan["items"])
     if n > WARN_CARDS:
-        print(f"aviso: {n} itens; acima de {WARN_CARDS} a revisao cansa (considere limpar em duas rodadas)", file=sys.stderr)
-    print(f"ok: {n} itens, lote {batch['batch_id']}")
+        print(say("many_cards", n=n, max=WARN_CARDS), file=sys.stderr)
+    print(say("ok", n=n, id=batch["batch_id"]))
     return 0
 
 
 def parser():
-    p = argparse.ArgumentParser(prog="tidy_board.py", description="Cards para limpar branches, worktrees e stashes.")
+    p = argparse.ArgumentParser(prog="tidy_board.py", description="Cards to clean up branches, worktrees and stashes.")
     p.add_argument("--version", action="version", version=f"tidy-board {VERSION}")
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("scan", help="le o git (somente leitura) e escreve batch.json + scan.json")
+    lang = argparse.ArgumentParser(add_help=False)  # every command takes --lang (the help text is English in both)
+    lang.add_argument("--lang", choices=LANGS, default=None,
+                      help="language of the messages, and of the cards for scan (default: the scan's lang, then CAPYBARA_LANG, then en)")
+    s = sub.add_parser("scan", parents=[lang], help="read git (read-only) and write batch.json + scan.json")
     s.add_argument("repo", nargs="?", default=".")
-    s.add_argument("--base", help="branch base (padrao: origin/HEAD, depois main, master, base, trunk)")
-    s.add_argument("--gh", choices=("auto", "off"), default="auto", help="usar o gh para provar PRs mergeados")
-    s.add_argument("--out", help="pasta do lote (padrao: <repo>/.tidy-board/<batch_id>)")
-    s.add_argument("--lang", choices=LANGS, default=DEFAULT_LANG, help="idioma dos cards: en (padrao) ou pt-BR")
-    c = sub.add_parser("check", help="valida batch.json + scan.json")
+    s.add_argument("--base", help="base branch (default: origin/HEAD, then main, master, base, trunk)")
+    s.add_argument("--gh", choices=("auto", "off"), default="auto", help="use gh to prove merged PRs")
+    s.add_argument("--out", help="batch folder (default: <repo>/.tidy-board/<batch_id>)")
+    c = sub.add_parser("check", parents=[lang], help="validate batch.json + scan.json")
     c.add_argument("dir")
-    a = sub.add_parser("apply", help="reconfere cada item aprovado e apaga")
+    a = sub.add_parser("apply", parents=[lang], help="re-verify each approved item and delete it")
     a.add_argument("dir")
-    a.add_argument("--dry-run", action="store_true", help="mostra o que faria, sem apagar nada")
-    r = sub.add_parser("restore", help="recria um item apagado a partir do backup ou do sha registrado")
+    a.add_argument("--dry-run", action="store_true", help="show what it would do, deleting nothing")
+    r = sub.add_parser("restore", parents=[lang], help="recreate a deleted item from its backup or its recorded sha")
     r.add_argument("dir")
     r.add_argument("id")
     return p
@@ -788,9 +961,9 @@ def make_backup(root, refname, sha):
     if current == sha:
         return None
     if current:
-        return "ja existe um backup com outro sha"
+        return say("backup_other")
     r = git(root, "update-ref", refname, sha, "")  # the empty old value means "must not exist yet"
-    return None if r.rc == 0 else "nao consegui criar o backup: " + r.err.strip()
+    return None if r.rc == 0 else say("backup_failed", err=r.err.strip())
 
 
 def merged_prs_once(root, scan):
@@ -803,9 +976,9 @@ def merged_prs_once(root, scan):
 def pr_blocker(root, scan, name, sha):
     prs = merged_prs_once(root, scan)
     if prs is None:
-        return "gh indisponivel: nao consegui reconferir o PR mergeado"
+        return say("gh_down")
     if not any(pr["oid"] == sha for pr in prs.get(name, [])):
-        return "o PR mergeado nao confere mais com a ponta da branch"
+        return say("pr_moved")
     return None
 
 
@@ -813,17 +986,17 @@ def branch_blocker(root, scan, name, sha, proof, held_by=None):
     """Why a branch must not be deleted now (None when it may): the scan is a photograph, this is the check."""
     tip = rev(root, "refs/heads/" + name)
     if tip is None:
-        return "a branch nao existe mais"
+        return say("branch_gone")
     if tip != sha:
-        return "a ponta mudou desde o scan"
+        return say("tip_moved")
     if name in base_branch_names(root, scan["base"]):
-        return "e a branch base"
+        return say("is_base")
     held = checked_out_branches(root).get(name)
     if held and not (held_by and os.path.realpath(held) == os.path.realpath(held_by)):
-        return f"esta em uso em {held}"
+        return say("in_use", path=held)
     merged = any(is_ancestor(root, sha, ref) for ref in base_refs(root, scan["base"]))
     if proof == "P1" and not merged:
-        return "deixou de estar mesclada na base"
+        return say("unmerged")
     if proof == "P2" and not merged:  # P2 rested on gh at scan time: ask again, unless the history proves it now
         return pr_blocker(root, scan, name, sha)
     return None
@@ -851,7 +1024,7 @@ def apply_branch(root, scan, it, dry):
             return skip(it, why)
     r = delete_branch(root, it["name"], it["sha"])
     if r.rc != 0:
-        return skip(it, r.err.strip() or "a branch mudou durante o apply")
+        return skip(it, r.err.strip() or say("branch_changed"))
     return outcome(it, "deleted", backup=backup)
 
 
@@ -861,28 +1034,28 @@ def apply_worktree(root, scan, it, dry):
     real = os.path.realpath(path)
     entry = next((wt for wt in trees if os.path.realpath(wt["worktree"]) == real), None)
     if entry is None or not Path(path).is_dir():
-        return skip(it, "o worktree nao existe mais")
+        return skip(it, say("wt_gone"))
     if real == os.path.realpath(trees[0]["worktree"]) or real == os.path.realpath(root):
-        return skip(it, "e o worktree principal ou o atual")
+        return skip(it, say("wt_main"))
     if "locked" in entry:
-        return skip(it, "o worktree esta bloqueado (locked)")
+        return skip(it, say("wt_locked"))
     dirty = dirty_files(path)
     if dirty is None:
-        return skip(it, "nao consegui ler o estado do worktree")
+        return skip(it, say("wt_unreadable"))
     if dirty:
-        return skip(it, f"tem {len(dirty)} arquivo(s) alterado(s) ou nao rastreado(s)")
+        return skip(it, say("wt_dirty", n=len(dirty)))
     head = git(path, "rev-parse", "--verify", "--quiet", "HEAD").out.strip()
     if head != it["sha"]:
-        return skip(it, "o HEAD mudou desde o scan")
+        return skip(it, say("wt_head"))
     live = entry["branch"][len("refs/heads/"):] if entry.get("branch", "").startswith("refs/heads/") else None
     if live != it.get("branch"):
-        return skip(it, "o worktree mudou de branch desde o scan")
+        return skip(it, say("wt_switched"))
     # what to delete and what to back up come from the live state and the re-verified proof, never from scan.json flags
     drop = live if (live and it["proof"] in SAFE_PROOFS and live not in base_branch_names(root, scan["base"])) else None
     if drop:
         why = branch_blocker(root, scan, drop, it["sha"], it["proof"], held_by=path)
         if why:
-            return skip(it, f"a branch {drop}: {why}")
+            return skip(it, say("wt_branch", name=drop, why=why))
     risky_head = live is None and (it["proof"] in RISKY_PROOFS or
                                    not any(is_ancestor(root, it["sha"], ref) for ref in base_refs(root, scan["base"])))
     backup = backup_name(it) if risky_head else None
@@ -894,17 +1067,17 @@ def apply_worktree(root, scan, it, dry):
             return skip(it, why)
     r = git(root, "worktree", "remove", path)  # never --force: a dirty tree must stop here
     if r.rc != 0:
-        return skip(it, r.err.strip() or "git worktree remove falhou")
+        return skip(it, r.err.strip() or say("wt_remove_failed"))
     if drop:
         r = delete_branch(root, drop, it["sha"])
         if r.rc != 0:
-            return outcome(it, "deleted", reason="worktree removido; a branch ficou: " + r.err.strip(), backup=backup)
+            return outcome(it, "deleted", reason=say("wt_branch_stayed", err=r.err.strip()), backup=backup)
     return outcome(it, "deleted", backup=backup)
 
 
 def apply_stash(root, it, dry):
     if it["sha"] not in [st["sha"] for st in list_stashes(root)]:
-        return skip(it, "o stash nao existe mais")
+        return skip(it, say("stash_gone"))
     backup = backup_name(it)
     if dry:
         return outcome(it, "would-delete", backup=backup)
@@ -913,10 +1086,10 @@ def apply_stash(root, it, dry):
         return skip(it, why)
     shas = [st["sha"] for st in list_stashes(root)]  # read again right before the drop: a stash pushed meanwhile moved the indexes
     if it["sha"] not in shas:
-        return skip(it, "o stash mudou durante o apply")
+        return skip(it, say("stash_changed"))
     r = git(root, "stash", "drop", f"stash@{{{shas.index(it['sha'])}}}")
     if r.rc != 0:
-        return skip(it, r.err.strip() or "git stash drop falhou")
+        return skip(it, r.err.strip() or say("stash_drop_failed"))
     return outcome(it, "deleted", backup=backup)
 
 
@@ -951,13 +1124,13 @@ def read_decisions(d, batch):
     try:
         state = json.loads((Path(d) / "decisions.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        raise TidyError("decisions.json ausente ou ilegivel: suba o painel e conclua antes do apply")
+        raise TidyError(say("no_decisions"))
     if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
-        raise TidyError("decisions.json com formato invalido")
+        raise TidyError(say("bad_decisions"))
     if state.get("batch_id") != batch.get("batch_id") or state.get("round") != int(batch.get("round", 1)):
-        raise TidyError("decisions.json e de outro lote ou rodada: nao vou agir sobre decisoes antigas")
+        raise TidyError(say("old_decisions"))
     if state.get("finished") is not True:
-        raise TidyError("o painel nao foi concluido (clique em Concluir antes do apply)")
+        raise TidyError(say("not_finished"))
     return state["items"]
 
 
@@ -983,14 +1156,14 @@ def cmd_apply(a):
     batch, scan = load_dir(a.dir)
     errs = scan_problems(batch, scan)
     if errs:
-        raise TidyError("scan.json/batch.json invalidos: " + "; ".join(errs))
+        raise TidyError(say("invalid_inline", errs="; ".join(errs)))
     decisions = read_decisions(a.dir, batch)
     root = Path(scan["repo"])
     if not root.is_dir() or git(root, "rev-parse", "--git-dir").rc != 0:
-        raise TidyError(f"o repositorio do scan nao existe mais: {root}")
+        raise TidyError(say("repo_gone", root=root))
     todo = approved_items(scan, decisions)
     if not todo:
-        print("APPLY: nada aprovado; nada foi apagado")
+        print(say("nothing_approved"))
         return 0
     results = []
     try:
@@ -1008,7 +1181,8 @@ def cmd_apply(a):
         print(line)
     done = sum(1 for r in results if r["action"] in ("deleted", "would-delete"))
     skipped = len(results) - done
-    print(f"APPLY{' (simulado)' if a.dry_run else ''}: {done} {'seriam apagados' if a.dry_run else 'apagados'}, {skipped} pulados")
+    print(say("apply_dry" if a.dry_run else "apply", deleted=say("n_would" if a.dry_run else "n_deleted", n=done),
+              skipped=say("n_skipped", n=skipped)))
     return 1 if skipped else 0
 
 
@@ -1017,27 +1191,26 @@ def cmd_restore(a):
     applied = read_applied(a.dir)
     entry = next((e for e in applied if e["id"] == a.id), None)
     if entry is None or entry.get("action") != "deleted":
-        raise TidyError(f"'{a.id}' nao foi apagado por este lote (veja applied.json)")
+        raise TidyError(say("not_deleted", id=a.id))
     root = Path(scan["repo"])
     sha = entry["sha"]
     if git(root, "cat-file", "-e", sha + "^{commit}").rc != 0:
-        raise TidyError(f"o commit {sha[:12]} nao existe mais neste repositorio")
+        raise TidyError(say("commit_gone", sha=sha[:12]))
     if not entry.get("backup"):  # P1/P2: the commits are in the base, there is nothing to bring back from a backup
         item = next((i for i in scan["items"] if i["id"] == a.id), {})
-        target = entry["name"] if entry["kind"] == "branch" else (item.get("branch") or "<nome>")
-        raise TidyError(f"'{a.id}' nao tem backup (estava provado como mesclado e seus commits estao na base): "
-                        f"se precisar, recrie com `git branch {target} {sha}`")
+        target = entry["name"] if entry["kind"] == "branch" else (item.get("branch") or say("name_placeholder"))
+        raise TidyError(say("no_backup", id=a.id, target=target, sha=sha))
     if entry["kind"] == "stash":
         r = git(root, "stash", "store", "-m", f"tidy-board restore {sha[:12]}", sha)
-        what = "stash recriado"
+        what = say("stash_restored")
     else:
         name = entry["name"] if entry["kind"] == "branch" else f"tidy-board/restored-{sha[:12]}"
         r = git(root, "branch", name, sha)
-        what = f"branch {name} recriada em {sha[:12]}"
+        what = say("branch_restored", name=name, sha=sha[:12])
         if entry["kind"] == "worktree":
-            what += f" (o worktree nao e recriado: git worktree add {entry['name']} {name})"
+            what += say("wt_not_restored", path=entry["name"], name=name)
     if r.rc != 0:
-        raise TidyError(r.err.strip() or "git falhou ao restaurar")
+        raise TidyError(r.err.strip() or say("restore_failed"))
     git(root, "update-ref", "-d", entry["backup"])
     entry["action"] = "restored"
     write_private(Path(a.dir) / "applied.json", dump_json(applied))
@@ -1049,12 +1222,20 @@ COMMANDS.update({"apply": cmd_apply, "restore": cmd_restore})
 
 
 def main(argv=None):
+    """Run one command. The language of its messages is set here, once: --lang, then the lang of the scan in the
+    command's folder (check, apply, restore), then CAPYBARA_LANG, then en; scan uses that one language for its cards
+    too. It is put back afterwards, so an in-process caller (the tests) never inherits another run's language."""
+    global CLI_LANG
     args = parser().parse_args(argv)
+    before = CLI_LANG
+    use_lang(args.lang, recorded_lang(getattr(args, "dir", None)))
     try:
         return COMMANDS[args.cmd](args)
     except TidyError as e:
-        print(f"erro: {e}", file=sys.stderr)
+        print(say("error", e=e), file=sys.stderr)
         return 2
+    finally:
+        CLI_LANG = before
 
 
 if __name__ == "__main__":

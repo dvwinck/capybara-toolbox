@@ -72,13 +72,13 @@ class RefusalTest(ApplyCase):
     def test_no_decisions_file_means_no_apply(self):
         rc, _, err = self.apply()
         self.assertEqual(rc, 2)
-        self.assertIn("decisions.json ausente", err)
+        self.assertIn("decisions.json missing or unreadable", err)
 
     def test_an_unfinished_board_is_refused(self):
         self.decide({"feat/a": "approved"}, finished=False)
         rc, _, err = self.apply()
         self.assertEqual(rc, 2)
-        self.assertIn("nao foi concluido", err)
+        self.assertIn("the panel was not finished", err)
         self.assertIn("feat/a", self.branches())
 
     def test_decisions_from_another_batch_or_round_are_refused(self):
@@ -87,7 +87,7 @@ class RefusalTest(ApplyCase):
                 self.decide({"feat/a": "approved"}, **{key: value})
                 rc, _, err = self.apply()
                 self.assertEqual(rc, 2)
-                self.assertIn("outro lote ou rodada", err)
+                self.assertIn("another batch or round", err)
         self.assertIn("feat/a", self.branches())
 
     def test_garbage_decisions_do_not_crash_and_delete_nothing(self):
@@ -96,7 +96,7 @@ class RefusalTest(ApplyCase):
             encoding="utf-8")
         rc, out, _ = self.apply()
         self.assertEqual(rc, 0)
-        self.assertIn("nada aprovado", out)
+        self.assertIn("nothing approved", out)
         self.assertIn("feat/a", self.branches())
 
     def test_a_broken_scan_is_refused(self):
@@ -106,7 +106,7 @@ class RefusalTest(ApplyCase):
         (self.board / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
         rc, _, err = self.apply()
         self.assertEqual(rc, 2)
-        self.assertIn("invalidos", err)
+        self.assertIn("invalid scan.json/batch.json", err)
 
 
 class DeletionTest(ApplyCase):
@@ -168,7 +168,7 @@ class DeletionTest(ApplyCase):
         self.assertEqual(self.backups(), set())
         self.assertFalse((self.board / "applied.json").exists())
         self.assertIn("would-delete", out)
-        self.assertIn("simulado", out)
+        self.assertIn("APPLY (dry run): 4 would be deleted, 0 skipped", out)
 
 
 class GroupTest(ApplyCase):
@@ -211,7 +211,7 @@ class RecheckTest(ApplyCase):
         self.decide({"spike/x": "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("a ponta mudou desde o scan", out)
+        self.assertIn("the tip changed since the scan", out)
         self.assertIn("spike/x", self.branches())
         self.assertEqual(self.backups(), set())
 
@@ -220,7 +220,7 @@ class RecheckTest(ApplyCase):
         self.decide({"spike/x": "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("esta em uso em", out)
+        self.assertIn("it is in use in", out)
         self.assertIn("spike/x", self.branches())
 
     def test_a_branch_that_vanished_is_reported_not_crashed_on(self):
@@ -228,7 +228,7 @@ class RecheckTest(ApplyCase):
         self.decide({"feat/a": "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("a branch nao existe mais", out)
+        self.assertIn("the branch no longer exists", out)
 
     def test_p1_is_recomputed_so_an_edited_scan_cannot_delete_unmerged_work(self):
         scan = json.loads((self.board / "scan.json").read_text(encoding="utf-8"))
@@ -239,7 +239,7 @@ class RecheckTest(ApplyCase):
         self.decide({"spike/x": "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("deixou de estar mesclada na base", out)
+        self.assertIn("it is no longer merged into the base", out)
         self.assertIn("spike/x", self.branches())
 
     def test_a_worktree_that_became_dirty_is_kept_with_its_branch(self):
@@ -247,7 +247,7 @@ class RecheckTest(ApplyCase):
         self.decide({str(self.wt): "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("alterado(s) ou nao rastreado(s)", out)
+        self.assertIn("it has 1 changed or untracked file(s)", out)
         self.assertTrue((self.wt / "scratch.txt").exists())
         self.assertIn("wtm", self.branches())
 
@@ -289,7 +289,7 @@ class RecheckTest(ApplyCase):
                                                           "items": {iid: {"decision": "approved"}}}), encoding="utf-8")
         rc, out, _ = run_cli("apply", str(board))
         self.assertEqual(rc, 1)
-        self.assertIn("nao consegui criar o backup", out)
+        self.assertIn("could not create the backup", out)
         self.assertIn("spike", self.branches())
 
     def test_a_stash_that_vanished_is_reported(self):
@@ -297,7 +297,7 @@ class RecheckTest(ApplyCase):
         self.decide({self.scan_stash_name(): "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("o stash nao existe mais", out)
+        self.assertIn("the stash no longer exists", out)
 
     def scan_stash_name(self):
         return [e["name"] for e in self.scan["items"] if e["kind"] == "stash"][0]
@@ -307,7 +307,7 @@ class RecheckTest(ApplyCase):
         self.apply()
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("a branch nao existe mais", out)
+        self.assertIn("the branch no longer exists", out)
         entry = self.applied()[self.ids["spike/x"]]
         self.assertEqual(entry["action"], "deleted")
         self.assertEqual(entry["backup"], "refs/tidy-board/backup/spike/x")
@@ -330,7 +330,7 @@ class RestoreTest(ApplyCase):
         self.apply()
         rc, _, err = run_cli("restore", str(self.board), self.ids["feat/a"])
         self.assertEqual(rc, 2)
-        self.assertIn("nao tem backup", err)
+        self.assertIn("has no backup", err)
         self.assertIn(f"git branch feat/a {sha}", err)
         self.assertNotIn("feat/a", self.branches())
         self.assertEqual(self.applied()[self.ids["feat/a"]]["action"], "deleted")
@@ -366,7 +366,7 @@ class RestoreTest(ApplyCase):
         for item in (self.ids["feat/b"], "T99"):
             rc, _, err = run_cli("restore", str(self.board), item)
             self.assertEqual(rc, 2)
-            self.assertIn("nao foi apagado por este lote", err)
+            self.assertIn("was not deleted by this batch", err)
         run_cli("restore", str(self.board), self.ids["spike/x"])
         rc, _, err = run_cli("restore", str(self.board), self.ids["spike/x"])
         self.assertEqual(rc, 2)
@@ -431,14 +431,14 @@ class P2RecheckTest(RepoCase):
         self.fake_gh(self.prs, exit_code=1)
         rc, out, _ = run_cli("apply", str(self.board))
         self.assertEqual(rc, 1)
-        self.assertIn("gh indisponivel", out)
+        self.assertIn("gh unavailable", out)
         self.assertEqual(self.branches(), {"main", "feat/p", "feat/q"})
 
     def test_skipped_when_the_pr_no_longer_matches_the_tip(self):
         self.fake_gh([{**self.prs[0], "headRefOid": "0" * 40}, self.prs[1]])
         rc, out, _ = run_cli("apply", str(self.board))
         self.assertEqual(rc, 1)
-        self.assertIn("nao confere mais", out)
+        self.assertIn("no longer matches the branch tip", out)
         self.assertEqual(self.branches(), {"main", "feat/p"})  # only the one gh still confirms went
 
     def test_no_gh_call_when_the_history_already_proves_it(self):
@@ -530,7 +530,7 @@ class LyingSidecarTest(ApplyCase):
         self.decide({str(self.wt): "approved"})
         rc, out, _ = self.apply()
         self.assertEqual(rc, 1)
-        self.assertIn("mudou de branch", out)
+        self.assertIn("switched branches since the scan", out)
         self.assertTrue(self.wt.exists())
         self.assertIn("wtm", self.branches())
 

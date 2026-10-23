@@ -176,21 +176,21 @@ class ScanProblemsTest(BoardRepo):
             s["items"][0]["proof"] = "P9"
             s["items"][0]["sha"] = "abc"
         errs = self.problems(mutate)
-        for fragment in ("id duplicado", "'kind' deve ser", "'proof' deve ser", "'sha' deve ser um id de commit completo"):
+        for fragment in ("duplicate id", "'kind' must be", "'proof' must be", "'sha' must be a full commit id"):
             self.assertTrue(any(fragment in e for e in errs), (fragment, errs))
 
     def test_the_group_only_accepts_p1_and_p2_items(self):
         def mutate(b, s):
             risky = [e["id"] for e in s["items"] if e["proof"] in ("P3", "P4")][0]
             s["group"]["members"].append(risky)
-        self.assertTrue(any("so aceita itens P1 ou P2" in e for e in self.problems(mutate)))
+        self.assertTrue(any("only takes P1 or P2 items" in e for e in self.problems(mutate)))
 
     def test_a_card_without_an_entry_and_an_entry_without_a_card_are_reported(self):
         def mutate(b, s):
             s["items"].pop()
             b["items"].pop(1)
         errs = self.problems(mutate)
-        self.assertTrue(any("nao tem entrada no scan.json" in e or "nao tem card" in e for e in errs), errs)
+        self.assertTrue(any("has no entry in scan.json" in e or "has no card" in e for e in errs), errs)
 
     def test_a_worktree_needs_its_path(self):
         def mutate(b, s):
@@ -200,7 +200,7 @@ class ScanProblemsTest(BoardRepo):
                 b["items"].append({"id": "T99", "title": "w"})
             else:
                 wt[0]["path"] = None
-        self.assertTrue(any("precisa de 'path'" in e for e in self.problems(mutate)))
+        self.assertTrue(any("needs 'path'" in e for e in self.problems(mutate)))
 
     def test_garbage_shapes_do_not_crash(self):
         self.assertTrue(tb.scan_problems({"items": []}, {"items": "x"}))
@@ -222,8 +222,8 @@ class ScanCliTest(BoardRepo):
         self.assertEqual(rc, 0, stdout)
         self.assertIn(f"TIDY-BOARD DIR: {out}", stdout)
         self.assertIn("TIDY-BOARD ITENS:", stdout)
-        self.assertIn("NAO TOCAR: main (branch base do repositório)", stdout)
-        self.assertIn("; idioma en", stdout)
+        self.assertIn("DO NOT TOUCH: main (base branch of the repository)", stdout)
+        self.assertIn("; language en", stdout)
         batch = json.loads((out / "batch.json").read_text(encoding="utf-8"))
         self.assertEqual(capy.validate(batch), [])
         rc, stdout, _ = run_cli("check", str(out))
@@ -249,7 +249,7 @@ class ScanCliTest(BoardRepo):
             self.assertEqual(run_cli("scan", str(self.repo), "--gh", "off")[0], 0)
             rc, _, err = run_cli("scan", str(self.repo), "--gh", "off")
         self.assertEqual(rc, 2)
-        self.assertIn("ja existe", err)
+        self.assertIn("already exists", err)
 
     def test_check_rejects_an_edited_scan(self):
         out = self.tmp / "board"
@@ -259,30 +259,30 @@ class ScanCliTest(BoardRepo):
         (out / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
         rc, _, err = run_cli("check", str(out))
         self.assertEqual(rc, 1)
-        self.assertIn("'sha' deve ser um id de commit completo", err)
+        self.assertIn("'sha' must be a full commit id", err)
 
     def test_check_on_a_missing_folder_is_a_clean_error(self):
         rc, _, err = run_cli("check", str(self.tmp / "nope"))
         self.assertEqual(rc, 2)
-        self.assertIn("erro:", err)
+        self.assertIn("error:", err)
 
     def test_scan_outside_a_repository_is_a_clean_error(self):
         rc, _, err = run_cli("scan", str(self.tmp))
         self.assertEqual(rc, 2)
-        self.assertIn("nao e um repositorio git", err)
+        self.assertIn("not a git repository", err)
 
     def test_scan_with_nothing_to_clean_says_so_and_writes_nothing(self):
         empty = init_repo(self.tmp / "empty")
         commit(empty, "init", {"a.txt": "x\n"})
         rc, stdout, _ = run_cli("scan", str(empty), "--gh", "off")
         self.assertEqual(rc, 0)
-        self.assertIn("nada para limpar", stdout)
+        self.assertIn("nothing to clean up", stdout)
         self.assertFalse((empty / ".tidy-board").exists())
 
     def test_an_unknown_base_is_a_clean_error(self):
         rc, _, err = run_cli("scan", str(self.repo), "--base", "nope")
         self.assertEqual(rc, 2)
-        self.assertIn("a base 'nope' nao existe", err)
+        self.assertIn("the base 'nope' does not exist", err)
 
     def test_a_long_board_gets_a_warning_from_check(self):
         out = self.tmp / "board"
@@ -297,7 +297,7 @@ class ScanCliTest(BoardRepo):
         (out / "batch.json").write_text(json.dumps(batch), encoding="utf-8")
         rc, _, err = run_cli("check", str(out))
         self.assertEqual(rc, 0)
-        self.assertIn("a revisao cansa", err)
+        self.assertIn("the review gets tiring", err)
 
 # ---------------------------------------------------------------- the cards' language (tidy-board 0.2.0)
 
@@ -345,7 +345,7 @@ class LanguageTableTest(unittest.TestCase):
     def test_an_unknown_language_is_refused_by_the_builder(self):
         with self.assertRaises(tb.TidyError) as ctx:
             tb.check_lang("xx")
-        self.assertIn("idioma invalido", str(ctx.exception))
+        self.assertIn("invalid language", str(ctx.exception))
 
 
 class LanguageBoardTest(BoardRepo):
@@ -390,13 +390,13 @@ class LanguageBoardTest(BoardRepo):
         del scan["lang"]
         self.assertEqual(tb.scan_problems(batch, scan), [])
         scan["lang"] = "xx"
-        self.assertTrue(any("'lang' deve ser en ou pt-BR" in e for e in tb.scan_problems(batch, scan)))
+        self.assertTrue(any("'lang' must be en or pt-BR" in e for e in tb.scan_problems(batch, scan)))
         scan["lang"] = None  # null counts as omitted
         self.assertEqual(tb.scan_problems(batch, scan), [])
 
 
 class LanguageCliTest(BoardRepo):
-    def test_scan_lang_reaches_both_files_and_the_command_line_stays_portuguese(self):
+    def test_scan_lang_reaches_both_files_and_the_command_line_follows_it(self):
         out = self.tmp / "board"
         rc, stdout, _ = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(out), "--lang", "pt-BR")
         self.assertEqual(rc, 0, stdout)
@@ -405,9 +405,11 @@ class LanguageCliTest(BoardRepo):
         self.assertEqual((batch["lang"], scan["lang"]), ("pt-BR", "pt-BR"))
         self.assertEqual(batch["labels"]["approve"]["text"], "Apagar")
         self.assertEqual(capy.validate(batch), [])
-        self.assertIn("NAO TOCAR: main (branch base do repositório)", stdout)
-        self.assertIn("; idioma pt-BR", stdout)
-        self.assertEqual(run_cli("check", str(out))[0], 0)
+        self.assertIn("NAO TOCAR: main (branch base do repositorio)", stdout)  # accent-free, as the command line always was
+        self.assertIn("; gh nao; idioma pt-BR", stdout)
+        rc, stdout, _ = run_cli("check", str(out))  # check reads the scan's language
+        self.assertEqual(rc, 0)
+        self.assertTrue(stdout.startswith("ok: 5 itens, lote tidy-r-"), stdout)
 
     def test_an_unknown_lang_is_refused_before_anything_is_written(self):
         out = self.tmp / "board"
@@ -425,4 +427,103 @@ class LanguageCliTest(BoardRepo):
         (out / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
         rc, _, err = run_cli("check", str(out))
         self.assertEqual(rc, 1)
-        self.assertIn("'lang' deve ser en ou pt-BR", err)
+        self.assertIn("scan.json: 'lang' must be en or pt-BR", err)  # an invalid recorded language is ignored: English
+
+# ---------------------------------------------------------------- the command line's language (tidy-board 0.2.0)
+
+import ast as _ast
+import os as _os
+
+PRINTING = ("git", "git_ok", "repo_root", "detect_base", "check_lang", "load_dir", "scan_problems", "cmd_scan", "cmd_check",
+            "parser", "make_backup", "pr_blocker", "branch_blocker", "apply_branch", "apply_worktree", "apply_stash",
+            "read_decisions", "cmd_apply", "cmd_restore", "main")
+CLI_PT_WORDS = {  # words of the old command-line output: any of them in a literal of those functions is a leftover
+    "nao", "deve", "obrigatorio", "itens", "lote", "aviso", "erro", "consegui", "existe", "falhou", "invalido",
+    "invalidos", "pasta", "tente", "nada", "limpar", "sim", "idioma", "apagados", "pulados", "simulado", "seriam",
+    "recriado", "recriada", "ponta", "mudou", "uso", "mesclada", "bloqueado", "alterado", "rastreado", "ja",
+    "painel", "concluido", "rodada", "decisoes", "escreve", "padrao", "reconfere", "apaga",
+    "mostra", "faria", "recria", "registrado", "valida", "usar", "provar", "mergeados", "depois",
+}
+
+
+def _literals(fn):
+    body = fn.body[1:] if fn.body and isinstance(fn.body[0], _ast.Expr) and isinstance(fn.body[0].value, _ast.Constant) else fn.body
+    return [n.value for stmt in body for n in _ast.walk(stmt) if isinstance(n, _ast.Constant) and isinstance(n.value, str)]
+
+
+class CommandLineTableTest(unittest.TestCase):
+    def test_both_tables_have_the_same_keys_and_placeholders_and_are_plain_ascii(self):
+        en, pt = tb.MSG["en"], tb.MSG["pt-BR"]
+        self.assertEqual(set(en), set(pt))
+        for key in en:
+            with self.subTest(key=key):
+                self.assertEqual(set(PLACEHOLDER.findall(en[key])), set(PLACEHOLDER.findall(pt[key])))
+                self.assertTrue(en[key].isascii() and pt[key].isascii(), key)
+        for code in tb.WHY_CODES:  # the reasons a scan prints come from this table, not from the accented cards
+            self.assertIn("why_" + code, en)
+
+    def test_the_pt_br_side_is_the_old_output(self):
+        pt = tb.MSG["pt-BR"]
+        self.assertEqual(pt["untouched"], "NAO TOCAR: {name} ({why})")
+        self.assertEqual(pt["why_base_branch"], "branch base do repositorio")
+        self.assertEqual(pt["invalid"], "scan.json/batch.json invalidos:")
+        self.assertEqual(pt["error"], "erro: {e}")
+
+    def test_no_portuguese_literal_is_left_in_the_functions_that_print(self):
+        tree = _ast.parse(Path(tb.__file__).read_text(encoding="utf-8"))
+        found = []
+        for fn in (n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name in PRINTING):
+            for text in _literals(fn):
+                if set(_re.split(r"[^a-z]+", text.lower())) & CLI_PT_WORDS:
+                    found.append(f"{fn.name}: {text!r}")
+        self.assertEqual(found, [], "Portuguese left outside MSG:\n" + "\n".join(found))
+
+    def test_a_placeholder_named_like_an_argument_is_still_substituted(self):
+        self.assertIn("scan.json: 'repo' is required (text)", tb.scan_problems({"items": []}, {"items": [], "base": "main"}))
+
+    def test_one_takes_the_singular_form(self):
+        self.addCleanup(setattr, tb, "CLI_LANG", tb.CLI_LANG)
+        tb.CLI_LANG = "pt-BR"
+        self.assertEqual(tb.say("apply", deleted=tb.say("n_deleted", n=1), skipped=tb.say("n_skipped", n=0)), "APPLY: 1 apagado, 0 pulados")
+        self.assertEqual(tb.say("ok", n=1, id="b"), "ok: 1 item, lote b")
+        tb.CLI_LANG = "en"
+        self.assertEqual(tb.say("ok", n=1, id="b"), "ok: 1 item, batch b")
+        self.assertEqual(tb.say("apply_dry", deleted=tb.say("n_would", n=1), skipped=tb.say("n_skipped", n=2)),
+                         "APPLY (dry run): 1 would be deleted, 2 skipped")
+
+
+class CommandLineLanguageTest(BoardRepo):
+    def test_capybara_lang_chooses_the_cards_and_the_lines_when_there_is_no_flag(self):
+        out = self.tmp / "board"
+        with mock.patch.dict(_os.environ, {"CAPYBARA_LANG": "pt-BR"}):
+            rc, stdout, _ = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(out))
+        self.assertEqual(rc, 0, stdout)
+        self.assertEqual(json.loads((out / "batch.json").read_text(encoding="utf-8"))["lang"], "pt-BR")
+        self.assertIn("NAO TOCAR: main (branch base do repositorio)", stdout)
+        with mock.patch.dict(_os.environ, {"CAPYBARA_LANG": "pt-BR"}):
+            rc, stdout, _ = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(self.tmp / "b2"), "--lang", "en")
+        self.assertIn("DO NOT TOUCH: main (base branch of the repository)", stdout)
+
+    def test_a_bad_capybara_lang_is_ignored(self):
+        with mock.patch.dict(_os.environ, {"CAPYBARA_LANG": "pt_BR"}):
+            rc, stdout, err = run_cli("scan", str(self.repo), "--gh", "off", "--out", str(self.tmp / "board"))
+        self.assertEqual((rc, err), (0, ""))
+        self.assertIn("; language en", stdout)
+
+    def test_the_flag_wins_over_the_language_the_scan_recorded(self):
+        out = self.tmp / "board"
+        run_cli("scan", str(self.repo), "--gh", "off", "--out", str(out), "--lang", "pt-BR")
+        rc, stdout, _ = run_cli("check", str(out), "--lang", "en")
+        self.assertEqual(rc, 0)
+        self.assertTrue(stdout.startswith("ok: 5 items, batch tidy-r-"), stdout)
+        rc, _, err = run_cli("apply", str(out))  # no decisions yet: refused in the scan's language
+        self.assertEqual(rc, 2)
+        self.assertIn("erro: decisions.json ausente ou ilegivel", err)
+
+    def test_every_command_takes_lang_and_a_run_leaves_no_language_behind(self):
+        for argv in (["scan", "."], ["check", "d"], ["apply", "d"], ["restore", "d", "T01"]):
+            with self.subTest(cmd=argv[0]):
+                self.assertEqual(tb.parser().parse_args(argv + ["--lang", "pt-BR"]).lang, "pt-BR")
+                self.assertIsNone(tb.parser().parse_args(argv).lang)
+        run_cli("scan", str(self.repo), "--gh", "off", "--out", str(self.tmp / "board"), "--lang", "pt-BR")
+        self.assertEqual(tb.CLI_LANG, "en")  # main() put the default back
