@@ -504,6 +504,7 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 | The root must be an object | `a raiz do batch.json deve ser um objeto` |
 | `batch_id` and `title`: non-empty strings | `campo '<k>' e obrigatorio (string)` |
 | `round` (if present): integer >= 1, not a boolean | `campo 'round' deve ser inteiro >= 1` |
+| `lang` (if present, `null` counts as omitted): `en` or `pt-BR`, nothing else | `campo 'lang' deve ser en ou pt-BR` (English run: `field 'lang' must be en or pt-BR`) |
 | `items`: non-empty list | `'items' deve ser uma lista nao vazia` |
 | Each item is an object | `item <i>: deve ser objeto` |
 | `id`: non-empty string, unique | `item <i>: 'id' obrigatorio` / `item <i>: id duplicado '<id>'` |

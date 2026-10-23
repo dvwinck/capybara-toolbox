@@ -85,7 +85,7 @@ Coloque `.tidy-board/` no `.gitignore`: os arquivos citam suas branches e caminh
 
 - O tidy-board roda o `git` dentro do seu repositório. Ele ignora os hooks, o monitor de sistema de arquivos e os programas de diff externo do repositório, mas, como qualquer comando git, ainda confia no resto da configuração local: não o rode em um repositório em que você não confia.
 - A detecção de squash é uma heurística: um squash com rebase ou conflito resolvido costuma cair em P4 (protegido, só mais trabalhoso).
-- Os contadores do painel contam o card de grupo como um item, e os itens que o grupo cobre aparecem como "sem decisao" ali. O `apply --dry-run` lista exatamente o que seria apagado; a skill sempre o mostra antes.
+- Os contadores do painel contam o card de grupo como um item, e os itens que o grupo cobre aparecem como "undecided" ali (em pt-BR "sem decisão"). O `apply --dry-run` lista exatamente o que seria apagado; a skill sempre o mostra antes.
 - Uma branch cujo PR sofreu force-push depois do merge deixa de bater com a ponta do PR e cai em P3 ou P4.
 - Branches remotas, tags, vários repositórios por painel e limpeza agendada estão fora do escopo.
 - O JavaScript do painel não é coberto pelos testes unitários; foi conferido à mão em um navegador (tema claro).

@@ -11,7 +11,7 @@ Below, "TODO" means a `TODO` or `FIXME` marker. The panel literals are written i
 
 Discard and Keep decisions are recorded in `.todo-sweep/ledger.json` when you run `report` (step 3): the next `scan` offers the next TODOs, not the same ones. Resolve decisions and TODOs left undecided are not recorded: such a TODO keeps being offered until it disappears from the code.
 
-Reply to the user in the user's language. You do not write the cards: `scan` writes them. The cards, the panel and `report.md` exist in English (the default) and in pt-BR: run `scan --lang pt-BR` when the user writes in Portuguese, and `scan` (or `--lang en`) otherwise; `check` and `report` follow the language of the scan by themselves (and so do their lines; `--lang` overrides it). The user can also switch the panel's own buttons with the EN/PT toggle in its header. Never edit `batch.json` or `scan.json` to translate them.
+Reply to the user in the user's language. You do not write the cards: `scan` writes them. The cards, the panel and `report.md` exist in English (the default) and in pt-BR: run `scan --lang pt-BR` when the user writes in Portuguese, and `scan` (or `--lang en`) otherwise; `check` and `report` follow the language of the scan by themselves (and so do their lines; `--lang` overrides it). The user can also switch the panel's own text with the EN/PT toggle in its header; the cards, and the button wording the batch carries in `labels` (Resolve/Discard/Keep), stay in the language of the scan's `--lang`, not of the toggle. Never edit `batch.json` or `scan.json` to translate them.
 
 ## When to use
 

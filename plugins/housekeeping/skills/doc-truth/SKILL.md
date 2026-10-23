@@ -49,7 +49,7 @@ Present the findings grouped by category, in the order the output prints them, a
 - `version`: an `X.Y.Z` version on the same line as a plugin's name does not match `plugin.json`.
 - `plugins`: the catalog has a plugin that the root README does not link.
 
-If the output says `aceitos pela lista allow` ("accepted by the allow list"), tell the user how many findings `.doc-truth.json` has already accepted (the line reads `(<N> aceitos pela lista allow)`).
+If the output says `accepted by the allow list` (pt-BR `aceitos pela lista allow`), tell the user how many findings `.doc-truth.json` has already accepted (the line reads `(<N> accepted by the allow list)`, pt-BR `(<N> aceitos pela lista allow)`).
 
 ### 3. Fix only on request
 

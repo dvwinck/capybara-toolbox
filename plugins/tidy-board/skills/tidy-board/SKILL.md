@@ -9,7 +9,7 @@ This skill turns "there are too many branches" into a safe cleanup. `scan` reads
 
 Deleting the wrong thing costs more than leaving clutter: when in doubt, the item stays.
 
-Reply to the user in the user's language. The panel and the cards that `scan` writes exist in English (the default) and in pt-BR: run `scan --lang pt-BR` when the user writes in Portuguese, and `scan` (or `--lang en`) otherwise. The user can also switch the panel's own buttons with the EN/PT toggle in its header; the cards stay in the language of the scan. Every line the tool prints follows the same language (`check`, `apply` and `restore` read it from `scan.json`; `--lang` overrides it on every command). Never edit `batch.json` or `scan.json` to translate them. The literals below are written in English first, with the pt-BR wording next to them.
+Reply to the user in the user's language. The panel and the cards that `scan` writes exist in English (the default) and in pt-BR: run `scan --lang pt-BR` when the user writes in Portuguese, and `scan` (or `--lang en`) otherwise. The user can also switch the panel's own text with the EN/PT toggle in its header; the cards, and the button wording the batch carries in `labels` (Delete/Keep/Later), stay in the language of the scan's `--lang`, not of the toggle. Every line the tool prints follows the same language (`check`, `apply` and `restore` read it from `scan.json`; `--lang` overrides it on every command). Never edit `batch.json` or `scan.json` to translate them. The literals below are written in English first, with the pt-BR wording next to them.
 
 ## When to use (and when not)
 

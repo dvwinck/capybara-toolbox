@@ -76,7 +76,7 @@ Exit code `0` when every citation is verified (and, for `resume`, nothing drifte
 ```bash
 S=plugins/housekeeping/skills/todo-sweep/scripts
 python3 -I $S/todo_sweep.py scan                                  # find them, measure their age, write .todo-sweep/<batch>/ (--lang pt-BR for Portuguese cards and report)
-python3 -I $S/capy_board.py serve .todo-sweep/<batch> --open      # the panel: A Resolve, R Discard, M Keep
+python3 -I $S/capy_board.py serve .todo-sweep/<batch> --open      # the panel: A Resolve, R Discard, M Keep (pt-BR Resolver, Descartar, Manter)
 python3 -I $S/todo_sweep.py report .todo-sweep/<batch>            # report.md and report.json from your decisions
 ```
 

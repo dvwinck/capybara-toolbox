@@ -36,7 +36,7 @@ Ask in plain language — *"give me 10 architecture improvements as an AR board"
 | `C` / `Esc` | Focus the comment field / leave it |
 | `←` / `→` | Previous / next card |
 
-Decisions and comments autosave to `decisions.json`; **Concluir** tells the agent you are done. Holding a key down never decides in a burst.
+Decisions and comments autosave to `decisions.json`; **Finish and notify the agent** (pt-BR **Concluir e avisar o agente**) tells the agent you are done. Holding a key down never decides in a burst.
 
 ## What it writes
 

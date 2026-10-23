@@ -85,7 +85,7 @@ Add `.tidy-board/` to your `.gitignore`: the files name your branches and paths 
 
 - tidy-board runs `git` inside your repository. It ignores the repository's hooks, filesystem monitor and external diff programs, but like any git command it still trusts the rest of the repository's local config: do not run it on a repository you do not trust.
 - Squash detection is a heuristic: a rebased or conflict-resolved squash usually lands in P4 (protected, just more tedious).
-- The panel's counters count the group card as one item, and items the group covers show as "sem decisao" there. `apply --dry-run` lists exactly what would be deleted; the skill always shows it first.
+- The panel's counters count the group card as one item, and items the group covers show as "undecided" there (pt-BR "sem decisão"). `apply --dry-run` lists exactly what would be deleted; the skill always shows it first.
 - A branch whose PR was force-pushed after the merge no longer matches the PR's head and falls to P3 or P4.
 - Remote branches, tags, several repositories per board and scheduled cleanup are out of scope.
 - The panel's JavaScript is not covered by the unit tests; it was checked by hand in a browser (light theme).

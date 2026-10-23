@@ -31,7 +31,7 @@ Peça em linguagem natural — *"me dê 10 melhorias de arquitetura num AR board
 | `C` / `Esc` | Foca o campo de comentário / sai dele |
 | `←` / `→` | Card anterior / próximo |
 
-Tudo é salvo sozinho em `decisions.json`; **Concluir** avisa o agente. Segurar uma tecla nunca decide em rajada.
+Tudo é salvo sozinho em `decisions.json`; **Finish and notify the agent** (em pt-BR **Concluir e avisar o agente**) avisa o agente. Segurar uma tecla nunca decide em rajada.
 
 ## O que ele escreve
 

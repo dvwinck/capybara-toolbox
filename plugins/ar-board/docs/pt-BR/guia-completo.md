@@ -429,6 +429,7 @@ Detalhes:
 | `title` do item: string não vazia | `item <i>: 'title' obrigatorio` |
 | `fields` (se presente): lista de `{label, text}` com texto | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
 | `round` (se presente): inteiro >= 1 | `campo 'round' deve ser inteiro >= 1` |
+| `lang` (se presente; `null` conta como ausente): `en` ou `pt-BR`, nada mais | `campo 'lang' deve ser en ou pt-BR` (em inglês: `field 'lang' must be en or pt-BR`) |
 | `tag` / `image` (se presentes): string | `item <i>: '<k>' deve ser string` |
 | `meta` (se presente): objeto | `item <i>: 'meta' deve ser objeto` |
 | `risk` (se presente): objeto; `level` e `text`, quando presentes, em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
