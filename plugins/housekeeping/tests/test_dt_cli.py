@@ -39,7 +39,7 @@ class RunTest(CliCase):
         self.docs({"README.md": "# T\n`a.md`\n", "README.pt-BR.md": "# T\n", "a.md": "x\n"})
         rc, out, _ = run_main([str(self.repo)])
         self.assertEqual(rc, 0, out)
-        self.assertIn("limpo: nenhum achado", out)
+        self.assertIn("clean: no findings", out)
 
     def test_findings_exit_one_and_are_grouped_by_category(self):
         self.docs({"README.md": "# T\n`gone.md` [x](nope.md)\n", "README.pt-BR.md": "# T\n"})
@@ -133,7 +133,7 @@ class ErrorTest(CliCase):
         plain.mkdir()
         rc, out, err = run_main([str(plain)])
         self.assertEqual((rc, out), (2, ""))
-        self.assertIn("nao e um repositorio git", err)
+        self.assertIn("is not a git repository", err)
 
     def test_a_bad_config_exits_two_and_names_the_problem(self):
         self.docs({"README.md": "# T\n", "README.pt-BR.md": "# T\n"})
@@ -173,7 +173,7 @@ class DeepJsonTest(CliCase):
         (self.repo / ".doc-truth.json").write_text(self.DEEP, encoding="utf-8")
         rc, out, err = run_main([str(self.repo)])
         self.assertEqual((rc, out), (2, ""))
-        self.assertTrue(err.startswith("erro:"), err)
+        self.assertTrue(err.startswith("error:"), err)
 
     def test_the_script_prints_no_traceback_for_any_of_them(self):
         self.seed({"plugins/x/.claude-plugin/plugin.json": self.DEEP, ".claude-plugin/marketplace.json": self.DEEP})
@@ -182,7 +182,7 @@ class DeepJsonTest(CliCase):
         (self.repo / ".doc-truth.json").write_text(self.DEEP, encoding="utf-8")
         bad = subprocess.run([sys.executable, "-I", str(DOC_TRUTH), str(self.repo)], capture_output=True, text=True)
         self.assertEqual(bad.returncode, 2)
-        self.assertTrue(bad.stderr.startswith("erro:"), bad.stderr)
+        self.assertTrue(bad.stderr.startswith("error:"), bad.stderr)
         self.assertNotIn("Traceback", bad.stderr)
 
 
@@ -197,7 +197,7 @@ class EnvironmentTest(CliCase):
         self.docs({"README.md": "# T\n", "README.pt-BR.md": "# T\n"})
         r = self.run_cli(self.repo, dict(os.environ, PATH=str(empty)))
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
-        self.assertIn("git nao encontrado", r.stderr)
+        self.assertIn("git not found", r.stderr)
         self.assertNotIn("Traceback", r.stderr + r.stdout)
 
     def test_repository_location_variables_of_the_environment_are_ignored(self):
@@ -228,3 +228,77 @@ class ScriptTest(CliCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- the language of the messages (housekeeping 0.4.0)
+
+import ast
+import re
+from unittest import mock
+
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
+DT_PRINTING = ("git", "repo_root", "tracked_files", "load_config", "check_paths", "check_links", "check_parity",
+               "check_versions", "check_plugin_lists", "report", "parser", "main")
+DT_PT_WORDS = {"nao", "encontrado", "repositorio", "arquivo", "configuracao", "aninhado", "fundo", "demais", "deve",
+               "objeto", "chave", "desconhecida", "lista", "textos", "caminho", "citado", "existe", "aponta", "algo",
+               "titulo", "ancora", "versao", "portugues", "niveis", "diferem", "difere", "titulos", "contra", "bate",
+               "manifesto", "catalogo", "plugin", "mas", "tem", "documentos", "conferidos", "achados", "limpo",
+               "nenhum", "achado", "aceitos", "aceitar", "ponha", "erro", "padrao", "pasta", "saida", "somente",
+               "leitura", "confere", "dizem"}
+
+
+class LanguageTest(CliCase):
+    def test_both_tables_have_the_same_keys_and_placeholders_and_are_plain_ascii(self):
+        en, pt = dt.MSG["en"], dt.MSG["pt-BR"]
+        self.assertEqual(set(en), set(pt))
+        for key in en:
+            with self.subTest(key=key):
+                self.assertEqual(set(PLACEHOLDER.findall(en[key])), set(PLACEHOLDER.findall(pt[key])))
+                self.assertTrue(en[key].isascii() and pt[key].isascii(), key)
+        self.assertEqual(dt.MSG["pt-BR"]["clean"], "limpo: nenhum achado")  # the pt-BR side is the 0.3.1 output
+
+    def test_no_portuguese_literal_is_left_in_the_functions_that_print(self):
+        tree = ast.parse(DOC_TRUTH.read_text(encoding="utf-8"))
+        found = []
+        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in DT_PRINTING):
+            body = fn.body[1:] if isinstance(fn.body[0], ast.Expr) and isinstance(fn.body[0].value, ast.Constant) else fn.body
+            for node in (n for stmt in body for n in ast.walk(stmt)):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value != "falta ":  # a finding's value is data
+                    if set(re.split(r"[^a-z]+", node.value.lower())) & DT_PT_WORDS:
+                        found.append(f"{fn.name}: {node.value!r}")
+        self.assertEqual(found, [], "Portuguese left outside MSG:\n" + "\n".join(found))
+
+    def test_lang_and_the_environment_choose_the_language(self):
+        self.docs({"README.md": "# T\n", "README.pt-BR.md": "# T\n"})
+        self.assertIn("clean: no findings", run_main([str(self.repo)])[1])
+        self.assertIn("doc-truth " + dt.VERSION + ": 2 documentos conferidos em", run_main([str(self.repo), "--lang", "pt-BR"])[1])
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "pt-BR"}):
+            self.assertIn("limpo: nenhum achado", run_main([str(self.repo)])[1])
+            self.assertIn("clean: no findings", run_main([str(self.repo), "--lang", "en"])[1])
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "portugues"}):
+            rc, out, err = run_main([str(self.repo)])
+        self.assertEqual((rc, err), (0, ""))
+        self.assertIn("clean: no findings", out)
+        self.assertEqual(dt.CLI_LANG, "en")  # main() put the default back
+
+    def test_a_finding_keeps_its_value_and_fingerprint_in_both_languages(self):
+        self.docs({"README.md": "# T\n`gone.md`\n", "docs/x/README.md": "# X\n"})
+        en = json.loads(run_main([str(self.repo), "--json"])[1])["findings"]
+        pt = json.loads(run_main([str(self.repo), "--json", "--lang", "pt-BR"])[1])["findings"]
+        self.assertEqual([(f["value"], f["fingerprint"]) for f in en], [(f["value"], f["fingerprint"]) for f in pt])
+        self.assertIn("falta README.pt-BR.md", [f["value"] for f in en])
+        self.assertEqual([f["message"] for f in en][:1], ["the cited path does not exist: gone.md"])
+        self.assertEqual([f["message"] for f in pt][:1], ["o caminho citado nao existe: gone.md"])
+
+    def test_one_takes_the_singular_form(self):
+        self.docs({"README.md": "# T\n`gone.md`\n"})
+        out = run_main([str(self.repo)])[1]
+        self.assertIn(": 1 document checked in ", out)
+        self.assertIn("\n2 findings\n", out)
+        out = run_main([str(self.repo), "--lang", "pt-BR"])[1]
+        self.assertIn(": 1 documento conferido em ", out)
+
+    def test_an_unknown_lang_is_a_usage_error(self):
+        r = subprocess.run([sys.executable, "-I", str(DOC_TRUTH), str(self.repo), "--lang", "xx"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("invalid choice: 'xx'", r.stderr)

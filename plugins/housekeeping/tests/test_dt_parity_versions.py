@@ -35,11 +35,11 @@ class ParityTest(CheckCase):
         found = dt.check_parity(ctx, docs)
         self.assertEqual(len(found), 1)
         self.assertEqual((found[0]["category"], found[0]["document"], found[0]["value"]), ("parity", "README.md", "1,2,3|1,2,2"))
-        self.assertIn("o titulo 3 difere", found[0]["message"])
+        self.assertIn("heading 3 differs", found[0]["message"])
 
     def test_a_different_count_is_reported_as_such(self):
         ctx, docs = self.build({"README.md": "# T\n## A\n## B\n", "README.pt-BR.md": "# T\n## A\n"})
-        self.assertIn("3 titulos contra 2", dt.check_parity(ctx, docs)[0]["message"])
+        self.assertIn("3 headings against 2", dt.check_parity(ctx, docs)[0]["message"])
 
     def test_link_sets_are_not_compared(self):
         ctx, docs = self.build({"README.md": "# T\n[x](a.md)\n", "README.pt-BR.md": "# T\n[x](b.md)\n", "a.md": "a\n", "b.md": "b\n"})

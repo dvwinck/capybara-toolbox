@@ -4,7 +4,7 @@
 # Copyright (c) 2026 Diogo Winck
 #
 # Uso:
-#   doc_truth.py [PATH] [--json] [--config FILE]     # somente leitura; saida 0 limpo, 1 achados, 2 erro
+#   doc_truth.py [PATH] [--json] [--config FILE] [--lang en|pt-BR]   # read-only; exit 0 clean, 1 findings, 2 error
 import argparse
 import hashlib
 import json
@@ -20,6 +20,51 @@ VERSION = "0.3.1"
 SCHEMA = 1  # of the --json output; it is a public contract
 CONFIG_NAME = ".doc-truth.json"
 CONFIG_KEYS = ("exclude", "ignore_paths", "allow")
+LANGS = ("en", "pt-BR")  # languages of the messages (--lang); the first is the default
+DEFAULT_LANG = "en"
+ENV_LANG = "CAPYBARA_LANG"  # one shell-wide default for every Capybara Toolbox script
+CLI_LANG = DEFAULT_LANG  # the language of this run's messages, set by main()
+
+# Every message doc-truth prints or puts in a finding, in both languages. Same keys and {placeholders} in both
+# (a test enforces it); both plain ASCII, so the pt-BR side is the accent-free Portuguese of 0.3.1, and a key
+# ending in `_1` is the form used when n == 1. A finding's `value` (and so its fingerprint) never depends on the
+# language: an `allow` list written in one language keeps working in the other.
+MSG = {
+    "en": {
+        "git_missing": "git not found ({e})", "not_repo": "{path} is not a git repository",
+        "cfg_missing": "{path}: configuration file not found", "cfg_deep": "{path}: JSON nested too deep",
+        "cfg_obj": "{path}: must be a JSON object", "cfg_key": "{path}: unknown key '{key}' (use {keys})",
+        "cfg_list": "{path}: '{key}' must be a list of strings",
+        "m_path": "the cited path does not exist: {tok}", "m_link": "the link points to something that does not exist: {target}",
+        "m_anchor": "no heading for the anchor: {value}", "m_no_pt": "{rel} has no Portuguese version ({name})",
+        "m_levels": "the heading levels of {rel} and {pt} differ ({where})", "where_heading": "heading {i} differs",
+        "where_count": "{n} headings against {b}", "where_count_1": "{n} heading against {b}",
+        "m_version": "version {v} does not match the manifest ({expected})",
+        "m_plugins": "the catalog has the plugin {name}, but {rel} has no link to plugins/{name}",
+        "checked": "doc-truth {version}: {n} documents checked in {root}",
+        "checked_1": "doc-truth {version}: {n} document checked in {root}",
+        "findings": "{n} findings", "findings_1": "{n} finding", "clean": "clean: no findings",
+        "accepted": "({n} accepted by the allow list)", "accepted_1": "({n} accepted by the allow list)",
+        "how_to_accept": 'To accept a finding, put its fingerprint in "allow" in {config}.', "error": "error: {e}",
+    },
+    "pt-BR": {
+        "git_missing": "git nao encontrado ({e})", "not_repo": "{path} nao e um repositorio git",
+        "cfg_missing": "{path}: arquivo de configuracao nao encontrado", "cfg_deep": "{path}: JSON aninhado fundo demais",
+        "cfg_obj": "{path}: deve ser um objeto JSON", "cfg_key": "{path}: chave desconhecida '{key}' (use {keys})",
+        "cfg_list": "{path}: '{key}' deve ser uma lista de textos",
+        "m_path": "o caminho citado nao existe: {tok}", "m_link": "o link aponta para algo que nao existe: {target}",
+        "m_anchor": "nao ha titulo para a ancora: {value}", "m_no_pt": "{rel} nao tem a versao em portugues ({name})",
+        "m_levels": "os niveis de titulo de {rel} e {pt} diferem ({where})", "where_heading": "o titulo {i} difere",
+        "where_count": "{n} titulos contra {b}", "where_count_1": "{n} titulo contra {b}",
+        "m_version": "a versao {v} nao bate com o manifesto ({expected})",
+        "m_plugins": "o catalogo tem o plugin {name}, mas {rel} nao tem link para plugins/{name}",
+        "checked": "doc-truth {version}: {n} documentos conferidos em {root}",
+        "checked_1": "doc-truth {version}: {n} documento conferido em {root}",
+        "findings": "{n} achados", "findings_1": "{n} achado", "clean": "limpo: nenhum achado",
+        "accepted": "({n} aceitos pela lista allow)", "accepted_1": "({n} aceito pela lista allow)",
+        "how_to_accept": 'Para aceitar um achado, ponha o fingerprint em "allow" em {config}.', "error": "erro: {e}",
+    },
+}
 
 # git never prompts, never runs the repository's hooks or a filesystem monitor, and never uses the network
 GIT_FLAGS = ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull,
@@ -28,6 +73,37 @@ GIT_FLAGS = ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "co
 
 class DocTruthError(Exception):
     """Something the person must fix before the check can run (exit code 2)."""
+
+
+def env_lang():
+    """CAPYBARA_LANG when it is exactly one of LANGS. Any other value is ignored, silently: a shell setting must
+    never break a command, and a warning on every run would be noise in the agent's context."""
+    value = os.environ.get(ENV_LANG)
+    return value if value in LANGS else None
+
+
+def pick_lang(*candidates):
+    """The first candidate that is one of LANGS (--lang), then CAPYBARA_LANG, then English."""
+    for cand in candidates:
+        if isinstance(cand, str) and cand in LANGS:
+            return cand
+    return env_lang() or DEFAULT_LANG
+
+
+def use_lang(*candidates):
+    """Set the language of this run's messages (see pick_lang) and return it."""
+    global CLI_LANG
+    CLI_LANG = pick_lang(*candidates)
+    return CLI_LANG
+
+
+def say(msg_id, /, **values):
+    """One message in the language of this run; with n == 1 the `_1` form wins when there is one. The template is
+    ours, the values are data (substituted, never parsed)."""
+    table = MSG[CLI_LANG]
+    if values.get("n") == 1 and msg_id + "_1" in table:
+        msg_id += "_1"
+    return table[msg_id].format(**values)
 
 
 # where git looks for the repository: inherited from a hook or a wrapper, these would make `-C path` judge another tree
@@ -41,13 +117,13 @@ def git(root, *args):
     try:
         return subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, env=env)
     except OSError as e:
-        raise DocTruthError(f"git nao encontrado ({e.strerror or e})")
+        raise DocTruthError(say("git_missing", e=e.strerror or e))
 
 
 def repo_root(path):
     r = git(path, "rev-parse", "--show-toplevel")
     if r.returncode != 0:
-        raise DocTruthError(f"{path} nao e um repositorio git")
+        raise DocTruthError(say("not_repo", path=path))
     return Path(r.stdout.decode("utf-8", "replace").strip())
 
 
@@ -55,7 +131,7 @@ def tracked_files(root):
     """Every path git tracks, POSIX style: existence is judged against this, so a local run and CI agree."""
     r = git(root, "ls-files", "-z")
     if r.returncode != 0:
-        raise DocTruthError(f"{root} nao e um repositorio git")
+        raise DocTruthError(say("not_repo", path=root))
     return sorted(p for p in r.stdout.decode("utf-8", "replace").split("\0") if p)
 
 
@@ -87,21 +163,21 @@ def load_config(root, explicit=None):
     cfg = {k: [] for k in CONFIG_KEYS}
     if not path.exists():
         if explicit:
-            raise DocTruthError(f"{path}: arquivo de configuracao nao encontrado")
+            raise DocTruthError(say("cfg_missing", path=path))
         return cfg
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise DocTruthError(f"{path}: {e}")
     except RecursionError:  # Python 3.9 recurses while decoding; a hostile file can nest far deeper than that
-        raise DocTruthError(f"{path}: JSON aninhado fundo demais")
+        raise DocTruthError(say("cfg_deep", path=path))
     if not isinstance(data, dict):
-        raise DocTruthError(f"{path}: deve ser um objeto JSON")
+        raise DocTruthError(say("cfg_obj", path=path))
     for key, value in data.items():
         if key not in CONFIG_KEYS:
-            raise DocTruthError(f"{path}: chave desconhecida '{key}' (use {', '.join(CONFIG_KEYS)})")
+            raise DocTruthError(say("cfg_key", path=path, key=key, keys=", ".join(CONFIG_KEYS)))
         if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
-            raise DocTruthError(f"{path}: '{key}' deve ser uma lista de textos")
+            raise DocTruthError(say("cfg_list", path=path, key=key))
         cfg[key] = value
     return cfg
 
@@ -343,7 +419,7 @@ def check_paths(ctx, document):
         seen.add(tok)
         if is_ignored(ctx, document, tok) or path_exists(ctx, document, tok):
             continue
-        out.append(finding("path", document, line, tok, f"o caminho citado nao existe: {tok}"))
+        out.append(finding("path", document, line, tok, say("m_path", tok=tok)))
     return out
 
 
@@ -363,7 +439,7 @@ def check_links(ctx, document):
             else:
                 cand = posixpath.normpath(posixpath.join(posixpath.dirname(document), target))
             if cand.startswith("..") or cand not in ctx.tree:
-                out.append(finding("link", document, line, target, f"o link aponta para algo que nao existe: {target}"))
+                out.append(finding("link", document, line, target, say("m_link", target=target)))
                 continue
         else:
             cand = document
@@ -371,7 +447,7 @@ def check_links(ctx, document):
             other = ctx.doc(cand)
             if other is not None and fragment.lower() not in anchors_of(other):
                 value = f"{cand}#{fragment}"
-                out.append(finding("anchor", document, line, value, f"nao ha titulo para a ancora: {value}"))
+                out.append(finding("anchor", document, line, value, say("m_anchor", value=value)))
     return out
 
 
@@ -414,8 +490,8 @@ def check_parity(ctx, documents):
         pt = rel[:-3] + ".pt-BR.md"
         if pt not in ctx.files:
             if posixpath.basename(rel) == "README.md":
-                out.append(finding("parity", rel, 1, "falta " + posixpath.basename(pt),
-                                   f"{rel} nao tem a versao em portugues ({posixpath.basename(pt)})"))
+                out.append(finding("parity", rel, 1, "falta " + posixpath.basename(pt),  # the value is data: same in both languages
+                                   say("m_no_pt", rel=rel, name=posixpath.basename(pt))))
             continue
         if pt not in present:
             continue
@@ -424,9 +500,9 @@ def check_parity(ctx, documents):
         if a == b:
             continue
         i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
-        where = f"o titulo {i + 1} difere" if i < min(len(a), len(b)) else f"{len(a)} titulos contra {len(b)}"
+        where = say("where_heading", i=i + 1) if i < min(len(a), len(b)) else say("where_count", n=len(a), b=len(b))
         out.append(finding("parity", rel, 1, ",".join(map(str, a)) + "|" + ",".join(map(str, b)),
-                           f"os niveis de titulo de {rel} e {pt} diferem ({where})"))
+                           say("m_levels", rel=rel, pt=pt, where=where)))
     return out
 
 
@@ -447,7 +523,7 @@ def check_versions(ctx, documents):
                 if v not in allowed:
                     value = "/".join(named) + " " + v
                     expected = ", ".join(f"{n} {versions[n]}" for n in named)
-                    out.append(finding("version", rel, line, value, f"a versao {v} nao bate com o manifesto ({expected})"))
+                    out.append(finding("version", rel, line, value, say("m_version", v=v, expected=expected)))
     return out
 
 
@@ -462,7 +538,7 @@ def check_plugin_lists(ctx, documents):
         targets = [posixpath.normpath(t.partition("#")[0]) for _, t in ctx.doc(rel).links if t.partition("#")[0]]
         for name in names:
             if not any(t == f"plugins/{name}" or t.startswith(f"plugins/{name}/") for t in targets):
-                out.append(finding("plugins", rel, 1, name, f"o catalogo tem o plugin {name}, mas {rel} nao tem link para plugins/{name}"))
+                out.append(finding("plugins", rel, 1, name, say("m_plugins", name=name, rel=rel)))
     return out
 
 
@@ -493,9 +569,9 @@ def run(root, config):
 
 
 def report(result):
-    lines = [f"doc-truth {result['version']}: {result['documents']} documentos conferidos em {result['root']}"]
+    lines = [say("checked", version=result["version"], n=result["documents"], root=result["root"])]
     kept = result["findings"]
-    lines.append(f"{len(kept)} achados" if kept else "limpo: nenhum achado")
+    lines.append(say("findings", n=len(kept)) if kept else say("clean"))
     for cat in CATEGORIES:
         group = [f for f in kept if f["category"] == cat]
         if not group:
@@ -504,35 +580,44 @@ def report(result):
         for f in group:
             lines += [f"  {f['document']}:{f['line']}  {f['value']}", f"    {f['message']}", f"    fingerprint: {f['fingerprint']}"]
     if result["accepted"]:
-        lines.append(f"({result['accepted']} aceitos pela lista allow)")
+        lines.append(say("accepted", n=result["accepted"]))
     if kept:
-        lines += ["", f'Para aceitar um achado, ponha o fingerprint em "allow" em {CONFIG_NAME}.']
+        lines += ["", say("how_to_accept", config=CONFIG_NAME)]
     return "\n".join(lines)
 
 
 def parser():
-    p = argparse.ArgumentParser(prog="doc_truth.py", description="Confere se o que os documentos de um repositorio dizem existe (somente leitura).")
-    p.add_argument("path", nargs="?", default=".", help="o repositorio (padrao: a pasta atual)")
-    p.add_argument("--json", action="store_true", help="saida em JSON (campo schema)")
-    p.add_argument("--config", help=f"arquivo de configuracao (padrao: {CONFIG_NAME} na raiz do repositorio)")
+    p = argparse.ArgumentParser(prog="doc_truth.py", description="Checks that what a repository's documents say exists (read-only).")
+    p.add_argument("path", nargs="?", default=".", help="the repository (default: the current folder)")
+    p.add_argument("--json", action="store_true", help="JSON output (schema field)")
+    p.add_argument("--config", help=f"configuration file (default: {CONFIG_NAME} at the repository root)")
+    p.add_argument("--lang", choices=LANGS, default=None, help="language of the messages (default: CAPYBARA_LANG, then en)")
     p.add_argument("--version", action="version", version=f"doc-truth {VERSION}")
     return p
 
 
 def main(argv=None):
+    """Run the check. The language of the messages is set here (--lang, then CAPYBARA_LANG, then en) and put back
+    afterwards, so an in-process caller (the tests) never inherits the language of another run."""
+    global CLI_LANG
     args = parser().parse_args(argv)
+    before = CLI_LANG
+    use_lang(args.lang)
     try:
-        root = repo_root(args.path)
-        config = load_config(root, args.config)
-        result = run(root, config)
-    except DocTruthError as e:
-        print(f"erro: {e}", file=sys.stderr)
-        return 2
-    except (OSError, UnicodeError, RecursionError) as e:  # a safety net: no failure path may end in a traceback and exit 1
-        print(f"erro: {type(e).__name__}: {e}", file=sys.stderr)
-        return 2
-    print(json.dumps(result, indent=2, ensure_ascii=False) if args.json else report(result))
-    return 1 if result["findings"] else 0
+        try:
+            root = repo_root(args.path)
+            config = load_config(root, args.config)
+            result = run(root, config)
+        except DocTruthError as e:
+            print(say("error", e=e), file=sys.stderr)
+            return 2
+        except (OSError, UnicodeError, RecursionError) as e:  # a safety net: no failure path may end in a traceback and exit 1
+            print(say("error", e=f"{type(e).__name__}: {e}"), file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, ensure_ascii=False) if args.json else report(result))
+        return 1 if result["findings"] else 0
+    finally:
+        CLI_LANG = before
 
 
 if __name__ == "__main__":

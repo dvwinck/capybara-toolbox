@@ -5,6 +5,8 @@ sys.dont_write_bytecode = True  # never leave __pycache__ inside the plugin (it 
 import importlib.util
 import os
 import subprocess
+
+os.environ.pop("CAPYBARA_LANG", None)  # the defaults the suite pins must not depend on the shell that runs it
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent  # the plugin directory (plugins/housekeeping)
