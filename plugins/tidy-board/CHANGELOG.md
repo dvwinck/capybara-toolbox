@@ -9,7 +9,7 @@ All notable changes to the **tidy-board** plugin are documented here. The format
 ## [0.2.0] - 2026-10-23
 
 ### Added
-- `scan --lang en|pt-BR` chooses the language of the cards: field labels, titles, effects, the group card, the "do not touch" reasons, the button wording (`labels`), the `confirm` texts, the subtitle and the age wording. The language is written to `batch.json` (`lang`, so the panel opens in it) and to `scan.json`. `check` rejects any other value in `scan.json`; an older scan without `lang` is read as English.
+- `scan --lang en|pt-BR` chooses the language of the cards: field labels, titles, effects, the group card, the "do not touch" reasons, the button wording (`labels`), the `confirm` texts, the subtitle and the age wording. The language is written to `batch.json` (`lang`, so the panel opens in it) and to `scan.json`. `check` rejects any other value in `scan.json`; an older scan without `lang` falls back to `CAPYBARA_LANG`, then English.
 - The pt-BR cards are now written with accents.
 - **Every command takes `--lang en|pt-BR`** for its messages (`scan`, `check`, `apply`, `restore`). Without it, `check`, `apply` and `restore` speak the language recorded in `scan.json`; `scan` uses one language for its cards and its output alike.
 - **`CAPYBARA_LANG`** (`en` or `pt-BR`) is the default language when no flag and no recorded language decide; any other value is ignored. Every Capybara Toolbox tool that speaks pt-BR reads the same variable; publish-check prints English only.

@@ -854,7 +854,7 @@ def scan_problems(batch, scan):
             errs.append(say("p_name", where=where))
         if it.get("kind") == "worktree" and not it.get("path"):
             errs.append(say("p_path", where=where))
-    if scan.get("lang") is not None and scan["lang"] not in LANGS:  # an older scan has no lang: that is English
+    if scan.get("lang") is not None and scan["lang"] not in LANGS:  # an older scan has no lang: CAPYBARA_LANG, then English
         errs.append(say("p_lang"))
     group = scan.get("group")
     if group is not None:

@@ -278,9 +278,10 @@ def gsd_script():
     return claude_dir() / "hooks" / "gsd-statusline.js"
 
 
-def load_config(path=None, strict=False):
+def load_config(path=None, strict=False, check_lang=True):
     """The config merged over DEFAULTS. A broken file is an error only when `strict` (the CLI); the
-    hooks fall back to the defaults so a typo never blanks the header or the footer."""
+    hooks fall back to the defaults so a typo never blanks the header or the footer. `check_lang=False`
+    skips only the `lang` validation (the `lang` command uses it, so it can repair that very key)."""
     path = Path(path or config_path())
     cfg = copy.deepcopy(DEFAULTS)
     try:
@@ -307,7 +308,7 @@ def load_config(path=None, strict=False):
     lang = raw.get("lang")  # top level, optional: the language of the header's weekday and of the messages
     if lang in LANGS:
         cfg["lang"] = lang
-    elif lang is not None and strict:
+    elif lang is not None and strict and check_lang:
         raise UsageError(say("cfg_lang", path=path))
     return cfg
 
@@ -1096,7 +1097,7 @@ def run_command(argv, stdin):
         if flag is not None and flag not in LANGS:
             raise UsageError(say("bad_flag"))
         CLI_LANG = pick_lang(flag)  # a broken config is reported in --lang, else CAPYBARA_LANG, else en
-        cfg = load_config(strict=True)
+        cfg = load_config(strict=True, check_lang=cmd != "lang")  # `lang` may repair a bad lang; all else stays strict
         CLI_LANG = pick_lang(flag, cfg.get("lang"))
         source = "src_flag" if flag else "src_config" if cfg.get("lang") else "src_env" if env_lang() else "src_default"
         if cmd == "status":

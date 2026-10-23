@@ -381,6 +381,20 @@ class LanguageTest(ConfigDirCase):
         self.assertIn("lang must be en or pt-BR", err)
         self.assertTrue(self.hook("p1").startswith("<reply-header>🕐 Fri</reply-header>\n"))
 
+    def test_the_lang_command_can_repair_a_bad_config_lang_and_nothing_else_is_relaxed(self):
+        for arg, stored in (("en", "en"), ("auto", None)):
+            self.write_config({"lang": "pt_BR"})
+            rc, _, err = self.run_cli("lang", arg)
+            self.assertEqual((rc, err), (0, ""))
+            self.assertEqual(self.read_json("header-footer.json").get("lang"), stored)
+        self.write_config({"lang": "pt_BR"})
+        self.assertEqual(self.run_cli("status")[0], 2)  # every other command still refuses it
+        self.write_config({"lang": "pt_BR", "header": {"fields": None}})
+        rc, _, err = self.run_cli("lang", "en")  # a bad field is still refused, and nothing is saved
+        self.assertEqual(rc, 2)
+        self.assertIn("header.fields", err)
+        self.assertEqual(self.read_json("header-footer.json")["lang"], "pt_BR")
+
     def test_a_bad_capybara_lang_is_a_status_problem_and_nothing_else(self):
         with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "pt_BR"}):
             rc, out, err = self.run_cli("status", "--json")
