@@ -1,6 +1,6 @@
 # Refinement: a switchable panel language (English default, pt-BR)
 
-- **Status:** refined and planned; amended on 2026-10-22 by the owner's decision P08 (the command-line output joins the scope); the plan is [docs/plans/panel-i18n.md](../plans/panel-i18n.md)
+- **Status:** built (ar-board 1.4.0, tidy-board 0.2.0, housekeeping 0.4.0, header-footer 0.4.0); the plan is [docs/plans/panel-i18n.md](../plans/panel-i18n.md)
 - **Date:** 2026-10-15 (amended 2026-10-22)
 - **Follows:** the English skills (PR #10, step 1). This is step 2: the panel the skills open, the cards the tools put on it and, since P08, every line the scripts print.
 - **How it was refined:** the owner asked for "a bilingual panel interface, English by default, switchable to pt-BR". Three questions were answered with a recommendation each (toggle scope, pt-BR style, what `scan` does about language), then the design below was shown in chat and approved ("ok"). No web research: this is an internal design. On 2026-10-22, before the plan was executed, the owner extended the scope to the command-line output of every script (P08); the rulings R8-R18 were made while amending the plan and are listed below.
@@ -156,3 +156,11 @@ ar-board 1.4.0, tidy-board 0.2.0, housekeeping 0.4.0 and header-footer 0.4.0, wi
 - Whether the line tags with Portuguese words (`AR-BOARD DECISOES:`, `AR-BOARD ARQUIVO:`, `TIDY-BOARD ITENS:`) should get English names in a later, coordinated change of the skills and docs (R12 keeps them).
 - The name `CAPYBARA_LANG` and whether the owner's own machine should set it to `pt-BR` (the header's weekday turns English otherwise).
 - The pt-BR wording of the panel and of the cards: drafted by the agent, to be skimmed by the owner.
+
+## Amendments made while planning and building
+
+- **Codes, not text, below the cards.** tidy-board's inventory holds reason codes (`base_branch`, `current_branch`, `main_worktree`, `current_worktree`, `locked`, `missing_dir`, `unreadable`, `dirty`), `pr` as `None`/`{}`/`{number, tip_matches}` and `remote` as `None`/`exists`/`removed`/`none`; todo-sweep's `age_reason` is a code (`max_blame`, `no_history`, `uncommitted`, `shallow`). The text is rendered from the tables when the cards are built. `scan.json` keeps its shape (tidy-board writes the rendered reasons there, in the scan's language).
+- **`report.json`** keeps its keys (`resolver`, `descartar`, `manter`, `sem_decisao`) and records `lang`; only `report.md` follows the language (`report --lang`, else the scan's).
+- **The shipped examples follow the new default** (`"lang": "en"`, English labels, an English handoff note); the Portuguese reference batches inside the ar-board and question-board skills set `"lang": "pt-BR"`.
+- **A bad `--lang`** exits 2 through argparse (`invalid choice`) on every command; todo-sweep's own parser prints it as an `error:` line (pt-BR `erro:`) and header-footer as a usage error. Nothing is written.
+- **The panel's two count phrases** are worded without number agreement (`Batch: x · items: 3 · round 1`, `Undecided items: 1. Finish anyway?`); the command line takes the singular for a count of one.
