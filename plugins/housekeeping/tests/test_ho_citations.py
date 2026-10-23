@@ -43,7 +43,7 @@ class CommitTest(CitationCase):
     def test_a_commit_that_does_not_exist(self):
         ok, sha, why = self.check("commit", "1234567")
         self.assertEqual((ok, sha), (False, None))
-        self.assertIn("nao existe", why)
+        self.assertIn("does not exist", why)
 
     def test_what_is_not_a_hex_id_is_invalid_even_if_it_names_a_branch(self):
         for bad in ("main", "added", "abc12", "HEAD", "zzzzzzz", "a" * 41):
@@ -127,7 +127,7 @@ class FileTest(CitationCase):
     def test_a_missing_file(self):
         ok, _sha, why = self.check("file", "src/gone.py")
         self.assertFalse(ok)
-        self.assertIn("nao existe", why)
+        self.assertIn("does not exist", why)
 
     def test_a_file_the_session_deleted_is_not_verified(self):
         (self.repo / "src" / "a.py").unlink()
@@ -138,7 +138,7 @@ class FileTest(CitationCase):
             with self.subTest(value=value):
                 ok, _sha, why = self.check("file", value)
                 self.assertFalse(ok)
-                self.assertIn("relativo", why)
+                self.assertIn("relative to the repository root", why)
 
     def test_a_symlink_that_leads_outside_the_repository_is_not_a_file_of_it(self):
         outside = self.tmp / "secret.txt"
@@ -146,7 +146,7 @@ class FileTest(CitationCase):
         os.symlink(outside, self.repo / "link.txt")
         ok, _sha, why = self.check("file", "link.txt")
         self.assertFalse(ok)
-        self.assertIn("sai do repositorio", why)
+        self.assertIn("leaves the repository", why)
 
     def test_an_embedded_nul_or_control_character_is_an_unverified_file(self):
         for value in ("a\x00b", "src/a.py\x00", "src/a.py\x01"):
@@ -167,9 +167,12 @@ class MarkTest(CitationCase):
     def test_a_failing_citation_is_marked_once_and_nothing_is_removed(self):
         text = self.draft()
         marked = ho.mark_unverified(text, ho.check_text(self.repo, text))
-        self.assertEqual(marked, "Fixed `commit:%s` and `file:src/gone.py` [nao verificado] (see `branch:ghost` [nao verificado]).\n" % self.first[:7])
+        self.assertEqual(marked, "Fixed `commit:%s` and `file:src/gone.py` [not verified] (see `branch:ghost` [not verified]).\n" % self.first[:7])
         again = ho.mark_unverified(marked, ho.check_text(self.repo, marked))
         self.assertEqual(again, marked)  # idempotent
+        pt = ho.mark_unverified(text, ho.check_text(self.repo, text), "pt-BR")
+        self.assertEqual(pt, "Fixed `commit:%s` and `file:src/gone.py` [nao verificado] (see `branch:ghost` [nao verificado]).\n" % self.first[:7])
+        self.assertEqual(ho.mark_unverified(pt, ho.check_text(self.repo, pt)), pt)  # a mark in the other language counts
 
     def test_a_draft_with_only_good_citations_is_unchanged(self):
         text = "ok `commit:%s` and `file:README.md`\n" % self.first
@@ -184,7 +187,7 @@ class MarkTest(CitationCase):
         results = ho.check_text(self.repo, text)
         self.assertEqual([r["verified"] for r in results], [False, False, False, False])
         marked = ho.mark_unverified(text, results)
-        self.assertEqual(marked.count(ho.UNVERIFIED), 4)
+        self.assertEqual(marked.count(ho.UNVERIFIED["en"]), 4)
         self.assertEqual(ho.mark_unverified(marked, ho.check_text(self.repo, marked)), marked)
 
     def test_the_git_helper_survives_a_nul_in_an_argument(self):

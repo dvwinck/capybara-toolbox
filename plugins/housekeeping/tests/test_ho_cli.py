@@ -47,7 +47,8 @@ class CollectCliTest(CliCase):
     def test_collect_prints_the_git_section_or_json(self):
         rc, out, _ = run_main(["collect", str(self.repo)])
         self.assertEqual(rc, 0)
-        self.assertIn("## Estado do git", out)
+        self.assertIn("## Git state", out)
+        self.assertIn("## Estado do git", run_main(["collect", str(self.repo), "--lang", "pt-BR"])[1])
         rc, out, _ = run_main(["collect", str(self.repo), "--json"])
         self.assertEqual((rc, json.loads(out)["tip"]), (0, self.first))
 
@@ -57,30 +58,32 @@ class WriteCliTest(CliCase):
         draft = "---\nModelo: Claude Sonnet 5.5\nStatus: Proposta\n---\n## O que foi feito\n`file:src/a.py`\n"
         rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file(draft)])
         self.assertEqual(rc, 0)
-        self.assertIn("aviso: falta a metainfo 'Pedido original'", out)
-        self.assertNotIn("aviso: falta a metainfo 'Modelo'", out)
-        note = Path(out.split("nota gravada em ")[1].splitlines()[0]).read_text(encoding="utf-8")
-        self.assertIn("| Modelo | Claude Sonnet 5.5 |", note)
+        self.assertIn("warning: metainfo 'Original request' is missing", out)  # a pt-BR key counts in an English note
+        self.assertNotIn("warning: metainfo 'Model' is missing", out)
+        note = Path(out.split("note saved to ")[1].splitlines()[0]).read_text(encoding="utf-8")
+        self.assertIn("| Modelo | Claude Sonnet 5.5 |", note)  # the agent's key is kept as written
         rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file(draft), "--json"])
+        self.assertEqual(json.loads(out)["missing_meta"], ["Original request"])
+        rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file(draft), "--json", "--lang", "pt-BR"])
         self.assertEqual(json.loads(out)["missing_meta"], ["Pedido original"])
 
     def test_a_bad_metainfo_block_is_exit_two_without_a_note(self):
         rc, _, err = run_main(["write", str(self.repo), "--draft", self.draft_file("---\nModelo\n---\n## O que foi feito\nx\n")])
         self.assertEqual(rc, 2)
-        self.assertIn("erro: metainfo invalida na linha 2", err)
+        self.assertIn("error: invalid metainfo on line 2", err)
         self.assertFalse((self.repo / ".handoff").exists())
 
     def test_all_citations_verified_exits_zero(self):
         rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`file:src/a.py`\n")])
         self.assertEqual(rc, 0)
-        self.assertIn("nota gravada em", out)
-        self.assertIn("1 citacoes, 0 nao verificadas", out)
-        self.assertIn("aviso: falta a secao 'Proximos passos'", out)
+        self.assertIn("note saved to", out)
+        self.assertIn("1 citation, 0 not verified", out)
+        self.assertIn("warning: section 'Next steps' is missing", out)
 
     def test_an_unverified_citation_exits_one_but_the_note_is_saved(self):
         rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`branch:ghost`\n")])
         self.assertEqual(rc, 1)
-        self.assertIn("linha 2: branch:ghost  NAO VERIFICADO", out)
+        self.assertIn("line 2: branch:ghost  NOT VERIFIED", out)
         self.assertTrue(list((self.repo / ".handoff").glob("*.md")))
 
     def test_the_draft_can_come_from_standard_input(self):
@@ -92,7 +95,7 @@ class WriteCliTest(CliCase):
     def test_a_missing_draft_is_an_error(self):
         rc, out, err = run_main(["write", str(self.repo), "--draft", str(self.tmp / "none.md")])
         self.assertEqual((rc, out), (2, ""))
-        self.assertIn("nao consegui ler o rascunho", err)
+        self.assertIn("could not read the draft", err)
 
 
 class VerifyCliTest(CliCase):
@@ -100,8 +103,8 @@ class VerifyCliTest(CliCase):
         path = self.draft_file("`file:src/a.py` `file:nope.py`\n")
         rc, out, _ = run_main(["verify", path, str(self.repo)])
         self.assertEqual(rc, 1)
-        self.assertIn("2 citacoes, 1 nao verificadas", out)
-        self.assertIn("nope.py  NAO VERIFICADO", out)
+        self.assertIn("2 citations, 1 not verified", out)
+        self.assertIn("nope.py  NOT VERIFIED", out)
         self.assertEqual(Path(path).read_text(encoding="utf-8"), "`file:src/a.py` `file:nope.py`\n")
 
     def test_verify_of_a_clean_note_exits_zero(self):
@@ -117,12 +120,12 @@ class ResumeCliTest(CliCase):
         rc, out, _ = run_main(["resume", str(self.repo)])
         self.assertEqual(rc, 0)
         self.assertIn("# Handoff - 2026-10-14 09:05 - main", out)
-        self.assertIn("nada mudou no git desde a nota", out)
+        self.assertIn("nothing changed in git since the note", out)
         commit(self.repo, "later", {"b.txt": "b\n"})
         rc, out, _ = run_main(["resume", str(self.repo)])
         self.assertEqual(rc, 1)
-        self.assertIn("mudou desde a nota:", out)
-        self.assertIn("MUDOU (a ponta e outra)", out)
+        self.assertIn("changed since the note:", out)
+        self.assertIn("MOVED (the tip is another)", out)
 
     def test_resume_json(self):
         run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\nx\n")])
@@ -133,7 +136,7 @@ class ResumeCliTest(CliCase):
     def test_resume_without_a_note_exits_two(self):
         rc, _, err = run_main(["resume", str(self.repo)])
         self.assertEqual(rc, 2)
-        self.assertIn("nao ha nota", err)
+        self.assertIn("there is no note", err)
 
 
 class ScriptTest(CliCase):
@@ -156,7 +159,7 @@ class ScriptTest(CliCase):
 
 
 class FailureExitCodesTest(CliCase):
-    def assert_clean_error(self, argv, stdin=None, needle="erro:"):
+    def assert_clean_error(self, argv, stdin=None, needle="error:"):
         rc, out, err = run_main(argv, stdin=stdin)
         self.assertEqual((rc, out), (2, ""), err)
         self.assertIn(needle, err)
@@ -179,14 +182,14 @@ class FailureExitCodesTest(CliCase):
         note = next((self.repo / ".handoff").glob("*.md"))
         os.chmod(note, 0)
         self.addCleanup(os.chmod, note, 0o600)
-        self.assert_clean_error(["verify", str(note), str(self.repo)], needle="nao consegui ler")
-        self.assert_clean_error(["resume", str(self.repo)], needle="nao consegui ler")
+        self.assert_clean_error(["verify", str(note), str(self.repo)], needle="could not read the note")
+        self.assert_clean_error(["resume", str(self.repo), "--lang", "pt-BR"], needle="erro: nao consegui ler a nota")
 
     def test_invalid_utf8_on_standard_input(self):
         r = subprocess.run([sys.executable, "-I", str(HANDOFF), "write", str(self.repo), "--draft", "-"], input=b"## O que foi feito\n\xff\xfe\n",
                            capture_output=True, env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1"))
         self.assertEqual(r.returncode, 2, r.stderr)
-        self.assertIn(b"erro:", r.stderr)
+        self.assertIn(b"error:", r.stderr)
         self.assertNotIn(b"Traceback", r.stderr)
         self.assertFalse((self.repo / ".handoff").exists() and list((self.repo / ".handoff").iterdir()))
 
@@ -202,16 +205,54 @@ class AgreementTest(CliCase):
         commit(self.repo, "rename `file:old.py` to a.py and `branch:nope`", {"b.txt": "b\n"})
         rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`file:src/a.py`\n")])
         self.assertEqual(rc, 0)
-        self.assertIn("1 citacoes, 0 nao verificadas", out)
+        self.assertIn("1 citation, 0 not verified", out)
         rc, out, _ = run_main(["resume", str(self.repo)])
         self.assertEqual(rc, 0, out)
-        self.assertIn("nada mudou no git desde a nota", out)
-        self.assertIn("1 citacoes, 0 com problema", out)
+        self.assertIn("nothing changed in git since the note", out)
+        self.assertIn("1 citation, 0 with problems", out)
         note = next((self.repo / ".handoff").glob("*.md"))
         rc, out, _ = run_main(["verify", str(note), str(self.repo)])
         self.assertEqual(rc, 0, out)
-        self.assertIn("1 citacoes, 0 nao verificadas", out)
+        self.assertIn("1 citation, 0 not verified", out)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LanguageCliTest(CliCase):
+    def test_write_in_pt_br_prints_the_old_lines_and_writes_a_pt_br_note(self):
+        rc, out, _ = run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`branch:ghost`\n"), "--lang", "pt-BR"])
+        self.assertEqual(rc, 1)
+        self.assertIn("1 citacao, 1 nao verificada", out)
+        self.assertIn("linha 2: branch:ghost  NAO VERIFICADO (a branch nao existe (local ou remota))", out)
+        self.assertIn("aviso: falta a secao 'Proximos passos'", out)
+        note = Path(out.split("nota gravada em ")[1].splitlines()[0]).read_text(encoding="utf-8")
+        self.assertIn("`branch:ghost` [nao verificado]", note)
+        self.assertIn("| Metainfo da sessao | |", note)
+
+    def test_capybara_lang_is_the_default_and_the_flag_wins(self):
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "pt-BR"}):
+            self.assertIn("## Estado do git", run_main(["collect", str(self.repo)])[1])
+            self.assertIn("## Git state", run_main(["collect", str(self.repo), "--lang", "en"])[1])
+        with mock.patch.dict(os.environ, {"CAPYBARA_LANG": "ptbr"}):
+            rc, out, err = run_main(["collect", str(self.repo)])
+        self.assertEqual((rc, err), (0, ""))
+        self.assertIn("## Git state", out)
+        self.assertEqual(ho.CLI_LANG, "en")  # main() put the default back
+
+    def test_a_note_does_not_set_the_language_of_resume(self):
+        run_main(["write", str(self.repo), "--draft", self.draft_file("## O que foi feito\n`file:src/a.py`\n"), "--lang", "pt-BR"])
+        rc, out, _ = run_main(["resume", str(self.repo)])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("| Metainfo da sessao | |", out)  # the note, as it was written
+        self.assertIn("--- checked now ---", out)  # the run's own lines, in the run's language
+        self.assertIn("nothing changed in git since the note", out)
+
+    def test_every_command_takes_lang_and_refuses_a_bad_one(self):
+        for argv in (["collect"], ["write", "--draft", "x"], ["verify", "f"], ["resume"]):
+            with self.subTest(cmd=argv[0]):
+                self.assertEqual(ho.parser().parse_args(argv + ["--lang", "pt-BR"]).lang, "pt-BR")
+        r = subprocess.run([sys.executable, "-I", str(HANDOFF), "collect", str(self.repo), "--lang", "xx"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("invalid choice: 'xx'", r.stderr)

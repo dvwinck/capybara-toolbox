@@ -58,7 +58,8 @@ class SkillFilesTest(unittest.TestCase):
         text = (SKILLS / "handoff" / "examples" / "note.example.md").read_text(encoding="utf-8")
         self.assertIsNotNone(ho.parse_data(text))
         self.assertEqual([c[0] for c in ho.find_citations(text)], ["file", "commit", "branch", "file", "branch", "file"])
-        for section in ho.SECTIONS:
+        self.assertEqual(ho.parse_data(text)["lang"], "en")  # the example follows the default language
+        for section in ho.SECTIONS["en"]:
             self.assertIn(f"## {section}", text)
 
     def test_the_handoff_skill_runs_on_haiku_and_the_others_keep_the_session_model(self):
@@ -71,7 +72,7 @@ class SkillFilesTest(unittest.TestCase):
         text = (SKILLS / "handoff" / "examples" / "note.example.md").read_text(encoding="utf-8")
         meta = ho.valid_meta(ho.parse_data(text)["meta"])
         self.assertIsNotNone(meta)
-        self.assertIn("\n\n" + ho.meta_section(meta) + "\n\n## Estado do git", text)
+        self.assertIn("\n\n" + ho.meta_section(meta) + "\n\n## Git state", text)
         self.assertEqual(ho.missing_meta(meta), [])
 
 
