@@ -8,7 +8,6 @@
 #   todo_sweep.py check  DIR                                              # valida batch.json + scan.json
 #   todo_sweep.py report DIR                                              # grava report.md e report.json a partir das decisoes
 # Todo comando aceita --lang en|pt-BR (padrao: o lang do scan.json, depois CAPYBARA_LANG, depois en).
-# Todo comando aceita --lang en|pt-BR (padrao: o lang do scan.json, depois CAPYBARA_LANG, depois en).
 # O painel e o capy_board.py desta skill (`serve DIR`). Nenhum arquivo-fonte e editado.
 import argparse
 import hashlib

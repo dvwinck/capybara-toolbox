@@ -13,7 +13,7 @@ All notable changes to the **tidy-board** plugin are documented here. The format
 - The pt-BR cards are now written with accents.
 - The card of a worktree with a detached HEAD no longer shows a merged-PR field (0.1.1 showed "sem PR mergeado" there, though a worktree with no branch has no PR to look up); every other card keeps its fields.
 - **Every command takes `--lang en|pt-BR`** for its messages (`scan`, `check`, `apply`, `restore`). Without it, `check`, `apply` and `restore` speak the language recorded in `scan.json`; `scan` uses one language for its cards and its output alike.
-- **`CAPYBARA_LANG`** (`en` or `pt-BR`) is the default language when no flag and no recorded language decide; any other value is ignored. Every Capybara Toolbox script reads the same variable.
+- **`CAPYBARA_LANG`** (`en` or `pt-BR`) is the default language when no flag and no recorded language decide; any other value is ignored. Every Capybara Toolbox tool that speaks pt-BR reads the same variable; publish-check prints English only.
 
 ### Changed
 - **The default is English**, for the cards and for the command line. A `scan` without `--lang` (and without `CAPYBARA_LANG`) writes English cards and prints English lines; pass `--lang pt-BR` for the Portuguese ones. The pt-BR command-line text is the accent-free Portuguese of 0.1.1, except that a count of one now takes the singular (`1 item`, `1 apagado`).
