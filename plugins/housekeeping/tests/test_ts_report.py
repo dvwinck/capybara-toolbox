@@ -127,7 +127,7 @@ class RefusalTest(ReportCase):
         self.decide({self.scan["items"][0]["id"]: ("rejected", "")}, finish=False)
         with self.assertRaises(ts.SweepError) as ctx:
             self.report()
-        self.assertIn("nao foi concluido", str(ctx.exception))
+        self.assertIn("the panel was not finished", str(ctx.exception))
         self.assertFalse((self.out / "report.json").exists())
         self.assertEqual(ts.load_ledger(self.repo), {})
 
@@ -139,7 +139,7 @@ class RefusalTest(ReportCase):
             (self.out / "decisions.json").write_text(json.dumps(state), encoding="utf-8")
             with self.subTest(key=key), self.assertRaises(ts.SweepError) as ctx:
                 self.report()
-            self.assertIn("outro lote ou rodada", str(ctx.exception))
+            self.assertIn("another batch or round", str(ctx.exception))
         self.assertEqual(ts.load_ledger(self.repo), {})
 
     def test_missing_and_garbage_decisions_are_refused(self):

@@ -178,7 +178,7 @@ class SymlinkedWorkFolderTest(SweepCase):
         os.symlink(outside, self.repo / ".todo-sweep")
         with self.assertRaises(ts.SweepError) as ctx:
             ts.cmd_scan(self.args())
-        self.assertIn("link simbolico", str(ctx.exception))
+        self.assertIn("symbolic link", str(ctx.exception))
         with self.assertRaises(ts.SweepError):
             ts.save_ledger(self.repo, {"a": {}})
         with self.assertRaises(ts.SweepError):
@@ -300,7 +300,7 @@ class GitHelperTest(SweepCase):
         with mock.patch.object(ts.subprocess, "run", side_effect=FileNotFoundError(2, "No such file or directory")):
             with self.assertRaises(ts.SweepError) as ctx:
                 ts.git(self.repo, "status")
-        self.assertIn("git nao encontrado", str(ctx.exception))
+        self.assertIn("git not found", str(ctx.exception))
 
     def test_an_embedded_nul_in_an_argument_is_a_failed_result(self):
         self.assertEqual(ts.git(self.repo, "rev-parse", "a\0b")[0], 1)
@@ -383,7 +383,7 @@ class FailedWriteTest(SweepCase):
         with mock.patch.object(ts.os, "replace", side_effect=OSError(28, "No space left on device")):
             with self.assertRaises(ts.SweepError) as ctx:
                 ts.write_private(target, "{}")
-        self.assertIn("nao consegui gravar", str(ctx.exception))
+        self.assertIn("could not write", str(ctx.exception))
         self.assertEqual(list(self.tmp.glob("x.json*")), [])
 
     def test_text_that_cannot_be_encoded_is_an_error_and_creates_nothing(self):
@@ -577,7 +577,7 @@ class LanguageTableTest(unittest.TestCase):
     def test_an_unknown_language_is_refused(self):
         with self.assertRaises(ts.SweepError) as ctx:
             ts.check_lang("xx")
-        self.assertIn("idioma invalido", str(ctx.exception))
+        self.assertIn("invalid language", str(ctx.exception))
 
 
 class LanguageScanTest(SweepCase):
@@ -629,7 +629,7 @@ class LanguageScanTest(SweepCase):
         self.seed()
         with self.assertRaises(ts.SweepError) as ctx:
             ts.cmd_scan(self.args(lang="xx"))
-        self.assertIn("idioma invalido", str(ctx.exception))
+        self.assertIn("invalid language", str(ctx.exception))
         self.assertFalse((self.repo / ".todo-sweep").exists())
 
     def test_check_accepts_both_languages_and_an_older_scan_without_lang_and_refuses_another_value(self):

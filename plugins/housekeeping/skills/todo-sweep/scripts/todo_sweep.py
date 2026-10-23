@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# todo-sweep 0.3.1 - TODO e FIXME como cards num painel local, do mais antigo ao mais novo; o resultado e um relatorio somente leitura (somente stdlib e git)
+# todo-sweep 0.4.0 - TODO e FIXME como cards num painel local, do mais antigo ao mais novo; o resultado e um relatorio somente leitura (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -7,6 +7,8 @@
 #   todo_sweep.py scan   [REPO] [--limit N] [--max-blame N] [--out DIR] [--lang en|pt-BR]   # acha os TODO/FIXME, mede a idade, escreve batch.json + scan.json
 #   todo_sweep.py check  DIR                                              # valida batch.json + scan.json
 #   todo_sweep.py report DIR                                              # grava report.md e report.json a partir das decisoes
+# Todo comando aceita --lang en|pt-BR (padrao: o lang do scan.json, depois CAPYBARA_LANG, depois en).
+# Todo comando aceita --lang en|pt-BR (padrao: o lang do scan.json, depois CAPYBARA_LANG, depois en).
 # O painel e o capy_board.py desta skill (`serve DIR`). Nenhum arquivo-fonte e editado.
 import argparse
 import hashlib
@@ -18,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 SCHEMA = 1
 WORK_DIR = ".todo-sweep"
 LEDGER = "ledger.json"
@@ -64,6 +66,150 @@ TEXT = {
         "s_resolver": "Resolver", "s_descartar": "Descartar", "s_manter": "Manter", "s_sem_decisao": "Sem decisão",
     },
 }
+ENV_LANG = "CAPYBARA_LANG"  # one shell-wide default for every Capybara Toolbox script
+CLI_LANG = DEFAULT_LANG  # the language of this run's messages, set by main() only
+
+# Every message the command line prints, in both languages (the cards and the report are TEXT, above). Same keys
+# and {placeholders} in both (a test enforces it); both plain ASCII, so the pt-BR side is the accent-free
+# Portuguese of 0.3.1, and a key ending in `_1` is the form used when n == 1.
+MSG = {
+    "en": {
+        "git_missing": "git not found ({e})", "not_repo": "{path} is not a git repository",
+        "not_utf8": "the content of {name} has characters that do not fit in UTF-8: nothing was written",
+        "write_failed": "could not write {path}: {e}",
+        "symlink": "{folder} is a symbolic link: I refuse to write or read through it",
+        "ledger_unreadable": "{path} is unreadable: fix or delete the file",
+        "ledger_shape": "{path} has an invalid shape: fix or delete the file",
+        "mkdir_failed": "could not create the folder {path}: {e}", "bad_lang": "invalid language: {lang} (use en or pt-BR)",
+        "listdir_failed": "could not read the folder {path}: {e}",
+        "old_decisions_here": "{path} already has a decisions.json from an earlier batch: choose another folder with --out or delete the decisions",
+        "bad_count": "{flag} must be a whole number >= 1 (got {value})",
+        "found": "{n} TODO/FIXME found", "found_1": "{n} TODO/FIXME found",
+        "decided": "{n} already decided", "decided_1": "{n} already decided", "new": "{n} new", "new_1": "{n} new",
+        "unaged": "{n} without an age", "unaged_1": "{n} without an age",
+        "scan_nothing": "SCAN: {found}, {decided}; nothing new to show", "scan": "SCAN: {found}, {decided}, {new}, {unaged}",
+        "shallow": "warning: shallow clone: the lines at the edge of the history have no age (git fetch --unshallow fixes it)",
+        "max_blame": "warning: only the first {n} were measured; raise --max-blame to measure more",
+        "showing": "showing {n}, oldest first", "batch": "batch: {path}",
+        "missing_file": "{path} missing or unreadable: run scan",
+        "p_not_scan": "scan.json is not a todo-sweep scan (schema 1)", "p_no_items": "scan.json without 'items' or 'repo'",
+        "p_batch_items": "batch.json without 'items'",
+        "p_ids": "scan.json without 'batch_id' (text) or 'round' (integer), or batch.json with an invalid 'round'",
+        "p_other_batch": "batch.json and scan.json are from different batches", "p_lang": "scan.json: 'lang' must be en or pt-BR",
+        "p_items_differ": "the items of batch.json and scan.json do not match", "p_bad_item": "invalid item in scan.json: {item}",
+        "problem": "problem: {e}", "ok": "ok: {n} items, batch {id}", "ok_1": "ok: {n} item, batch {id}",
+        "no_decisions": "decisions.json missing or unreadable: open the panel and finish it before report",
+        "bad_decisions": "decisions.json has an invalid shape",
+        "old_decisions": "decisions.json belongs to another batch or round: I will not use old decisions",
+        "not_finished": "the panel was not finished (click Finish before report)",
+        "repo_absolute": "the repo of scan.json must be an absolute path: {value}",
+        "repo_gone": "the repository of the scan no longer exists: {root}",
+        "repo_not_root": "the repo of scan.json is not the root of a git repository: {root}",
+        "repo_elsewhere": "the repo of scan.json ({root}) is not the repository this batch is kept in ({anchor})",
+        "invalid": "invalid scan.json/batch.json: {errs}",
+        "report": "REPORT: {resolve} resolve, {discard} discard, {keep} keep, {none} no decision",
+        "report_file": "report: {path}",
+        "remembered": "{n} decisions remembered in {ledger}; the next scan offers the next ones",
+        "remembered_1": "{n} decision remembered in {ledger}; the next scan offers the next ones",
+        "error": "error: {e}", "unexpected": "unexpected failure ({name}: {e})",
+    },
+    "pt-BR": {
+        "git_missing": "git nao encontrado ({e})", "not_repo": "{path} nao e um repositorio git",
+        "not_utf8": "o conteudo de {name} tem caracteres que nao cabem em UTF-8: nada foi gravado",
+        "write_failed": "nao consegui gravar {path}: {e}",
+        "symlink": "{folder} e um link simbolico: recuso escrever ou ler por ele",
+        "ledger_unreadable": "{path} esta ilegivel: corrija ou apague o arquivo",
+        "ledger_shape": "{path} tem formato invalido: corrija ou apague o arquivo",
+        "mkdir_failed": "nao consegui criar a pasta {path}: {e}", "bad_lang": "idioma invalido: {lang} (use en ou pt-BR)",
+        "listdir_failed": "nao consegui ler a pasta {path}: {e}",
+        "old_decisions_here": "{path} ja tem decisions.json de um lote anterior: escolha outra pasta com --out ou apague as decisoes",
+        "bad_count": "{flag} deve ser um numero inteiro >= 1 (recebi {value})",
+        "found": "{n} TODO/FIXME achados", "found_1": "{n} TODO/FIXME achado",
+        "decided": "{n} ja decididos", "decided_1": "{n} ja decidido", "new": "{n} novos", "new_1": "{n} novo",
+        "unaged": "{n} sem idade", "unaged_1": "{n} sem idade",
+        "scan_nothing": "SCAN: {found}, {decided}; nada novo para mostrar", "scan": "SCAN: {found}, {decided}, {new}, {unaged}",
+        "shallow": "aviso: clone raso: as linhas no limite do historico ficam sem idade (git fetch --unshallow resolve)",
+        "max_blame": "aviso: so os primeiros {n} foram medidos; suba --max-blame para medir mais",
+        "showing": "mostrando {n}, do mais antigo ao mais novo", "batch": "lote: {path}",
+        "missing_file": "{path} ausente ou ilegivel: rode o scan",
+        "p_not_scan": "scan.json nao e um scan do todo-sweep (schema 1)", "p_no_items": "scan.json sem 'items' ou 'repo'",
+        "p_batch_items": "batch.json sem 'items'",
+        "p_ids": "scan.json sem 'batch_id' (texto) ou 'round' (inteiro), ou batch.json com 'round' invalido",
+        "p_other_batch": "batch.json e scan.json sao de lotes diferentes", "p_lang": "scan.json: 'lang' deve ser en ou pt-BR",
+        "p_items_differ": "os itens do batch.json e do scan.json nao coincidem", "p_bad_item": "item invalido no scan.json: {item}",
+        "problem": "problema: {e}", "ok": "ok: {n} itens, lote {id}", "ok_1": "ok: {n} item, lote {id}",
+        "no_decisions": "decisions.json ausente ou ilegivel: suba o painel e conclua antes do report",
+        "bad_decisions": "decisions.json com formato invalido",
+        "old_decisions": "decisions.json e de outro lote ou rodada: nao vou usar decisoes antigas",
+        "not_finished": "o painel nao foi concluido (clique em Concluir antes do report)",
+        "repo_absolute": "o repo do scan.json deve ser um caminho absoluto: {value}",
+        "repo_gone": "o repositorio do scan nao existe mais: {root}",
+        "repo_not_root": "o repo do scan.json nao e a raiz de um repositorio git: {root}",
+        "repo_elsewhere": "o repo do scan.json ({root}) nao e o repositorio onde este lote esta guardado ({anchor})",
+        "invalid": "scan.json/batch.json invalidos: {errs}",
+        "report": "REPORT: {resolve} resolver, {discard} descartar, {keep} manter, {none} sem decisao",
+        "report_file": "relatorio: {path}",
+        "remembered": "{n} decisoes lembradas em {ledger}; o proximo scan oferece os proximos",
+        "remembered_1": "{n} decisao lembrada em {ledger}; o proximo scan oferece os proximos",
+        "error": "erro: {e}", "unexpected": "falha inesperada ({name}: {e})",
+    },
+}
+
+
+def env_lang():
+    """CAPYBARA_LANG when it is exactly one of LANGS. Any other value is ignored, silently: a shell setting must
+    never break a command, and a warning on every run would be noise in the agent's context."""
+    value = os.environ.get(ENV_LANG)
+    return value if value in LANGS else None
+
+
+def pick_lang(*candidates):
+    """The first candidate that is one of LANGS (--lang, then the language a scan recorded), then CAPYBARA_LANG,
+    then English. A recorded value is data: anything else is ignored here and refused by `check` and `report`."""
+    for cand in candidates:
+        if isinstance(cand, str) and cand in LANGS:
+            return cand
+    return env_lang() or DEFAULT_LANG
+
+
+def use_lang(*candidates):
+    """Set the language of this run's messages (see pick_lang) and return it. Only main() calls it."""
+    global CLI_LANG
+    CLI_LANG = pick_lang(*candidates)
+    return CLI_LANG
+
+
+def recorded_lang(folder):
+    """The `lang` the scan in `folder` recorded, or None (no folder, no scan.json, not JSON). main() reads it before
+    the command runs, so the command's lines and its errors speak the language of the board it works on."""
+    if not folder:
+        return None
+    try:
+        data = json.loads((Path(folder) / "scan.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, RecursionError):
+        return None
+    return data.get("lang") if isinstance(data, dict) else None
+
+
+def lang_in_argv(argv):
+    """The value of --lang as typed, read before argparse runs: its usage errors are printed while it parses."""
+    for i, arg in enumerate(argv):
+        if arg == "--lang" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--lang="):
+            return arg[len("--lang="):]
+    return None
+
+
+def say(msg_id, /, **values):
+    """One command-line message in the language of this run; with n == 1 the `_1` form wins when there is one.
+    The template is ours, the values are data (substituted, never parsed)."""
+    table = MSG[CLI_LANG]
+    if values.get("n") == 1 and msg_id + "_1" in table:
+        msg_id += "_1"
+    return table[msg_id].format(**values)
+
+
 LABELS = {  # the panel's own wording per language: A resolves, R discards, M keeps
     "en": {"approve": {"text": "Resolve", "tone": "safe"}, "reject": {"text": "Discard", "tone": "danger"},
            "maybe": {"text": "Keep", "tone": "caution"}},
@@ -91,7 +237,7 @@ def git(root, *args):
     try:
         r = subprocess.run(["git", *GIT_FLAGS, "-C", str(root), *args], capture_output=True, env=env)
     except OSError as e:
-        raise SweepError(f"git nao encontrado ({e.strerror or e})")
+        raise SweepError(say("git_missing", e=e.strerror or e))
     except ValueError:  # an embedded NUL in an argument: git is never run, the answer is "no"
         return 1, ""
     return r.returncode, r.stdout.decode("utf-8", "replace")
@@ -100,7 +246,7 @@ def git(root, *args):
 def repo_root(path):
     rc, out = git(path, "rev-parse", "--show-toplevel")
     if rc != 0:
-        raise SweepError(f"{path} nao e um repositorio git")
+        raise SweepError(say("not_repo", path=path))
     return Path(out.strip())
 
 
@@ -111,7 +257,7 @@ def stage_private(path, text):
     try:
         payload = text.encode("utf-8")
     except UnicodeError:
-        raise SweepError(f"o conteudo de {path.name} tem caracteres que nao cabem em UTF-8: nada foi gravado")
+        raise SweepError(say("not_utf8", name=path.name))
     tmp = path.with_name(path.name + ".tmp")
     try:
         try:
@@ -120,7 +266,7 @@ def stage_private(path, text):
             pass
         fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except OSError as e:
-        raise SweepError(f"nao consegui gravar {path}: {e.strerror or e}")
+        raise SweepError(say("write_failed", path=path, e=e.strerror or e))
     try:
         try:
             view = memoryview(payload)
@@ -130,7 +276,7 @@ def stage_private(path, text):
             os.close(fd)
     except OSError as e:
         discard(tmp)
-        raise SweepError(f"nao consegui gravar {path}: {e.strerror or e}")
+        raise SweepError(say("write_failed", path=path, e=e.strerror or e))
     return tmp
 
 
@@ -177,7 +323,7 @@ def write_all(files):
                     Path(path).write_bytes(before)
             except OSError:
                 pass
-        raise SweepError(f"nao consegui gravar {', '.join(str(p) for p in files)}: {e.strerror or e}")
+        raise SweepError(say("write_failed", path=", ".join(str(p) for p in files), e=e.strerror or e))
 
 
 def dump_json(obj):
@@ -242,7 +388,7 @@ def scan_files(root):
     """Every hit in the tracked files, in the order the files are listed, with no age yet."""
     rc, out = git(root, "ls-files", "-z")
     if rc != 0:
-        raise SweepError(f"{root} nao e um repositorio git")
+        raise SweepError(say("not_repo", path=root))
     hits = []
     for rel in sorted(p for p in out.split("\0") if p):
         if rel.lower().endswith(SKIP_SUFFIXES):
@@ -325,7 +471,7 @@ def work_dir(root):
     send what the tool writes, or what it trusts, somewhere else, so it is refused."""
     folder = Path(root) / WORK_DIR
     if folder.is_symlink():
-        raise SweepError(f"{folder} e um link simbolico: recuso escrever ou ler por ele")
+        raise SweepError(say("symlink", folder=folder))
     return folder
 
 
@@ -340,9 +486,9 @@ def load_ledger(root):
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError, RecursionError):  # unreadable, not UTF-8, not JSON, or nested too deep
-        raise SweepError(f"{path} esta ilegivel: corrija ou apague o arquivo")
+        raise SweepError(say("ledger_unreadable", path=path))
     if not isinstance(data, dict) or not isinstance(data.get("decided"), dict):
-        raise SweepError(f"{path} tem formato invalido: corrija ou apague o arquivo")
+        raise SweepError(say("ledger_shape", path=path))
     return data["decided"]
 
 
@@ -351,7 +497,7 @@ def save_ledger(root, decided):
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        raise SweepError(f"nao consegui criar a pasta {path.parent}: {e.strerror or e}")
+        raise SweepError(say("mkdir_failed", path=path.parent, e=e.strerror or e))
     write_private(path, dump_json({"schema": SCHEMA, "decided": decided}))
 
 
@@ -360,7 +506,7 @@ def save_ledger(root, decided):
 def check_lang(lang):
     """A language is one of LANGS; anything else (a typo, a value edited into a file) is the person's error."""
     if lang not in LANGS:
-        raise SweepError(f"idioma invalido: {lang!r} (use en ou pt-BR)")
+        raise SweepError(say("bad_lang", lang=repr(lang)))
     return lang
 
 
@@ -441,7 +587,7 @@ def make_folder(out):
     try:
         Path(out).mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        raise SweepError(f"nao consegui criar a pasta {out}: {e.strerror or e}")
+        raise SweepError(say("mkdir_failed", path=out, e=e.strerror or e))
     return made
 
 
@@ -451,9 +597,9 @@ def refuse_old_decisions(out):
     try:
         names = os.listdir(str(out)) if out.is_dir() else []
     except OSError as e:
-        raise SweepError(f"nao consegui ler a pasta {out}: {e.strerror or e}")
+        raise SweepError(say("listdir_failed", path=out, e=e.strerror or e))
     if any(n == "decisions.json" or (n.startswith("decisions.r") and n.endswith(".json")) for n in names):
-        raise SweepError(f"{out} ja tem decisions.json de um lote anterior: escolha outra pasta com --out ou apague as decisoes")
+        raise SweepError(say("old_decisions_here", path=out))
 
 
 def check_counts(a):
@@ -461,12 +607,12 @@ def check_counts(a):
     for name, flag in (("limit", "--limit"), ("max_blame", "--max-blame")):
         value = getattr(a, name)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-            raise SweepError(f"{flag} deve ser um numero inteiro >= 1 (recebi {value!r})")
+            raise SweepError(say("bad_count", flag=flag, value=repr(value)))
 
 
 def cmd_scan(a):
     check_counts(a)
-    lang = check_lang(a.lang)
+    lang = check_lang(getattr(a, "lang", None) or pick_lang())  # one language per run: the cards and these lines
     root = repo_root(a.repo)
     if a.out:
         refuse_old_decisions(Path(a.out))
@@ -474,7 +620,7 @@ def cmd_scan(a):
     hits = scan_files(root)
     fresh = [h for h in hits if h["todo_id"] not in decided]
     if not fresh:
-        print(f"SCAN: {len(hits)} TODO/FIXME achados, {len(hits) - len(fresh)} ja decididos; nada novo para mostrar")
+        print(say("scan_nothing", found=say("found", n=len(hits)), decided=say("decided", n=len(hits) - len(fresh))))
         return 0
     blame_ages(root, fresh, a.max_blame)
     offered = order_hits(fresh)[:a.limit]
@@ -499,13 +645,14 @@ def cmd_scan(a):
             except OSError:
                 pass
         raise
-    print(f"SCAN: {len(hits)} TODO/FIXME achados, {totals['decided_before']} ja decididos, {len(fresh)} novos, {len(unaged)} sem idade")
+    print(say("scan", found=say("found", n=len(hits)), decided=say("decided", n=totals["decided_before"]),
+              new=say("new", n=len(fresh)), unaged=say("unaged", n=len(unaged))))
     if totals["shallow"]:
-        print("aviso: clone raso: as linhas no limite do historico ficam sem idade (git fetch --unshallow resolve)")
+        print(say("shallow"))
     if len(unaged) and a.max_blame < len(fresh):
-        print(f"aviso: so os primeiros {a.max_blame} foram medidos; suba --max-blame para medir mais")
-    print(f"mostrando {len(offered)}, do mais antigo ao mais novo")
-    print(f"lote: {out}")
+        print(say("max_blame", n=a.max_blame))
+    print(say("showing", n=len(offered)))
+    print(say("batch", path=out))
     return 0
 
 
@@ -515,7 +662,7 @@ def load_dir(d):
         try:
             out.append(json.loads((Path(d) / name).read_text(encoding="utf-8")))
         except (OSError, UnicodeError, ValueError, RecursionError):
-            raise SweepError(f"{Path(d) / name} ausente ou ilegivel: rode o scan")
+            raise SweepError(say("missing_file", path=Path(d) / name))
     return out
 
 
@@ -526,25 +673,25 @@ def is_int(value):
 def scan_problems(batch, scan):
     errs = []
     if not isinstance(scan, dict) or scan.get("tool") != "todo-sweep" or scan.get("schema") != SCHEMA:
-        return ["scan.json nao e um scan do todo-sweep (schema 1)"]
+        return [say("p_not_scan")]
     if not isinstance(scan.get("items"), list) or not isinstance(scan.get("repo"), str):
-        return ["scan.json sem 'items' ou 'repo'"]
+        return [say("p_no_items")]
     if not isinstance(batch, dict) or not isinstance(batch.get("items"), list):
-        return ["batch.json sem 'items'"]
+        return [say("p_batch_items")]
     if not isinstance(scan.get("batch_id"), str) or not is_int(scan.get("round")) or not is_int(batch.get("round", 1)):
-        return ["scan.json sem 'batch_id' (texto) ou 'round' (inteiro), ou batch.json com 'round' invalido"]
+        return [say("p_ids")]
     if batch.get("batch_id") != scan.get("batch_id"):
-        errs.append("batch.json e scan.json sao de lotes diferentes")
+        errs.append(say("p_other_batch"))
     if scan.get("lang") is not None and scan["lang"] not in LANGS:  # an older scan has no lang: that is English
-        errs.append("scan.json: 'lang' deve ser en ou pt-BR")
+        errs.append(say("p_lang"))
     ids = [i.get("id") for i in batch["items"] if isinstance(i, dict)]
     mine = [i.get("id") for i in scan["items"] if isinstance(i, dict)]
     if ids != mine:
-        errs.append("os itens do batch.json e do scan.json nao coincidem")
+        errs.append(say("p_items_differ"))
     for it in scan["items"]:
         if not (isinstance(it, dict) and all(isinstance(it.get(k), str) for k in ("id", "todo_id", "file", "marker", "text"))
                 and isinstance(it.get("line"), int)):
-            errs.append(f"item invalido no scan.json: {it!r}"[:120])
+            errs.append(say("p_bad_item", item=repr(it))[:120])
             break
     return errs
 
@@ -553,9 +700,9 @@ def cmd_check(a):
     batch, scan = load_dir(a.dir)
     errs = scan_problems(batch, scan)
     for e in errs:
-        print(f"problema: {e}")
+        print(say("problem", e=e))
     if not errs:
-        print(f"ok: {len(scan['items'])} itens, lote {scan['batch_id']}")
+        print(say("ok", n=len(scan["items"]), id=scan["batch_id"]))
     return 1 if errs else 0
 
 
@@ -572,13 +719,13 @@ def read_decisions(d, batch):
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError, RecursionError):
-        raise SweepError("decisions.json ausente ou ilegivel: suba o painel e conclua antes do report")
+        raise SweepError(say("no_decisions"))
     if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
-        raise SweepError("decisions.json com formato invalido")
+        raise SweepError(say("bad_decisions"))
     if state.get("batch_id") != batch.get("batch_id") or not is_int(state.get("round")) or state["round"] != batch.get("round", 1):
-        raise SweepError("decisions.json e de outro lote ou rodada: nao vou usar decisoes antigas")
+        raise SweepError(say("old_decisions"))
     if state.get("finished") is not True:
-        raise SweepError("o painel nao foi concluido (clique em Concluir antes do report)")
+        raise SweepError(say("not_finished"))
     return state["items"]
 
 
@@ -623,19 +770,19 @@ def trusted_repo(scan, a_dir):
     so only the first rule applies to it."""
     value = scan["repo"]
     if not isinstance(value, str) or not os.path.isabs(value) or "\0" in value:
-        raise SweepError(f"o repo do scan.json deve ser um caminho absoluto: {value!r}"[:200])
+        raise SweepError(say("repo_absolute", value=repr(value))[:200])
     root = Path(value)
     if not root.is_dir() or git(root, "rev-parse", "--git-dir")[0] != 0:
-        raise SweepError(f"o repositorio do scan nao existe mais: {root}")
+        raise SweepError(say("repo_gone", root=root))
     try:
         same = root.resolve() == repo_root(root).resolve()
     except (OSError, RuntimeError, ValueError):
         same = False
     if not same:
-        raise SweepError(f"o repo do scan.json nao e a raiz de um repositorio git: {root}")
+        raise SweepError(say("repo_not_root", root=root))
     anchor = next((p.parent for p in Path(a_dir).resolve().parents if p.name == WORK_DIR), None)
     if anchor is not None and anchor != root.resolve():  # a batch kept in some repository's work area belongs to that repository
-        raise SweepError(f"o repo do scan.json ({root}) nao e o repositorio onde este lote esta guardado ({anchor})")
+        raise SweepError(say("repo_elsewhere", root=root, anchor=anchor))
     return root
 
 
@@ -643,8 +790,8 @@ def cmd_report(a):
     batch, scan = load_dir(a.dir)
     errs = scan_problems(batch, scan)
     if errs:
-        raise SweepError("scan.json/batch.json invalidos: " + "; ".join(errs))
-    lang = scan.get("lang") or DEFAULT_LANG  # an older scan has no lang: English; scan_problems refused any other value
+        raise SweepError(say("invalid", errs="; ".join(errs)))
+    lang = pick_lang(getattr(a, "lang", None), scan.get("lang"))  # --lang, the scan's (an older one has none), CAPYBARA_LANG, en
     groups = group_items(scan, read_decisions(a.dir, batch))
     root = trusted_repo(scan, a.dir)
     decided = load_ledger(root)  # read first: a bad ledger (or a symlinked folder) stops the run before anything is written
@@ -668,9 +815,9 @@ def cmd_report(a):
                 pass
         raise
     c = data["counts"]
-    print(f"REPORT: {c['resolver']} resolver, {c['descartar']} descartar, {c['manter']} manter, {c['sem_decisao']} sem decisao")
-    print(f"relatorio: {out / 'report.md'}")
-    print(f"{c['descartar'] + c['manter']} decisoes lembradas em {ledger}; o proximo scan oferece os proximos")
+    print(say("report", resolve=c["resolver"], discard=c["descartar"], keep=c["manter"], none=c["sem_decisao"]))
+    print(say("report_file", path=out / "report.md"))
+    print(say("remembered", n=c["descartar"] + c["manter"], ledger=ledger))
     return 0
 
 
@@ -682,13 +829,15 @@ USAGE_WORDS = ((r"^argument ", "argumento "), (r"the following arguments are req
 
 
 class Parser(argparse.ArgumentParser):
-    """Usage mistakes end the way every other failure does: an `erro:` line on stderr and exit code 2."""
+    """Usage mistakes end the way every other failure does: an `error:` line (pt-BR `erro:`) on stderr and exit
+    code 2. argparse speaks English; in pt-BR its words are translated as before."""
 
     def error(self, message):
-        for pattern, text in USAGE_WORDS:
-            message = re.sub(pattern, text, message)
+        if CLI_LANG == "pt-BR":
+            for pattern, text in USAGE_WORDS:
+                message = re.sub(pattern, text, message)
         self.print_usage(sys.stderr)
-        self.exit(2, f"erro: {message}\n")
+        self.exit(2, say("error", e=message) + "\n")
 
 
 def count(text):
@@ -700,32 +849,45 @@ def count(text):
 
 
 def parser():
-    p = Parser(prog="todo_sweep.py", description="TODO e FIXME como cards num painel local; o resultado e um relatorio somente leitura.")
+    p = Parser(prog="todo_sweep.py", description="TODO and FIXME as cards on a local panel; the result is a read-only report.")
     p.add_argument("--version", action="version", version=f"todo-sweep {VERSION}")
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("scan", help="acha os TODO/FIXME e escreve batch.json + scan.json")
+    lang = Parser(add_help=False)  # every command takes --lang (the help text is English in both)
+    lang.add_argument("--lang", choices=LANGS, default=None,
+                      help="language of the messages, of the cards (scan) and of report.md (report); default: the scan's lang, then CAPYBARA_LANG, then en")
+    s = sub.add_parser("scan", parents=[lang], help="find the TODO/FIXME and write batch.json + scan.json")
     s.add_argument("repo", nargs="?", default=".")
-    s.add_argument("--limit", type=count, default=20, help="cards por lote (padrao 20)")
-    s.add_argument("--max-blame", type=count, default=300, help="quantos medir com git blame (padrao 300)")
-    s.add_argument("--out", help=f"pasta do lote (padrao: {WORK_DIR}/todo-sweep-AAAA-MM-DD)")
-    s.add_argument("--lang", choices=LANGS, default=DEFAULT_LANG, help="idioma dos cards e do relatorio: en (padrao) ou pt-BR")
-    c = sub.add_parser("check", help="valida batch.json + scan.json")
+    s.add_argument("--limit", type=count, default=20, help="cards per batch (default 20)")
+    s.add_argument("--max-blame", type=count, default=300, help="how many to measure with git blame (default 300)")
+    s.add_argument("--out", help=f"batch folder (default: {WORK_DIR}/todo-sweep-YYYY-MM-DD)")
+    c = sub.add_parser("check", parents=[lang], help="validate batch.json + scan.json")
     c.add_argument("dir")
-    r = sub.add_parser("report", help="grava report.md e report.json a partir das decisoes")
+    r = sub.add_parser("report", parents=[lang], help="write report.md and report.json from the decisions")
     r.add_argument("dir")
     return p
 
 
 def main(argv=None):
-    args = parser().parse_args(argv)
+    """Run one command. The language of its messages is set here, once: --lang, then the lang of the scan in the
+    command's folder (check, report), then CAPYBARA_LANG, then en. It is put back afterwards, so an in-process
+    caller (the tests) never inherits another run's language; the commands never set it."""
+    global CLI_LANG
+    argv = sys.argv[1:] if argv is None else list(argv)
+    before = CLI_LANG
+    use_lang(lang_in_argv(argv))  # a usage error is printed while argparse parses, before args exist
     try:
-        return {"scan": cmd_scan, "check": cmd_check, "report": cmd_report}[args.cmd](args)
-    except SweepError as e:
-        print(f"erro: {e}", file=sys.stderr)
-        return 2
-    except (OSError, UnicodeError, RecursionError) as e:  # whatever a hostile folder or a full disk still throws
-        print(f"erro: falha inesperada ({type(e).__name__}: {e})", file=sys.stderr)
-        return 2
+        args = parser().parse_args(argv)
+        use_lang(args.lang, recorded_lang(getattr(args, "dir", None)))
+        try:
+            return {"scan": cmd_scan, "check": cmd_check, "report": cmd_report}[args.cmd](args)
+        except SweepError as e:
+            print(say("error", e=e), file=sys.stderr)
+            return 2
+        except (OSError, UnicodeError, RecursionError) as e:  # whatever a hostile folder or a full disk still throws
+            print(say("error", e=say("unexpected", name=type(e).__name__, e=e)), file=sys.stderr)
+            return 2
+    finally:
+        CLI_LANG = before
 
 
 if __name__ == "__main__":

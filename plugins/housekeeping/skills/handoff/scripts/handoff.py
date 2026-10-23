@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# handoff 0.3.1 - nota de fim de sessao com fatos do git coletados e citacoes conferidas (somente stdlib e git)
+# handoff 0.4.0 - nota de fim de sessao com fatos do git coletados e citacoes conferidas (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -9,6 +9,7 @@
 #                                                                     # (um bloco --- Chave: Valor --- no inicio do rascunho vira a metainfo da nota)
 #   handoff.py verify  FILE [REPO] [--json]                           # confere as citacoes de uma nota ou rascunho
 #   handoff.py resume  [REPO] [--file FILE] [--json]                  # mostra a nota mais recente e o que mudou desde entao
+# Todo comando aceita --lang en|pt-BR (padrao: CAPYBARA_LANG, depois en); write grava a nota nesse idioma.
 # Saida: 0 tudo conferido, 1 citacao nao verificada ou algo mudou, 2 erro.
 import argparse
 import json
@@ -19,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 SCHEMA = 1  # of the --json output and of the data block inside a note
 NOTE_DIR = ".handoff"
 RECENT = 5  # commits listed in the note

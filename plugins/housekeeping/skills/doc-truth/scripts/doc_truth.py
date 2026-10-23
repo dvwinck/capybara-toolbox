@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# doc-truth 0.3.1 - confere se o que os documentos dizem existe: caminhos, links, ancoras, paridade EN/PT-BR e versoes (somente stdlib e git)
+# doc-truth 0.4.0 - confere se o que os documentos dizem existe: caminhos, links, ancoras, paridade EN/PT-BR e versoes (somente stdlib e git)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 SCHEMA = 1  # of the --json output; it is a public contract
 CONFIG_NAME = ".doc-truth.json"
 CONFIG_KEYS = ("exclude", "ignore_paths", "allow")
