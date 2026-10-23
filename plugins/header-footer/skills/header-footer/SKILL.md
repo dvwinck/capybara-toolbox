@@ -10,7 +10,7 @@ Two pieces, one config file (`header-footer.json` in the Claude config directory
 - **Header**: a `UserPromptSubmit` hook renders a line (time, date, weekday, folder, repository, branch) and injects it as `<reply-header>...</reply-header>` together with the instruction to copy it. The plugin registers this hook by itself (`hooks/hooks.json`).
 - **Footer**: Claude Code's status line. Its `state` field shows `● running 3m` while Claude works, `◐ waiting` while it waits for the user and `○ idle` when it stops; the plugin's hooks on `UserPromptSubmit`, `PostToolUse`, `Notification`, `PermissionRequest` and `Stop` feed it. A plugin cannot set `statusLine`, so `on footer` copies the script to a stable path inside the Claude config directory and points `statusLine` there.
 
-Reply to the user in the user's language. The script's messages are Portuguese: explain them in the user's language.
+Reply to the user in the user's language. The script's messages and the header's `weekday` are English by default and pt-BR when `lang` in `header-footer.json` (the `lang` command) or `CAPYBARA_LANG` says so; every command also takes `--lang`. When the user writes in Portuguese, run the commands with `--lang pt-BR`, and offer `lang pt-BR` if they want the messages and the weekday in Portuguese for good. The footer and the instruction that goes with the header line are the same in both languages.
 
 ## When the header line is in your context
 
@@ -52,6 +52,7 @@ It prints the config, how each piece is wired, a preview of both, and a diagnosi
 | another icon / separator | `header-icon "⏱"` / `separator header " \| "` |
 | what fields exist | `fields` |
 | see both now | `preview` |
+| messages and weekday in Portuguese (or back) | `lang pt-BR` / `lang en` (`lang auto` follows `CAPYBARA_LANG`) |
 
 Field lists **replace** the current list: read the current fields from `status` first and send the whole new list.
 

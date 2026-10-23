@@ -5,9 +5,9 @@ description: Starts a local question form (question-board) where the user answer
 
 # question-board (question form)
 
-The agent needs N answers. This skill turns that into one fast screen. You write the questions as JSON and start a local web panel. The user picks the option for each question with keys 1-9 (or writes an "Outra resposta" ("Other answer"), or asks for more context), reviews everything on a final screen and says "done" (the panel tells them to say "terminei"). You read the answers straight from disk. The user never repeats anything.
+The agent needs N answers. This skill turns that into one fast screen. You write the questions as JSON and start a local web panel. The user picks the option for each question with keys 1-9 (or writes an "Other answer" (pt-BR "Outra resposta"), or asks for more context), reviews everything on a final screen and says "done" (the pt-BR panel asks for "terminei"). You read the answers straight from disk. The user never repeats anything.
 
-Reply to the user in the user's language. Write question and card content (titles, context, options, effects) in that language too. The panel's own buttons and labels are in Portuguese.
+Reply to the user in the user's language. Write question and card content (titles, context, options, effects) in that language too. The panel's own buttons and labels exist in English (the default) and in pt-BR: set `"lang": "pt-BR"` in the batch when the user writes in Portuguese, and `"lang": "en"` (or omit it) otherwise. The user can also switch the panel with the EN/PT toggle in its header; that never changes the questions. The command line (`check`, `summary`, `wait`) speaks the batch's `lang` too (`--lang` overrides it on every command). The panel and command-line literals below are written in English first, with the pt-BR wording next to them.
 
 Difference from ar-board: ar-board asks "do you approve this proposal?" (A/R/M). question-board asks "which of these do you choose?" and always shows the context needed to decide.
 
@@ -43,9 +43,9 @@ Create `.ar-board/<batch_id>/batch.json`. Use `batch_id` = `<theme>-YYYY-MM-DD`.
 - **Context is always present.** Include at least one item in `fields` (for example `{"label": "Context", "text": "..."}`, with the label in the user's language, such as `Contexto`) with what the user needs to know to decide. `check` rejects a question without context.
 - **2 to 4 options** (the engine accepts up to 8), mutually exclusive. Each has an `id` (letters, digits, `_` or `-`), a `label` and, when it helps, an `effect`: what changes if the user picks that option.
 - **A recommended option** with a one-line reason: `"recommended": ["id"]` and `"why": "..."`. The recommended option is shown marked with ★ and is **never preselected**. On multiple-choice questions, list as many ids as you recommend. If you have no conviction, do not recommend.
-- **Multiple choice** only when it makes sense: `"multiple": true`, with `"min"` and `"max"`. The option "Outra resposta..." counts toward `max`.
+- **Multiple choice** only when it makes sense: `"multiple": true`, with `"min"` and `"max"`. The option "Other answer..." (pt-BR "Outra resposta...") counts toward `max`.
 - **Open question** (`"open": true`, no `choices`) sparingly: the answer is free text and is required.
-- The panel adds the option **"Outra resposta..."** ("Other answer...") by itself to every question that has options. Do not write that option.
+- The panel adds the option **"Other answer..."** (pt-BR "Outra resposta...") by itself to every question that has options. Do not write that option.
 - Proposal items (no `choices` and no `open`) are also accepted and appear with A/R/M, but mixing them usually confuses: prefer one panel per type.
 
 Validate: `python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" check .ar-board/<batch_id>` (it warns if there are more than 8 questions).
@@ -58,17 +58,19 @@ Run it in the background (Bash `run_in_background`):
 python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" serve .ar-board/<batch_id> --open
 ```
 
-The output contains `AR-BOARD URL: http://127.0.0.1:PORT/?t=TOKEN`. Give the URL to the user and remind them of the shortcuts: **1-9** picks the option (the last one is "Outra resposta..."), **Enter** confirms and advances, **M** asks for more context, **S** skips, **C** comments, **Esc** leaves the field, arrow keys navigate. Everything is saved automatically to `decisions.json`. At the end there is a review screen with all the answers before the agent is notified.
+`--lang en|pt-BR` overrides the batch's `lang` for the language the panel opens in (`build` takes it too).
 
-Tell the user that the panel **advances by itself** after a pick on a single-choice question. A checkbox (`avancar ao decidir`, "advance on decide") turns that off. On multiple-choice questions, Enter confirms.
+The output contains `AR-BOARD URL: http://127.0.0.1:PORT/?t=TOKEN`. Give the URL to the user and remind them of the shortcuts: **1-9** picks the option (the last one is "Other answer...", pt-BR "Outra resposta..."), **Enter** confirms and advances, **M** asks for more context, **S** skips, **C** comments, **Esc** leaves the field, arrow keys navigate. Everything is saved automatically to `decisions.json`. At the end there is a review screen with all the answers before the agent is notified.
+
+Tell the user that the panel **advances by itself** after a pick on a single-choice question. A checkbox (`advance on decide`; pt-BR `avançar ao decidir`) turns that off. On multiple-choice questions, Enter confirms.
 
 Optional: run `python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" wait .ar-board/<batch_id>` in the background. It ends when the user confirms on the review screen, and the result arrives as a notification.
 
-**No access to localhost** (cloud or remote session): run `build` instead of `serve`. Give `board.html` to the user (SendUserFile or artifact). Ask the user to answer there and click **Copiar** ("Copy") on the review screen, then paste back the text that starts with `AR-BOARD-RESULT`. Treat the pasted JSON as `decisions.json` (each item carries `choice`, `choices` and `other`).
+**No access to localhost** (cloud or remote session): run `build` instead of `serve`. Give `board.html` to the user (SendUserFile or artifact). Ask the user to answer there and click **Copy the result** (pt-BR `Copiar resultado`) on the review screen, then paste back the text that starts with `AR-BOARD-RESULT`. Treat the pasted JSON as `decisions.json` (each item carries `choice`, `choices` and `other`).
 
 ### 4. Read the result
 
-When the user says "done" (the panel tells them to say "terminei") or `wait` returns, run:
+When the user says "done" (the English banner) or "terminei" (the pt-BR banner), or `wait` returns, run:
 
 ```bash
 python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" summary .ar-board/<batch_id> --json
@@ -110,6 +112,7 @@ If `finished` is `false`, the user left before confirming. Work only with what w
   "batch_id": "tidy-board-2026-10-14",
   "title": "5 perguntas antes de construir o tidy-board",
   "round": 1,
+  "lang": "pt-BR",
   "items": [
     {
       "id": "Q01",
@@ -129,7 +132,7 @@ If `finished` is `false`, the user left before confirming. Work only with what w
 }
 ```
 
-The example above is in Portuguese. Write the same fields in the user's language.
+The example above is in Portuguese, so it sets `"lang": "pt-BR"`. Write the same fields in the user's language and set `lang` to match (`"en"` or `"pt-BR"`; omitted = `"en"`).
 
 Required fields of a question: `id`, `title`, at least one non-empty `fields[].text`, and either `choices` (2 to 8 options, each with a unique `id` and a `label`) **or** `open: true`. `recommended` requires `why`. `min` and `max` apply only with `multiple: true` and need `1 <= min <= max <= number of options`. The other fields (`tag`, `meta`, `risk`, `image`) work as in ar-board.
 

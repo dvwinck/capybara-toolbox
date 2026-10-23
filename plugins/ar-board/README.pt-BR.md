@@ -7,7 +7,7 @@
 **Painel local de aprovar/rejeitar** para o [Claude Code](https://claude.com/claude-code). O agente propõe N opções; você julga uma a uma com o teclado e diz *por quê*; ao terminar, o agente lê as decisões direto do disco, age só sobre o que foi aprovado e guarda suas preferências para as próximas rodadas.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (somente biblioteca padrão; sem `pip`, sem Node, sem rede)
-- **Idiomas:** a skill está em inglês; o painel e as mensagens da linha de comando estão em português; a documentação está em inglês ([reference](docs/reference.md)) e em português ([guia completo](docs/pt-BR/guia-completo.md)).
+- **Idiomas:** a skill está em inglês; o painel e as mensagens da linha de comando saem em inglês por padrão e em pt-BR quando pedido (`lang` no batch, `--lang` em todo comando, a variável de ambiente `CAPYBARA_LANG` ou o seletor EN/PT do painel); a documentação está em inglês ([reference](docs/reference.md)) e em português ([guia completo](docs/pt-BR/guia-completo.md)).
 
 ## Instalação
 

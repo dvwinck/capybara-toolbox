@@ -7,7 +7,7 @@
 A local **approve/reject board** for [Claude Code](https://claude.com/claude-code). The agent proposes N options; you judge them one by one with the keyboard and say *why*; when you are done the agent reads your decisions straight from disk, acts only on what you approved and keeps your preferences for the next rounds.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only, no `pip`, no Node, no network)
-- **Languages:** the skill is in English; the panel UI and the CLI messages are in Portuguese; the documentation is in English ([reference](docs/reference.md)) and Portuguese ([guia completo](docs/pt-BR/guia-completo.md)).
+- **Languages:** the skill is in English; the panel and the CLI messages are in English by default and in pt-BR on request (`lang` in the batch, `--lang` on every command, the `CAPYBARA_LANG` environment variable, or the panel's EN/PT toggle); the documentation is in English ([reference](docs/reference.md)) and Portuguese ([guia completo](docs/pt-BR/guia-completo.md)).
 
 ## Install
 

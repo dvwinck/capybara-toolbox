@@ -1,15 +1,15 @@
 ---
 name: tidy-board
-description: Cleans up git branches, worktrees and stashes through a local panel. Each candidate is a card showing the proof that it is already merged, only what the user approves (Apagar, "Delete") is deleted, and anything that exists in one place only gets a backup first. Use when the user asks to clean or prune branches, worktrees or stashes, for example "tem branch velha demais", "limpa os worktrees", "apaga as branches já mescladas", "tidy my branches", "prune merged branches", "clean up stale branches, worktrees or stashes". Triggers - /tidy-board or /tidy-board:tidy-board.
+description: Cleans up git branches, worktrees and stashes through a local panel. Each candidate is a card showing the proof that it is already merged, only what the user approves (Delete; pt-BR Apagar) is deleted, and anything that exists in one place only gets a backup first. Use when the user asks to clean or prune branches, worktrees or stashes, for example "tem branch velha demais", "limpa os worktrees", "apaga as branches já mescladas", "tidy my branches", "prune merged branches", "clean up stale branches, worktrees or stashes". Triggers - /tidy-board or /tidy-board:tidy-board.
 ---
 
 # tidy-board (clean up branches, worktrees and stashes)
 
-This skill turns "there are too many branches" into a safe cleanup. `scan` reads git (read-only). Each candidate becomes a card with the **proof** that it is already merged. The user decides **Apagar** ("Delete") / **Manter** ("Keep") / **Depois** ("Later"). `apply` **re-verifies each item at the moment it deletes**. Nothing is deleted without approval, and anything that exists in one place only gets a backup first. It needs `python3` (stdlib) and `git`. `gh` is optional (it proves merged PRs).
+This skill turns "there are too many branches" into a safe cleanup. `scan` reads git (read-only). Each candidate becomes a card with the **proof** that it is already merged. The user decides **Delete** / **Keep** / **Later** (pt-BR **Apagar** / **Manter** / **Depois**). `apply` **re-verifies each item at the moment it deletes**. Nothing is deleted without approval, and anything that exists in one place only gets a backup first. It needs `python3` (stdlib) and `git`. `gh` is optional (it proves merged PRs).
 
 Deleting the wrong thing costs more than leaving clutter: when in doubt, the item stays.
 
-Reply to the user in the user's language. The panel and the card text that `scan` writes are in Portuguese: explain them to the user in the user's language. Never edit `batch.json` or `scan.json` to translate them.
+Reply to the user in the user's language. The panel and the cards that `scan` writes exist in English (the default) and in pt-BR: run `scan --lang pt-BR` when the user writes in Portuguese, and `scan` (or `--lang en`) otherwise. The user can also switch the panel's own buttons with the EN/PT toggle in its header; the cards stay in the language of the scan. Every line the tool prints follows the same language (`check`, `apply` and `restore` read it from `scan.json`; `--lang` overrides it on every command). Never edit `batch.json` or `scan.json` to translate them. The literals below are written in English first, with the pt-BR wording next to them.
 
 ## When to use (and when not)
 
@@ -30,7 +30,7 @@ It cleans **one repository at a time**, and only local refs: `origin` is never t
 
 "Upstream gone" alone proves nothing: a remote can be deleted without a merge.
 
-**Never offered:** the base, the current branch, branches in use by a worktree, and worktrees with changes or untracked files. They appear under `Nao tocar` ("Do not touch") on the first card, with the reason. The scan also prints them as `NAO TOCAR:` lines.
+**Never offered:** the base, the current branch, branches in use by a worktree, and worktrees with changes or untracked files. They appear under `Do not touch` (pt-BR `Não tocar`) on the first card, with the reason. The scan also prints them as `NAO TOCAR:` lines.
 
 A clean worktree that holds git-ignored files (`.env`, `node_modules/`) is offered, but with a second A and outside the group: deleting the folder deletes those files, with no backup.
 
@@ -53,19 +53,19 @@ In the commands below, `<pasta>` ("folder") is the batch folder printed after `T
 ### 1. Scan
 
 ```bash
-python3 -I "${CLAUDE_SKILL_DIR}/scripts/tidy_board.py" scan [REPO] [--base REF] [--gh off]
+python3 -I "${CLAUDE_SKILL_DIR}/scripts/tidy_board.py" scan [REPO] [--base REF] [--gh off] [--lang en|pt-BR]
 ```
 
-`scan` does not fetch anything from the network and does not change the repository.
+`scan` does not fetch anything from the network and does not change the repository. `--lang` (default: `CAPYBARA_LANG`, then `en`) is the language of the cards and of every line the tool prints; the summary line ends with `language <lang>` (pt-BR `idioma <lang>`).
 
 The base comes from `--base`. Otherwise it comes from `origin/HEAD`. Otherwise it is the first that exists among `main`, `master`, `base`, `trunk`.
 
 The output contains:
 - `TIDY-BOARD DIR: <folder>`: by default `.tidy-board/<batch>/` inside the repository. Suggest adding `.tidy-board/` to `.gitignore`.
 - The count per level.
-- The `NAO TOCAR:` lines.
+- The `DO NOT TOUCH:` lines (pt-BR `NAO TOCAR:`): what is never offered, and why.
 
-If the output says `nada para limpar` ("nothing to clean"), stop and tell the user so.
+If the output says `TIDY-BOARD: nothing to clean up` (pt-BR `TIDY-BOARD: nada para limpar`), stop and tell the user so.
 
 Show the user the summary: how many items, how many per level, and what was left out.
 
@@ -78,7 +78,7 @@ python3 -I "${CLAUDE_SKILL_DIR}/scripts/tidy_board.py" check <pasta>
 
 The first validates the panel batch. The second validates the pair `batch.json` + `scan.json`.
 
-Above 40 items `check` prints a warning (`aviso: ...`). If it does, propose cleaning in two rounds.
+Above 40 items `check` prints a warning (`warning: ...`, pt-BR `aviso: ...`). If it does, propose cleaning in two rounds.
 
 ### 3. Start the panel
 
@@ -90,16 +90,16 @@ python3 -I "${CLAUDE_SKILL_DIR}/scripts/capy_board.py" serve <pasta> --open
 
 Give the user the URL that `serve` prints on the line `AR-BOARD URL: http://127.0.0.1:PORTA/?t=TOKEN` (`PORTA` is the port number, `TOKEN` is a private token; use the real values from the output) and explain, in a few lines:
 
-- **A = Apagar** ("Delete"), **R = Manter** ("Keep"), **M = Depois** ("Later"), **S** skips. On risky items (P3, P4, stash), **A asks for a second A** to confirm. Esc cancels.
-- The first card (**G**) deletes at once every proven item (P1 and P2) that the user does not mark Manter or Depois. A Manter or Depois on an item always beats the group.
+- **A = Delete**, **R = Keep**, **M = Later** (pt-BR **Apagar** / **Manter** / **Depois**), **S** skips. On risky items (P3, P4, stash), **A asks for a second A** to confirm. Esc cancels.
+- The first card (**G**) deletes at once every proven item (P1 and P2) that the user does not mark Keep or Later (pt-BR Manter or Depois). A Keep or Later on an item always beats the group.
 - An item with no decision **stays as it is**. Nothing is deleted by default.
-- At the end the user clicks **Concluir** (the button reads `Concluir e avisar o agente`, "Finish and notify the agent") and tells you `terminei` ("I'm done"). If the user answers in another language, accept the equivalent ("done", "finished"), but only when it clearly says the panel is finished. Anything vaguer ("ok", "go on") is not the signal: ask the user to finish the panel. The panel itself says `Concluido. Volte ao Claude Code e diga "terminei"` ("Finished. Go back to Claude Code and say "terminei""). If items are left without a decision (normal when the group card is used), the panel asks `N itens sem decisao. Concluir mesmo assim?` ("N items without a decision. Finish anyway?"). The user only has to confirm.
+- At the end the user clicks **Finish and notify the agent** (pt-BR `Concluir e avisar o agente`) and tells you `done` (pt-BR `terminei`). Accept either, or a clear equivalent ("finished"), but only when it clearly says the panel is finished. Anything vaguer ("ok", "go on") is not the signal: ask the user to finish the panel. The panel itself says `Finished. Go back to Claude Code and say "done"` (pt-BR `Concluído. Volte ao Claude Code e diga "terminei"`). If items are left without a decision (normal when the group card is used), the panel asks `Undecided items: N. Finish anyway?` (pt-BR `Itens sem decisão: N. Concluir mesmo assim?`). The user only has to confirm.
 
 The panel works only with the local server. Without access to localhost, tidy-board does not apply (`apply` reads the panel's `decisions.json`).
 
 ### 4. Apply
 
-After the finish signal (`terminei`), **always** simulate first and show the user the dry-run list. The panel's counter counts the group card as one item, and the items it covers appear as `sem decisao` ("no decision"). Only `--dry-run` shows what will really be deleted:
+After the finish signal (`done` / `terminei`), **always** simulate first and show the user the dry-run list. The panel's counter counts the group card as one item, and the items it covers appear as `undecided` (pt-BR `sem decisão`). Only `--dry-run` shows what will really be deleted:
 
 ```bash
 python3 -I "${CLAUDE_SKILL_DIR}/scripts/tidy_board.py" apply <pasta> --dry-run
@@ -154,7 +154,9 @@ Backups live under `refs/tidy-board/backup/...` and accumulate. Tell the user ab
 
 | Command | What it does | Exit code |
 | --- | --- | --- |
-| `scan [REPO] [--base REF] [--gh auto\|off] [--out DIR]` | reads git and writes `batch.json` + `scan.json` | 0 ok |
+| `scan [REPO] [--base REF] [--gh auto\|off] [--out DIR] [--lang en\|pt-BR]` | reads git and writes `batch.json` + `scan.json` in that language (default `en`) | 0 ok |
 | `check DIR` | validates the pair | 0 ok, 1 invalid |
 | `apply DIR [--dry-run]` | re-verifies and deletes the approved items | 0 all done, 1 something skipped, 2 refused |
 | `restore DIR ID` | recreates a deleted item that has a backup | 0 ok, 2 error |
+
+Every command takes `--lang en|pt-BR`. Without it, `check`, `apply` and `restore` speak the language the scan recorded; `scan` uses `CAPYBARA_LANG`, then English. The tags `TIDY-BOARD DIR:`, `TIDY-BOARD ITENS:`, `APPLY:` and `RESTORE:` and the action words `deleted`, `skipped` and `would-delete` are the same in both languages; errors start with `error:` (pt-BR `erro:`).

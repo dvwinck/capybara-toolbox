@@ -5,9 +5,9 @@ description: Starts a local approve/reject web panel (AR board) where the user j
 
 # AR board (approval/rejection board)
 
-You propose N things. This skill turns that into one fast, informed decision. You write the items as JSON and start a local web panel. The user approves (A), rejects (R) or marks "maybe" (M) item by item, and comments why. When the user says "done" (the panel tells them to say "terminei"), you read the decisions straight from disk. The user never repeats anything. The comments are the most valuable output: they become reusable preferences.
+You propose N things. This skill turns that into one fast, informed decision. You write the items as JSON and start a local web panel. The user approves (A), rejects (R) or marks "maybe" (M) item by item, and comments why. When the user says "done" (the panel's banner asks for "done"; the pt-BR panel asks for "terminei"), you read the decisions straight from disk. The user never repeats anything. The comments are the most valuable output: they become reusable preferences.
 
-Reply to the user in the user's language. Write card content (titles, fields, risks, concepts) in that language too. The panel's own buttons and labels are in Portuguese.
+Reply to the user in the user's language. Write card content (titles, fields, risks, concepts) in that language too. The panel's own buttons and labels exist in English (the default) and in pt-BR: set `"lang": "pt-BR"` in the batch when the user writes in Portuguese, and `"lang": "en"` (or omit it) otherwise. The user can also switch the panel with the EN/PT toggle in its header; that never changes the cards. The command line (`check`, `summary`, `wait`) speaks the batch's `lang` too (`--lang` overrides it on every command). The panel and command-line literals below are written in English first, with the pt-BR wording next to them.
 
 ## When to use (and when not to)
 
@@ -44,7 +44,7 @@ Create `.ar-board/<batch_id>/batch.json`. Use `batch_id` = `<theme>-YYYY-MM-DD`.
 - `title` states the proposal ("Production state as validatable JSON"), not the topic.
 - Field `What` (in the user's language, for example `O que`): concrete (a file, a command, a format).
 - Field `Why` (for example `Por quê`): anchored in real evidence from the project (a number, a file, an observed pain). Never generic.
-- `risk`: honest. Give `level` and what can go wrong. Use `baixo`, `médio` or `alto` (low, medium, high) as the level: the panel colours only these three words and shows any other level in the medium colour.
+- `risk`: honest. Give `level` and what can go wrong. Use `low`, `medium` or `high` (or `baixo`, `médio`, `alto`) as the level: the panel colours only these words and shows any other level in the medium colour.
 - If the item uses jargon the user may not know, add a field `Concept` (for example `Conceito`) that explains the term in one sentence.
 - No filler items: 7 good ones are better than 10 with 3 weak ones. Vary the approaches. Order from most impactful to least.
 - `meta` (optional) shows area, current scale, effort. `image` (optional) is a relative path to a png/jpg/webp/svg inside the batch folder.
@@ -59,23 +59,25 @@ Run it in the background (Bash `run_in_background`):
 python3 -I "$HOME/.claude/ar-board/ar_board.py" serve .ar-board/<batch_id> --open
 ```
 
+`--lang en|pt-BR` overrides the batch's `lang` for the language the panel opens in (`build` takes it too).
+
 The output contains `AR-BOARD URL: http://127.0.0.1:PORT/?t=TOKEN`. Give the URL to the user and remind them of the shortcuts: **A** approves, **R** rejects, **M** maybe, **S** skips, **C** comments (Esc leaves the field), arrow keys navigate. Everything is saved automatically to `decisions.json`. Ask the user to comment especially on the rejected items.
 
-Tell the user that, by default, the panel **advances by itself** after A/R/M. To comment on the item just decided, press **←** to go back and then **C**. A checkbox at the top (`avancar ao decidir`, "advance on decide") turns the automatic advance off.
+Tell the user that, by default, the panel **advances by itself** after A/R/M. To comment on the item just decided, press **←** to go back and then **C**. A checkbox at the top (`advance on decide`; pt-BR `avançar ao decidir`) turns the automatic advance off.
 
-Optional: run `python3 -I "$HOME/.claude/ar-board/ar_board.py" wait .ar-board/<batch_id>` in the background. It ends when the user clicks **Concluir** ("Finish"), and the result arrives as a notification.
+Optional: run `python3 -I "$HOME/.claude/ar-board/ar_board.py" wait .ar-board/<batch_id>` in the background. It ends when the user clicks **Finish and notify the agent** (pt-BR `Concluir e avisar o agente`), and the result arrives as a notification.
 
-**No access to localhost** (cloud or remote session): run `build` instead of `serve`. Give `board.html` to the user (SendUserFile or artifact). Ask the user to decide there and click **Copiar** ("Copy"), then paste back the text that starts with `AR-BOARD-RESULT` (JSON with the decisions). Treat the pasted JSON as `decisions.json`.
+**No access to localhost** (cloud or remote session): run `build` instead of `serve`. Give `board.html` to the user (SendUserFile or artifact). Ask the user to decide there and click **Copy** (pt-BR `Copiar`), then paste back the text that starts with `AR-BOARD-RESULT` (JSON with the decisions). Treat the pasted JSON as `decisions.json`.
 
 ### 4. Read the result
 
-When the user says "done" (the panel tells them to say "terminei") or `wait` returns, run:
+When the user says "done" (the English banner) or "terminei" (the pt-BR banner), or `wait` returns, run:
 
 ```bash
 python3 -I "$HOME/.claude/ar-board/ar_board.py" summary .ar-board/<batch_id>
 ```
 
-(Add `--json` for structured output.) If the output says `Concluido pelo usuario: NAO (parcial)` ("Finished by the user: NO (partial)"), the user left before clicking `Concluir`. Work with what was decided. Treat "no decision" as **not approved**, and say so explicitly.
+(Add `--json` for structured output.) If the output says `Finished by the user: NO (partial)` (pt-BR `Concluido pelo usuario: NAO (parcial)`), the user left before clicking **Finish and notify the agent** (pt-BR `Concluir e avisar o agente`). Work with what was decided. Treat "no decision" as **not approved**, and say so explicitly.
 
 ### 5. Act and learn
 
@@ -114,6 +116,7 @@ python3 -I "$HOME/.claude/ar-board/ar_board.py" summary .ar-board/<batch_id>
   "title": "Arquitetura do motion-designer: 10 aprimoramentos",
   "subtitle": "Cada card: o que muda, por quê e o risco.",
   "round": 1,
+  "lang": "pt-BR",
   "items": [
     {
       "id": "A01",
@@ -131,10 +134,11 @@ python3 -I "$HOME/.claude/ar-board/ar_board.py" summary .ar-board/<batch_id>
 }
 ```
 
-The example above is in Portuguese. Write the same fields in the user's language.
+The example above is in Portuguese, so it sets `"lang": "pt-BR"`. Write the same fields in the user's language and set `lang` to match.
 
 Required fields: `batch_id`, `title`, `items[].id` (unique), `items[].title`. Types (`check` rejects anything else):
 - `round` is an integer >= 1.
+- `lang` is `"en"` or `"pt-BR"` (omitted = `"en"`).
 - `tag` and `image` are text.
 - `meta` is an object.
 - `risk` is an object whose `level` and `text` are text.

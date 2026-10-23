@@ -3,6 +3,7 @@
   "title": "5 questions before building tidy-board",
   "subtitle": "Each question comes with context, options and the effect of each choice.",
   "round": 1,
+  "lang": "en",
   "items": [
     {
       "id": "Q01",
