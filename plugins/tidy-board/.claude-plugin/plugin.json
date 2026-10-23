@@ -1,7 +1,7 @@
 {
   "name": "tidy-board",
   "description": "Clean up stale git branches, worktrees and stashes from a local board: every candidate is a card with its proof of being merged, only what you approve is deleted, and anything that exists in one place only is backed up first. Python standard library and git only.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": {
     "name": "Diogo Winck",
     "email": "diogo.winck@gmail.com"

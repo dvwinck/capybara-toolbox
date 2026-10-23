@@ -6,9 +6,25 @@ All notable changes to the **housekeeping** plugin are documented here. The form
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
 ### Added
-- handoff notes always start with a `Metainfo da sessao` table. The agent opens the draft with a `---` block of `Chave: Valor` lines (`Modelo`, `Pedido original` and `Status` are expected, anything else is optional); the tool adds `Gravada em` and `Repositorio`, records the rows in the data block, warns with `aviso: falta a metainfo '<key>'` when an expected one is missing, and refuses a duplicate or reserved key, a control character, an over-long row and a typed citation in the block. `resume` and `verify` never treat the header as citations; a note written before the header existed still resumes. `write --json` has a `missing_meta` list.
+- todo-sweep: `scan --lang en|pt-BR` chooses the language of the cards (field labels, titles, the age wording, `labels`, the subtitle) and of `report.md`. The language is written to `batch.json` (`lang`, so the panel opens in it) and to `scan.json`; `report` reads it from there and records it in `report.json` (`lang`). `check` and `report` refuse any other value in `scan.json`; an older scan without `lang` falls back to `CAPYBARA_LANG`, then English.
+- todo-sweep: the pt-BR cards and report are now written with accents.
+- **Every command of the three tools takes `--lang en|pt-BR`** for its messages: doc-truth, handoff (`collect`, `write`, `verify`, `resume`) and todo-sweep (`scan`, `check`, `report`). Without it, todo-sweep's `check` and `report` speak the language recorded in `scan.json`, and `report --lang` also chooses the language of `report.md`.
+- **`CAPYBARA_LANG`** (`en` or `pt-BR`) is the default language when no flag and no recorded language decide; any other value is ignored. Every Capybara Toolbox tool that speaks pt-BR reads the same variable; publish-check prints English only.
+- handoff notes in English or pt-BR: `write` writes the note in the language of the run and records it in the data block (`lang`); the agent's metainfo keys and section headings count in either language; `resume` and `verify` read a note in either language, and a note written before 0.4.0 (pt-BR, no `lang` in its block) resumes unchanged.
+- handoff notes always start with a metainfo table (`Session metainfo`, pt-BR `Metainfo da sessao`). The agent opens the draft with a `---` block of `Key: Value` lines (`Model`, `Original request` and `Status` are expected, pt-BR `Modelo`, `Pedido original` and `Status`; anything else is optional); the tool adds `Written at` and `Repository` (pt-BR `Gravada em` and `Repositorio`), records the rows in the data block, warns with `warning: metainfo '<key>' is missing` (pt-BR `aviso: falta a metainfo '<key>'`) when an expected one is missing, and refuses a duplicate or reserved key, a control character, an over-long row and a typed citation in the block. `resume` and `verify` never treat the header as citations; a note written before the header existed still resumes. `write --json` has a `missing_meta` list.
+- handoff: the `--json` values follow the language of the run: `citations[].why`, `drift[]` and the names in `missing_sections` and `missing_meta` (in 0.3.1 they were always Portuguese), so a consumer must not match them literally. Only those text fields change; the keys and the other values (`type`, `value`, `sha`, `verified`, `line`, the `collect --json` facts) do not depend on the language, as with doc-truth's `message`.
 - The handoff skill asks for `model: haiku` in its frontmatter (the override lasts for the turn that runs the skill).
+
+### Changed
+- **The default is English** for the three tools: todo-sweep's cards and report, handoff's notes and every command-line message. Pass `--lang pt-BR` (or set `CAPYBARA_LANG=pt-BR`) for Portuguese. The pt-BR command-line text and the pt-BR note are the accent-free Portuguese of 0.3.1, except that a count of one now takes the singular (`1 item`, `1 citacao`, `1 TODO/FIXME achado`).
+- In English the prefixes are `error:` and `warning:` (pt-BR `erro:` and `aviso:`), doc-truth prints `clean: no findings` (pt-BR `limpo: nenhum achado`), handoff marks a failed citation `[not verified]` (pt-BR `[nao verificado]`) and todo-sweep names its folder on a `batch:` line (pt-BR `lote:`). The tags `SCAN:`, `REPORT:` and `ok:` are the same in both languages. The `--help` text is English.
+- doc-truth: a finding's `value` and `fingerprint` do not depend on the language (the `parity` value stays `falta README.pt-BR.md`), so an `allow` list keeps working in either language; only its `message` follows the language.
+- todo-sweep: `age_reason` in the hits and in `scan.json` is a code (`max_blame`, `no_history`, `uncommitted`, `shallow`, or empty), rendered on the card in the chosen language. `report.json` keeps its keys (`resolver`, `descartar`, `manter`, `sem_decisao`) and the ledger its words (`discard`, `keep`): nothing a script reads depends on the language.
+- The handoff example note is English, the new default.
+- todo-sweep requires ar-board 1.4.0 (the vendored engine) for the panel to honour `lang`.
 
 ## [0.3.1] - 2026-10-15
 

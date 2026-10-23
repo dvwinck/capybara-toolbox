@@ -1,9 +1,9 @@
 # tidy-board
 
-Limpa **branches, worktrees e stashes** obsoletos do git a partir de um painel local. Cada candidato é um card que mostra o quanto a ferramenta tem certeza de que ele terminou; você decide **Apagar**, **Manter** ou **Depois** com o teclado; um passo separado, o `apply`, reconfere cada item aprovado no momento em que o apaga. Nada é apagado sem a sua aprovação, e o que existe em um lugar só ganha um backup antes.
+Limpa **branches, worktrees e stashes** obsoletos do git a partir de um painel local. Cada candidato é um card que mostra o quanto a ferramenta tem certeza de que ele terminou; você decide **Delete**, **Keep** ou **Later** (em pt-BR **Apagar**, **Manter**, **Depois**) com o teclado; um passo separado, o `apply`, reconfere cada item aprovado no momento em que o apaga. Nada é apagado sem a sua aprovação, e o que existe em um lugar só ganha um backup antes.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (somente biblioteca padrão) e `git`; o `gh` é opcional (prova PRs mergeados). `scan` e `apply` só usam a rede por meio do `gh`, somente leitura e apenas se ele estiver instalado (o `scan` para provar PRs mergeados, o `apply` para reconferir os itens P2); o `restore` não usa nenhuma.
-- **Idiomas:** a skill está em inglês; o painel, o texto dos cards e as mensagens da linha de comando estão em português; a documentação principal está em inglês ([README.md](README.md)).
+- **Idiomas:** a skill está em inglês; o painel, os cards e as mensagens da linha de comando saem em inglês por padrão ou em pt-BR (`scan --lang pt-BR`, `--lang` em todo comando ou `CAPYBARA_LANG`); a documentação principal está em inglês ([README.md](README.md)).
 - **Escopo:** um repositório por painel, só refs locais. O `origin` nunca é tocado.
 
 ## Instalação
@@ -18,7 +18,7 @@ Ou copie a skill sem o sistema de plugins: `./install.sh tidy-board` a partir de
 ## Como funciona
 
 1. **`scan`** lê o repositório (sem fetch, sem rede, somente leitura) e escreve um batch do [ar-board](../ar-board) e um `scan.json` em `.tidy-board/<lote>/`.
-2. **O painel** (uma cópia gerada do engine do ar-board, `capy_board.py`) mostra um card por item. `A` = Apagar, `R` = Manter, `M` = Depois. Itens sem prova de merge pedem um **segundo `A`** para confirmar.
+2. **O painel** (uma cópia gerada do engine do ar-board, `capy_board.py`) mostra um card por item. `A` = Delete, `R` = Keep, `M` = Later (em pt-BR Apagar, Manter, Depois). Itens sem prova de merge pedem um **segundo `A`** para confirmar.
 3. **`apply`** só roda se o painel foi concluído; reconfere cada item aprovado logo antes de apagar e escreve o `applied.json`.
 4. **`restore`** traz de volta o que foi apagado por engano.
 
@@ -47,7 +47,7 @@ A base é `--base`, senão a branch para a qual `origin/HEAD` aponta, senão a p
 
 ## O card de grupo
 
-O primeiro card (`G`) diz "apagar os N itens provados como mergeados" e os lista. Vale para todo item P1/P2 **sem decisão própria**: um Manter ou Depois no item sempre vence o grupo, e P3, P4 e stashes o ignoram por completo. Item sem decisão fica como está.
+O primeiro card (`G`) diz "apagar os N itens provados como mergeados" e os lista. Vale para todo item P1/P2 **sem decisão própria**: um Keep ou Later (em pt-BR Manter, Depois) no item sempre vence o grupo, e P3, P4 e stashes o ignoram por completo. Item sem decisão fica como está.
 
 ## O que nunca é oferecido
 
@@ -85,7 +85,7 @@ Coloque `.tidy-board/` no `.gitignore`: os arquivos citam suas branches e caminh
 
 - O tidy-board roda o `git` dentro do seu repositório. Ele ignora os hooks, o monitor de sistema de arquivos e os programas de diff externo do repositório, mas, como qualquer comando git, ainda confia no resto da configuração local: não o rode em um repositório em que você não confia.
 - A detecção de squash é uma heurística: um squash com rebase ou conflito resolvido costuma cair em P4 (protegido, só mais trabalhoso).
-- Os contadores do painel contam o card de grupo como um item, e os itens que o grupo cobre aparecem como "sem decisao" ali. O `apply --dry-run` lista exatamente o que seria apagado; a skill sempre o mostra antes.
+- Os contadores do painel contam o card de grupo como um item, e os itens que o grupo cobre aparecem como "undecided" ali (em pt-BR "sem decisão"). O `apply --dry-run` lista exatamente o que seria apagado; a skill sempre o mostra antes.
 - Uma branch cujo PR sofreu force-push depois do merge deixa de bater com a ponta do PR e cai em P3 ou P4.
 - Branches remotas, tags, vários repositórios por painel e limpeza agendada estão fora do escopo.
 - O JavaScript do painel não é coberto pelos testes unitários; foi conferido à mão em um navegador (tema claro).

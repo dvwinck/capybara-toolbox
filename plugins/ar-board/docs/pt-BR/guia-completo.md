@@ -6,7 +6,7 @@ Painel local de **aprovar/rejeitar** para o Claude Code. O agente propõe N opç
 - **Dependências:** `python3` 3.9+ (CI: 3.9, 3.11 e 3.13 em Ubuntu e macOS), somente biblioteca padrão. Sem `pip`, sem Node, sem rede externa.
 - **Formato:** plugin do marketplace Capybara Toolbox, com uma skill (`SKILL.md`) que traz o servidor junto (`scripts/ar_board.py`).
 - **Outros documentos:** a referência técnica em inglês está em [reference.md](../reference.md).
-- **Textos citados:** mensagens da interface e da linha de comando aparecem aqui exatamente como o programa as escreve, ou seja, sem acentos (convenção do projeto; a página é UTF-8).
+- **Textos citados:** os textos em português citados aqui são a versão pt-BR do programa como era antes da 1.4.0, sem acentos. Desde a 1.4.0 o painel e a linha de comando saem em inglês por padrão e em pt-BR quando pedido (`lang`, `--lang`, `CAPYBARA_LANG`); a linha de comando em pt-BR continua sem acentos e o painel em pt-BR é escrito com acentos (ver §19).
 
 ## Índice
 
@@ -124,7 +124,7 @@ De cima para baixo:
 | **Painel lateral** (direita) | Metadados, campo de comentário, botões `Aprovar`/`Rejeitar`/`Talvez`/`Pular`/`Anterior`/`Proximo`, chips numerados | O botão da decisão atual fica com contorno destacado. |
 | **Chips** | Um botão numerado por item | Colorido pela decisão (verde/vermelho/âmbar; neutro sem decisão); o item atual tem anel de destaque; passar o mouse mostra o título; clicar salta para o item. |
 | **Resultado** | Contadores, nota geral do lote, botões Concluir/Baixar JSON/Copiar/Limpar | Contadores: `✓ N aprovados`, `✗ N rejeitados`, `≈ N talvez`, `N sem decisao`. |
-| **Banner de conclusão** | `Concluido. Volte ao Claude Code e diga "terminei" — o agente le as decisoes sozinho.` | Só aparece enquanto o lote está concluído (ver §9). |
+| **Banner de conclusão** | `Concluído. Volte ao Claude Code e diga "terminei" — o agente lê as decisões sozinho.` (em inglês: `Finished. Go back to Claude Code and say "done" — the agent reads the decisions by itself.`) | Só aparece enquanto o lote está concluído (ver §9). |
 
 Em telas estreitas (≤ 860 px) o painel lateral passa para baixo do card.
 
@@ -143,7 +143,7 @@ Detalhes de cada elemento:
 
 - **`fields`**: lista livre de `{label, text}`. Convenção recomendada: `O que`, `Por quê`, e `Conceito` quando houver jargão. O rótulo é exibido em maiúsculas pequenas. Um item sem `fields` é válido (mostra só título e risco).
 - **Texto**: tudo é escapado antes de ir para o HTML. Só duas coisas são interpretadas: `` `código` `` vira `<code>` e quebra de linha (`\n`) vira `<br>`. Não há negrito, links nem outras marcações; HTML digitado aparece como texto literal (conferido à mão nas baterias manuais das versões 1.0.x; a suíte automatizada verifica o escape do título e dos dados embutidos, mas não executa o JavaScript que monta o card).
-- **`risk`**: `{level, text}`. O nível é normalizado (minúsculas, sem acento) e escolhe a cor: `baixo` verde, `médio`/`medio` âmbar, `alto` vermelho. Qualquer outro valor usa o estilo âmbar, mas o texto exibido é o original. A pílula mostra `nível — texto`.
+- **`risk`**: `{level, text}`. O nível é normalizado (minúsculas, sem acento) e escolhe a cor: `baixo` ou `low` verde, `médio`/`medio` ou `medium` âmbar, `alto` ou `high` vermelho. Qualquer outro valor usa o estilo âmbar, mas o texto exibido é o original. A pílula mostra `nível — texto`.
 - **`meta`**: objeto simples; cada par vira uma linha no painel lateral (ex.: `Área`, `Escala atual`, `Esforço`). Valores não-string são convertidos para texto.
 - **`image`**: caminho **relativo à pasta do lote**, com extensão `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` ou `.svg`. No modo ao vivo é servida pelo próprio servidor (ver §14); no `build` é embutida como `data:` URI (ver §11). Também aceita um `data:` URI diretamente.
 - **`id`**: string única por lote (ex.: `A01`). É a chave em `decisions.json` e aparece na pílula e nos avisos.
@@ -341,11 +341,11 @@ O script acompanha a skill: é o `skills/ar-board/scripts/ar_board.py` do plugin
 
 | Comando | Opções | Saída | Código de saída |
 |---|---|---|---|
-| `check DIR` | — | `ok: N itens, lote <id>, rodada <R>` | 0; `1` com a lista de erros se o `batch.json` for inválido |
-| `serve DIR` | `--port N` (padrão 0 = porta livre aleatória), `--open`, `--exit-on-finish` | `AR-BOARD URL: …` e `AR-BOARD DECISOES: <caminho>` | 0 ao encerrar |
-| `wait DIR` | `--timeout S` (0 = espera indefinidamente) | Resumo em Markdown quando concluído; `TIMEOUT: …` se estourar | 0 concluído; **2** timeout |
-| `summary DIR` | `--json` | Resumo em Markdown ou JSON | 0 |
-| `build DIR` | — | `AR-BOARD ARQUIVO: <caminho>/board.html` | 0 |
+| `check DIR` | `--lang en\|pt-BR` | `ok: N items, batch <id>, round <R>` (em pt-BR `ok: N itens, lote <id>, rodada <R>`) | 0; `1` com a lista de erros se o `batch.json` for inválido |
+| `serve DIR` | `--port N` (padrão 0 = porta livre aleatória), `--open`, `--exit-on-finish`, `--lang en\|pt-BR` | `AR-BOARD URL: …` e `AR-BOARD DECISOES: <caminho>` | 0 ao encerrar |
+| `wait DIR` | `--timeout S` (0 = espera indefinidamente), `--lang en\|pt-BR` | Resumo em Markdown quando concluído; `TIMEOUT: …` se estourar | 0 concluído; **2** timeout |
+| `summary DIR` | `--json`, `--lang en\|pt-BR` | Resumo em Markdown ou JSON | 0 |
+| `build DIR` | `--lang en\|pt-BR` | `AR-BOARD ARQUIVO: <caminho>/board.html` | 0 |
 
 ### `serve`
 
@@ -429,6 +429,7 @@ Detalhes:
 | `title` do item: string não vazia | `item <i>: 'title' obrigatorio` |
 | `fields` (se presente): lista de `{label, text}` com texto | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
 | `round` (se presente): inteiro >= 1 | `campo 'round' deve ser inteiro >= 1` |
+| `lang` (se presente; `null` conta como ausente): `en` ou `pt-BR`, nada mais | `campo 'lang' deve ser en ou pt-BR` (em inglês: `field 'lang' must be en or pt-BR`) |
 | `tag` / `image` (se presentes): string | `item <i>: '<k>' deve ser string` |
 | `meta` (se presente): objeto | `item <i>: 'meta' deve ser objeto` |
 | `risk` (se presente): objeto; `level` e `text`, quando presentes, em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
@@ -521,7 +522,7 @@ Princípios:
 - **Acessibilidade existente:** campos de texto com `<label for>`, textos de ajuda e `placeholder`, foco visível nos campos, navegação por Tab na ordem natural e ativação de botões por Enter/Espaço (Enter segurado não repete; ver §7), rótulo textual em todos os botões, informação de estado nunca só por cor (o selo e os contadores têm texto).
 - **Contraste:** a suíte verifica todos os pares texto/fundo das duas paletas contra o WCAG AA (4,5:1) em `tests/test_page.py`.
 - **Ainda não coberto:** regiões `aria-live` para os avisos (o aviso de avanço e o banner não são anunciados por leitores de tela) e uma auditoria WCAG completa, além da verificação da paleta.
-- Mensagens e rótulos estão em português sem acentos dentro da página, por convenção do projeto (a página é servida e gravada em UTF-8); o conteúdo dos cards aceita qualquer Unicode (acentos e caracteres CJK foram conferidos à mão nas versões 1.0.x).
+- **Idioma:** o texto do próprio painel sai em inglês por padrão e em pt-BR quando pedido: `lang` no `batch.json`, `--lang` em `serve` e `build`, ou o seletor EN/PT no cabeçalho, que fica guardado para o endereço daquele painel (chave `ar-board:lang` do `localStorage`, guardada por endereço do navegador: o painel ao vivo mantém a escolha ao recarregar, mas não no próximo `serve`, que sorteia outra porta; as páginas offline do `build` a compartilham) e vence os outros dois. As duas tabelas viajam dentro da página (`I18N` no script), então a página offline também alterna; nada sobre o idioma vai para o `decisions.json`. O pt-BR é escrito com acentos. O conteúdo dos cards aceita qualquer Unicode (acentos e caracteres CJK foram conferidos à mão nas versões 1.0.x).
 
 ## 20. Limites e comportamentos conhecidos
 

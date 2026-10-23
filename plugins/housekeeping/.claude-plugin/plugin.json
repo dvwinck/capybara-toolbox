@@ -1,7 +1,7 @@
 {
   "name": "housekeeping",
   "description": "Small tools that keep a repository and a work session honest without editing tracked files: doc-truth checks that what the documents say exists, handoff writes an end-of-session note whose citations are verified, todo-sweep triages TODO and FIXME comments on a local board. Python standard library and git only.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "author": {
     "name": "Diogo Winck",
     "email": "diogo.winck@gmail.com"

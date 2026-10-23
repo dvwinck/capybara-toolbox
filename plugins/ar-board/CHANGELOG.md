@@ -6,6 +6,22 @@ All notable changes to the **ar-board** plugin are documented here. The format f
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-22
+
+### Added
+- The panel speaks **English by default and pt-BR on demand**. Every user-visible string of the page (key bar, buttons, hints, dialogs, review screen, counters, completion banner) comes from an `I18N` table shipped inside the page through the boot data, so the Content-Security-Policy is unchanged and the offline `build` page switches too.
+- Optional top-level **`lang`** in `batch.json` (`"en"` or `"pt-BR"`); `check` rejects any other value. A batch without `lang` opens in English.
+- **`--lang en|pt-BR`** on `serve` and `build`: overrides the batch's `lang` for the language the page opens in.
+- An **EN/PT toggle** in the header, next to the live/offline badge. It switches the chrome at once, sets `<html lang>` and is remembered for that panel address (`localStorage` key `ar-board:lang`, kept per browser address: a live panel keeps it across reloads but not across the next `serve`, which picks a new random port; offline `build` pages share it). Precedence: the saved toggle, then `--lang`, then the batch's `lang`, then `CAPYBARA_LANG`, then English. A saved value that is not one of the two is ignored.
+- Risk levels `low`, `medium` and `high` are coloured like `baixo`, `medio` and `alto` (accents and case still ignored); the CSS classes do not change.
+- **`--lang en|pt-BR` on every command** (`serve`, `wait`, `summary`, `build`, `check`) for the command-line messages, and the environment variable **`CAPYBARA_LANG`** (`en` or `pt-BR`) as the default when neither the flag nor the batch decides (any other value is ignored).
+
+### Changed
+- **The command line speaks English by default**: `check`, the validation errors, `summary` (text), `wait` and the other messages follow `--lang`, then the batch's `lang`, then `CAPYBARA_LANG`. The pt-BR text is the accent-free Portuguese of 1.3.1, except that a count of one now takes the singular (`ok: 1 item, ...`). The line tags `AR-BOARD URL:`, `AR-BOARD DECISOES:`, `AR-BOARD ARQUIVO:`, `TIMEOUT:` and `ok:` are the same in both languages; the JSON `summary` and the HTTP error bodies do not change. The `--help` text is English.
+- The pt-BR wording of the panel is now written with accents (the page is UTF-8).
+- Batch-level `labels` and per-item `confirm` are card content: they are shown as written and do not follow the toggle. The key letters (`A`, `R`, `M`, `S`, `C`) are the same in both languages.
+- `decisions.json` and the offline `AR-BOARD-RESULT` export have the same shape as before; nothing about the language is stored in them.
+
 ## [1.3.1] - 2026-10-15
 
 ### Changed

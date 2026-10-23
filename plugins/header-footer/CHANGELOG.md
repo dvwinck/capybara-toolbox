@@ -6,6 +6,19 @@ All notable changes to the **header-footer** plugin are documented here. The for
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
+### Added
+- **The language** of the messages and of the header's weekday: English by default, pt-BR on request. `header-footer.json` takes a top-level `"lang"` (`"en"` or `"pt-BR"`), the new command `lang en|pt-BR|auto` sets or clears it, every command takes `--lang`, and the environment variable `CAPYBARA_LANG` is the default when the config has none (every Capybara Toolbox tool that speaks pt-BR reads the same variable; publish-check prints English only). The hooks take no flags: they read the config, then `CAPYBARA_LANG`.
+- `status` names the language in use and where it came from (`LANGUAGE: en (default)`), lists a `CAPYBARA_LANG` that is neither `en` nor `pt-BR` as a problem (every other path ignores it) and has a `lang` key in `--json`.
+
+### Fixed
+- An invalid `lang` in `header-footer.json` (such as `"pt_BR"`) no longer makes `lang en` and `lang auto` exit 2: the `lang` command skips only the `lang` check when it loads the config, so it can repair that key; every other command, and every other field, is still checked strictly.
+
+### Changed
+- **The default is English**: the `weekday` field shows `Mon` … `Sun` (pt-BR `seg` … `dom`), and every message of the command line (`status` and its problems, `fields`, the toggles, the errors: `error:`, pt-BR `erro:`) is English unless `lang` or `CAPYBARA_LANG` says `pt-BR`. The pt-BR text is the accent-free Portuguese of 0.3.0. The `--help` text was already English.
+- The footer and the instruction that goes with the `<reply-header>` line are the same in both languages: the footer stays byte-identical to the Node status line it ports, and the instruction is addressed to the model.
+
 ## [0.3.0] - 2026-10-19
 
 ### Fixed

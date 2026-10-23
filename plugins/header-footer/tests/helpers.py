@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
+os.environ.pop("CAPYBARA_LANG", None)  # the defaults the suite pins must not depend on the shell that runs it
+
 ROOT = Path(__file__).resolve().parent.parent  # the plugin directory (plugins/header-footer)
 REPO = ROOT.parent.parent  # the marketplace repository root
 SKILL = ROOT / "skills" / "header-footer"

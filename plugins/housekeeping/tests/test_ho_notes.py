@@ -38,6 +38,9 @@ class NoteCase(unittest.TestCase):
         return FULL % self.first[:7]
 
     def write(self, draft=None, **kw):
+        """A pt-BR note: these tests pin the layout every note written before 0.4.0 has, which is the pt-BR layout.
+        EnglishNoteTest pins the English default."""
+        kw.setdefault("lang", "pt-BR")
         return ho.write_note(self.repo, self.draft() if draft is None else draft, **kw)
 
 
@@ -122,7 +125,7 @@ class SymlinkedFolderTest(NoteCase):
         outside = self.link_notes_folder()
         with self.assertRaises(ho.HandoffError) as ctx:
             self.write()
-        self.assertIn("link simbolico", str(ctx.exception))
+        self.assertIn("symbolic link", str(ctx.exception))
         self.assertEqual(list(outside.iterdir()), [])
 
     def test_a_notes_folder_that_is_a_symlink_is_never_read_either(self):
@@ -204,7 +207,7 @@ class ResumeTest(NoteCase):
         self.write(draft="## O que foi feito\n`branch:main`\n")
         commit(self.repo, "later", {"b.txt": "b\n"})
         res = ho.resume(self.repo)
-        self.assertTrue(any("a ponta de main mudou" in m and "(1 commits novos)" in m for m in res["drift"]), res["drift"])
+        self.assertTrue(any("the tip of main moved" in m and "(1 new commit)" in m for m in res["drift"]), res["drift"])
         self.assertTrue(res["citations"][0]["moved"])
 
     def test_a_deleted_cited_file_and_a_new_dirty_file_are_reported(self):
@@ -213,7 +216,7 @@ class ResumeTest(NoteCase):
         (self.repo / "fresh.txt").write_text("x\n", encoding="utf-8")
         res = ho.resume(self.repo)
         self.assertFalse(res["citations"][0]["verified"])
-        self.assertTrue(any("arquivos sujos novos: fresh.txt" in m or "fresh.txt" in m for m in res["drift"]))
+        self.assertTrue(any("new dirty files: fresh.txt" in m for m in res["drift"]), res["drift"])
         self.assertTrue(any("src/a.py" in m for m in res["drift"]))  # it is now a deleted, modified file
 
     def test_a_different_branch_and_stashes_and_ahead_counts(self):
@@ -223,8 +226,8 @@ class ResumeTest(NoteCase):
         (self.repo / "src" / "a.py").write_text("stash\n", encoding="utf-8")
         git(self.repo, "stash", "-q")
         drift = ho.resume(self.repo)["drift"]
-        self.assertTrue(any("a branch era main e agora e other" in m for m in drift), drift)
-        self.assertTrue(any("a frente/atras da base mudou: 0/0 -> 1/0" in m for m in drift), drift)
+        self.assertTrue(any("the branch was main and is now other" in m for m in drift), drift)
+        self.assertTrue(any("ahead/behind the base changed: 0/0 -> 1/0" in m for m in drift), drift)
         self.assertTrue(any("stashes: 0 -> 1" in m for m in drift), drift)
 
     def test_a_note_without_a_data_block_still_gets_its_citations_checked(self):
@@ -267,7 +270,7 @@ class FailedWritesTest(NoteCase):
         (self.repo / ".handoff").write_text("not a folder\n", encoding="utf-8")
         with self.assertRaises(ho.HandoffError) as ctx:
             self.write()
-        self.assertIn("pasta", str(ctx.exception))
+        self.assertIn("could not create the notes folder", str(ctx.exception))
 
     def test_an_out_path_that_is_a_file_is_an_error(self):
         target = self.tmp / "afile"
@@ -315,7 +318,7 @@ class UnreadableNoteTest(NoteCase):
         self.addCleanup(os.chmod, note, 0o600)
         with self.assertRaises(ho.HandoffError) as ctx:
             ho.resume(self.repo)
-        self.assertIn("nao consegui ler", str(ctx.exception))
+        self.assertIn("could not read the note", str(ctx.exception))
 
 
 class HostileDataBlockTest(NoteCase):
@@ -522,7 +525,7 @@ class MetainfoHeaderTest(NoteCase):
     def test_a_line_that_is_not_chave_valor_is_an_error_naming_the_line(self):
         with self.assertRaises(ho.HandoffError) as cm:
             self.write(draft="---\nModelo: m\nsem dois pontos\n---\n## O que foi feito\nx\n")
-        self.assertIn("linha 3", str(cm.exception))
+        self.assertIn("line 3", str(cm.exception))
         self.assertFalse((self.repo / ".handoff").exists())
 
     def test_bad_rows_are_refused_and_nothing_is_written(self):
@@ -542,7 +545,7 @@ class MetainfoHeaderTest(NoteCase):
     def test_the_tool_rows_hold_no_backticks_even_in_a_strange_folder_name(self):
         odd = init_repo(self.tmp / "`x`")
         commit(odd, "c", {"a.txt": "a\n"})
-        text = Path(ho.write_note(odd, "## O que foi feito\nx\n")["path"]).read_text(encoding="utf-8")
+        text = Path(ho.write_note(odd, "## O que foi feito\nx\n", lang="pt-BR")["path"]).read_text(encoding="utf-8")
         self.assertIn("| Repositorio | 'x' |", text)
 
     def test_missing_expected_rows_are_reported(self):
@@ -554,7 +557,7 @@ class MetainfoHeaderTest(NoteCase):
         folder = self.repo / ".handoff"
         folder.mkdir()
         facts = ho.collect(self.repo)
-        old = ("# Handoff - 2026-10-14 09:05 - main\n\n" + ho.git_section(facts) + "\n\n## O que foi feito\n`file:src/a.py`\n\n"
+        old = ("# Handoff - 2026-10-14 09:05 - main\n\n" + ho.git_section(facts, "pt-BR") + "\n\n## O que foi feito\n`file:src/a.py`\n\n"
                + ho.data_block({"schema": 1, "facts": facts, "citations": []}) + "\n")
         (folder / "2026-10-14-090507.md").write_text(old, encoding="utf-8")
         res = ho.resume(self.repo)
@@ -579,3 +582,107 @@ class MetainfoHeaderTest(NoteCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- the note's language (housekeeping 0.4.0)
+
+import ast
+import re
+
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
+HO_PRINTING = ("git", "repo_root", "detect_base", "commit_by_id", "check_citation", "notes_folder", "clean_meta_text",
+               "split_front", "clean_meta", "write_note", "drift", "read_note", "resume", "citation_lines", "parser",
+               "read_draft", "main", "run_command")
+HO_PT_WORDS = {"nao", "encontrado", "repositorio", "existe", "ambiguo", "citacao", "caracteres", "controle", "invalido",
+               "hexadecimais", "nome", "expressao", "revisao", "remota", "caminho", "relativo", "raiz", "sai", "arquivo",
+               "arvore", "trabalho", "link", "simbolico", "recuso", "escrever", "ler", "pasta", "metainfo", "invalida",
+               "linha", "rascunho", "chave", "valor", "resuma", "repetida", "reservada", "ferramenta", "grava", "tipada",
+               "cabecalho", "secao", "cabem", "gravado", "consegui", "criar", "nota", "notas", "gravar",
+               "agora", "novos", "antigo", "ponta", "mudou", "frente", "atras", "sujos", "estao", "rode", "primeiro",
+               "verificado", "verificadas", "conferencia", "bloco", "dados", "conferidas", "nada", "desde", "erro",
+               "estrutura", "funda", "demais", "lida", "cabe", "falha", "leitura", "escrita", "gravada", "citacoes",
+               "problema", "aviso", "falta", "fatos", "confere", "mostra", "recente", "padrao", "especifica", "entrada"}
+
+
+class LanguageTablesTest(unittest.TestCase):
+    def test_both_tables_have_the_same_keys_and_placeholders_and_are_plain_ascii(self):
+        for table in (ho.NOTE, ho.MSG):
+            en, pt = table["en"], table["pt-BR"]
+            self.assertEqual(set(en), set(pt))
+            for key in en:
+                with self.subTest(key=key):
+                    a, b = en[key], pt[key]
+                    if isinstance(a, tuple):
+                        self.assertEqual(len(a), len(b))
+                        a, b = " ".join(a), " ".join(b)
+                    self.assertEqual(set(PLACEHOLDER.findall(a)), set(PLACEHOLDER.findall(b)))
+                    self.assertTrue(a.isascii() and b.isascii(), key)
+
+    def test_the_pt_br_note_texts_are_those_of_0_3_1(self):
+        pt = ho.NOTE["pt-BR"]
+        self.assertEqual((pt["unverified"], pt["meta_title"], pt["git_title"]), (" [nao verificado]", "Metainfo da sessao", "## Estado do git"))
+        self.assertEqual(pt["sections"], ("O que foi feito", "Decisoes e por que", "Proximos passos", "O que falhou ou travou"))
+        self.assertEqual(pt["expected"], ("Modelo", "Pedido original", "Status"))
+        self.assertEqual((pt["written_at"], pt["repository"]), ("Gravada em", "Repositorio"))
+
+    def test_no_portuguese_literal_is_left_in_the_functions_that_print(self):
+        tree = ast.parse(Path(ho.__file__).read_text(encoding="utf-8"))
+        found = []
+        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in HO_PRINTING):
+            body = fn.body[1:] if isinstance(fn.body[0], ast.Expr) and isinstance(fn.body[0].value, ast.Constant) else fn.body
+            for node in (n for stmt in body for n in ast.walk(stmt)):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    if set(re.split(r"[^a-z]+", node.value.lower())) & HO_PT_WORDS:
+                        found.append(f"{fn.name}: {node.value!r}")
+        self.assertEqual(found, [], "Portuguese left outside NOTE and MSG:\n" + "\n".join(found))
+
+
+class EnglishNoteTest(NoteCase):
+    def note(self, draft, **kw):
+        res = ho.write_note(self.repo, draft, **kw)
+        return res, Path(res["path"]).read_text(encoding="utf-8")
+
+    def test_the_default_note_is_english(self):
+        draft = "---\nModel: m\nOriginal request: r\nStatus: s\n---\n## What was done\nFixed `file:src/a.py` and `file:gone.py`.\n"
+        res, text = self.note(draft)
+        self.assertTrue(text.startswith("# Handoff - 2026-10-14 09:05 - main\n\n| Session metainfo | |\n|---|---|\n| Model | m |\n"))
+        self.assertIn("| Written at | 2026-10-14 09:05 |\n| Repository | r |\n\n## Git state\n", text)
+        self.assertIn(f"- Branch: main, tip {self.first[:7]}", text)
+        self.assertIn("- Against the base main: 0 ahead, 0 behind", text)
+        self.assertIn("`file:gone.py` [not verified]", text)
+        self.assertNotIn("`file:src/a.py` [not verified]", text)
+        self.assertEqual(ho.parse_data(text)["lang"], "en")
+        self.assertEqual(res["missing"], ["Decisions and why", "Next steps", "What failed or got stuck"])
+        self.assertEqual(res["missing_meta"], [])
+
+    def test_keys_and_headings_count_in_either_language(self):
+        draft = "---\nModelo: m\nOriginal request: r\nstatus: s\n---\n## O que foi feito\nx\n## Decisions and why\ny\n"
+        res, _ = self.note(draft)
+        self.assertEqual(res["missing_meta"], [])
+        self.assertEqual(res["missing"], ["Next steps", "What failed or got stuck"])
+        res, _ = self.note(draft, lang="pt-BR")
+        self.assertEqual(res["missing"], ["Proximos passos", "O que falhou ou travou"])
+
+    def test_the_tools_keys_are_reserved_in_both_languages(self):
+        for key in ("Written at", "Repository", "Gravada em", "Repositorio"):
+            with self.subTest(key=key), self.assertRaises(ho.HandoffError):
+                ho.write_note(self.repo, f"---\n{key}: x\n---\n## What was done\nx\n")
+
+    def test_the_tool_parts_are_masked_in_either_language_with_or_without_the_data_block(self):
+        commit(self.repo, "rename `file:old.py` and `branch:nope`", {"b.txt": "b\n"})
+        for lang in ("en", "pt-BR"):
+            with self.subTest(lang=lang):
+                path = Path(ho.write_note(self.repo, "## What was done\n`file:src/a.py`\n", lang=lang)["path"])
+                text = path.read_text(encoding="utf-8")
+                self.assertEqual([c["value"] for c in ho.check_note(self.repo, text)], ["src/a.py"])
+                cut = text[:text.index("<!-- handoff:data")]  # no data block: the patterns of both languages
+                self.assertEqual([c["value"] for c in ho.check_note(self.repo, cut)], ["src/a.py"])
+                path.unlink()
+
+    def test_a_note_without_lang_in_its_data_block_is_read_as_pt_br(self):
+        path = Path(ho.write_note(self.repo, "## O que foi feito\n`file:src/a.py`\n", lang="pt-BR")["path"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn('"lang":"pt-BR",', text)
+        path.write_text(text.replace('"lang":"pt-BR",', ""), encoding="utf-8")  # what 0.3.1 wrote
+        res = ho.resume(self.repo)
+        self.assertEqual(([c["value"] for c in res["citations"]], res["drift"]), (["src/a.py"], []))

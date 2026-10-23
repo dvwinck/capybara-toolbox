@@ -63,7 +63,8 @@ class DocumentedExampleTest(unittest.TestCase):
         self.assertEqual(tb.scan_problems(self.batch, self.scan), [])
 
     def test_the_example_matches_what_scan_writes(self):
-        self.assertEqual(self.batch["labels"], tb.LABELS)
+        self.assertEqual(self.batch["labels"], tb.LABELS[self.batch["lang"]])
+        self.assertEqual(self.scan["lang"], self.batch["lang"])
         risky = {c["id"] for c in self.batch["items"] if "confirm" in c}
         self.assertEqual(risky, {e["id"] for e in self.scan["items"] if e["proof"] in tb.RISKY_PROOFS})
 

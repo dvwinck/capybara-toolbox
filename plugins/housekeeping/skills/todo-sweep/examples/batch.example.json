@@ -1,19 +1,20 @@
 {
   "batch_id": "todo-sweep-2026-10-14",
-  "title": "TODO e FIXME: 3 de 3",
-  "subtitle": "do mais antigo ao mais novo; Resolver, Descartar ou Manter, e o resultado e so um relatorio",
+  "title": "TODO and FIXME: 3 of 3",
+  "subtitle": "oldest first; Resolve, Discard or Keep, and the result is only a report",
   "round": 1,
+  "lang": "en",
   "labels": {
     "approve": {
-      "text": "Resolver",
+      "text": "Resolve",
       "tone": "safe"
     },
     "reject": {
-      "text": "Descartar",
+      "text": "Discard",
       "tone": "danger"
     },
     "maybe": {
-      "text": "Manter",
+      "text": "Keep",
       "tone": "caution"
     }
   },
@@ -21,82 +22,82 @@
     {
       "id": "T01",
       "tag": "TODO - src",
-      "title": "TODO em src/export.py:2: stream the rows instead of building a list",
+      "title": "TODO in src/export.py:2: stream the rows instead of building a list",
       "fields": [
         {
-          "label": "Onde",
+          "label": "Where",
           "text": "`src/export.py:2`"
         },
         {
-          "label": "Texto",
+          "label": "Text",
           "text": "stream the rows instead of building a list"
         },
         {
-          "label": "Idade",
-          "text": "412 dias (a linha mudou pela ultima vez em 2025-08-28, commit 1a2b3c4)"
+          "label": "Age",
+          "text": "412 days (the line last changed on 2025-08-28, commit 1a2b3c4)"
         },
         {
-          "label": "Trecho",
+          "label": "Excerpt",
           "text": "   1  def export(rows):\n   2      # TODO: stream the rows instead of building a list\n   3      return list(rows)"
         }
       ],
       "meta": {
         "Area": "src",
-        "Idade": "412 dias"
+        "Age": "412 days"
       }
     },
     {
       "id": "T02",
       "tag": "FIXME - src",
-      "title": "FIXME em src/report.py:1: wrong for negative amounts",
+      "title": "FIXME in src/report.py:1: wrong for negative amounts",
       "fields": [
         {
-          "label": "Onde",
+          "label": "Where",
           "text": "`src/report.py:1`"
         },
         {
-          "label": "Texto",
+          "label": "Text",
           "text": "wrong for negative amounts"
         },
         {
-          "label": "Idade",
-          "text": "95 dias (a linha mudou pela ultima vez em 2026-07-11, commit 5d6e7f8)"
+          "label": "Age",
+          "text": "95 days (the line last changed on 2026-07-11, commit 5d6e7f8)"
         },
         {
-          "label": "Trecho",
+          "label": "Excerpt",
           "text": "   1  total = 0  # FIXME: wrong for negative amounts"
         }
       ],
       "meta": {
         "Area": "src",
-        "Idade": "95 dias"
+        "Age": "95 days"
       }
     },
     {
       "id": "T03",
       "tag": "TODO - scripts",
-      "title": "TODO em scripts/deploy.sh:1: ask before restarting the service",
+      "title": "TODO in scripts/deploy.sh:1: ask before restarting the service",
       "fields": [
         {
-          "label": "Onde",
+          "label": "Where",
           "text": "`scripts/deploy.sh:1`"
         },
         {
-          "label": "Texto",
+          "label": "Text",
           "text": "ask before restarting the service"
         },
         {
-          "label": "Idade",
-          "text": "8 dias (a linha mudou pela ultima vez em 2026-10-06, commit 9a0b1c2)"
+          "label": "Age",
+          "text": "8 days (the line last changed on 2026-10-06, commit 9a0b1c2)"
         },
         {
-          "label": "Trecho",
+          "label": "Excerpt",
           "text": "   1  # TODO: ask before restarting the service\n   2  systemctl restart app"
         }
       ],
       "meta": {
         "Area": "scripts",
-        "Idade": "8 dias"
+        "Age": "8 days"
       }
     }
   ]

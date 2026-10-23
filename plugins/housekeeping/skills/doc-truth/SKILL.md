@@ -9,7 +9,7 @@ Reads every `.md` file tracked by git and checks what it claims against the repo
 
 It does not check external links (`https://...`) and does not check whether a description is correct, only whether what it points to exists.
 
-Reply to the user in the user's language. The tool prints its output in Portuguese without accents (for example `limpo: nenhum achado`, "clean: no findings"): when you present the findings, explain them in the user's language and keep the category names, paths and fingerprints exactly as printed.
+Reply to the user in the user's language. The tool prints its output in English by default; run it with `--lang pt-BR` when the user writes in Portuguese (accent-free Portuguese; `CAPYBARA_LANG` may set the default for the whole shell). When you present the findings, explain them in the user's language and keep the category names, values, paths and fingerprints exactly as printed: a finding's value and fingerprint are the same in both languages, only its message changes.
 
 ## When to use
 
@@ -41,15 +41,15 @@ Options: `--json` (the output has a `schema` field) and `--config <arquivo>`. If
 
 ### 2. Present
 
-Present the findings grouped by category, in the order the output prints them, and say how many documents were checked. The output starts with `doc-truth <version>: <N> documentos conferidos em <path>` ("N documents checked in <path>"). It then prints `limpo: nenhum achado` ("clean: no findings") or `<N> achados` ("N findings"). The categories are:
+Present the findings grouped by category, in the order the output prints them, and say how many documents were checked. The output starts with `doc-truth <version>: <N> documents checked in <path>` (pt-BR `<N> documentos conferidos em <path>`). It then prints `clean: no findings` (pt-BR `limpo: nenhum achado`) or `<N> findings` (pt-BR `<N> achados`). The categories are:
 
 - `path`: a path cited between backticks or in a code block does not exist **in the git tree**. What exists only on your disk does not count, so that the result is the same in CI. Propose fixing the text. If the file is created at run time (`decisions.json`), propose adding the name to `ignore_paths`.
 - `link` and `anchor`: the link points to something that does not exist, or there is no heading for the anchor (GitHub slug rules).
-- `parity`: `<name>.md` and `<name>.pt-BR.md` have different sequences of heading levels, or a `README.md` has no `README.pt-BR.md` (the finding reads `falta README.pt-BR.md`, "README.pt-BR.md is missing").
+- `parity`: `<name>.md` and `<name>.pt-BR.md` have different sequences of heading levels, or a `README.md` has no `README.pt-BR.md` (the finding's value reads `falta README.pt-BR.md`, "README.pt-BR.md is missing", in both languages: it is data, so an accepted fingerprint stays valid).
 - `version`: an `X.Y.Z` version on the same line as a plugin's name does not match `plugin.json`.
 - `plugins`: the catalog has a plugin that the root README does not link.
 
-If the output says `aceitos pela lista allow` ("accepted by the allow list"), tell the user how many findings `.doc-truth.json` has already accepted (the line reads `(<N> aceitos pela lista allow)`).
+If the output says `accepted by the allow list` (pt-BR `aceitos pela lista allow`), tell the user how many findings `.doc-truth.json` has already accepted (the line reads `(<N> accepted by the allow list)`, pt-BR `(<N> aceitos pela lista allow)`).
 
 ### 3. Fix only on request
 

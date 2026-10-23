@@ -4,7 +4,7 @@ ar-board is a local approve/reject board for Claude Code. The agent proposes N i
 
 Requirements: `python3` 3.9+ (CI: 3.9, 3.11 and 3.13 on Ubuntu and macOS), standard library only. No `pip`, no Node, no external network.
 
-This document is a reference. Strings quoted in Portuguese (CLI output, validation messages, UI labels) are the program's real output, which is written without accents.
+This document is a reference. Strings quoted in Portuguese are the program's pt-BR wording as it was before 1.4.0, without accents. Since 1.4.0 the panel and the command line speak English by default and pt-BR on request (`lang`, `--lang`, `CAPYBARA_LANG`); the pt-BR command line is still accent-free and the pt-BR panel is written with accents (see [Visual design, responsiveness and accessibility](#visual-design-responsiveness-and-accessibility)).
 
 ## Contents
 
@@ -96,7 +96,7 @@ Top to bottom:
 | **Side panel** (right) | Metadata, comment field, Aprovar/Rejeitar/Talvez/Pular/Anterior/Proximo buttons, numbered chips | The button for the current decision gets a highlighted outline. |
 | **Chips** | One numbered button per item | Colored by decision (green/red/amber; neutral when undecided); the current item has a highlight ring; hovering shows the title; clicking jumps to the item. |
 | **Resultado** | Counters, batch note, Concluir/Baixar JSON/Copiar/Limpar buttons | Counters: `✓ N aprovados`, `✗ N rejeitados`, `≈ N talvez`, `N sem decisao`. |
-| **Completion banner** | `Concluido. Volte ao Claude Code e diga "terminei" — o agente le as decisoes sozinho.` | Shown only while the batch is concluded (see [Concluding and the finished lifecycle](#concluding-and-the-finished-lifecycle)). |
+| **Completion banner** | `Finished. Go back to Claude Code and say "done" — the agent reads the decisions by itself.` (pt-BR: `Concluído. Volte ao Claude Code e diga "terminei" — o agente lê as decisões sozinho.`) | Shown only while the batch is concluded (see [Concluding and the finished lifecycle](#concluding-and-the-finished-lifecycle)). |
 
 On narrow screens (up to 860 px) the side panel moves below the card.
 
@@ -115,7 +115,7 @@ Element details:
 
 - **`fields`**: free list of `{label, text}`. Recommended convention: `O que`, `Por quê`, and `Conceito` when there is jargon. The label is displayed in small uppercase. An item without `fields` is valid (it shows only title and risk).
 - **Text**: everything is escaped before reaching the HTML. Only two things are interpreted: `` `code` `` becomes `<code>` and a newline (`\n`) becomes `<br>`. There is no bold, no links, no other markup; typed HTML appears as literal text. Field labels, titles, tags and meta values are escaped without any interpretation.
-- **`risk`**: `{level, text}`. The level is normalized (lowercase, accents removed) and selects the color: `baixo` green, `medio` amber, `alto` red. Any other value uses the amber style, but the displayed text is the original. The pill reads `level — text` (the `— text` part appears only when `text` is non-empty).
+- **`risk`**: `{level, text}`. The level is normalized (lowercase, accents removed) and selects the color: `baixo` or `low` green, `medio` or `medium` amber, `alto` or `high` red. Any other value uses the amber style, but the displayed text is the original. The pill reads `level — text` (the `— text` part appears only when `text` is non-empty).
 - **`meta`**: a plain object; each pair becomes a row in the side panel (for example `Area`, `Escala atual`, `Esforco`). Values are converted to text for display.
 - **`image`**: path **relative to the batch folder**, with extension `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` or `.svg`. In live mode it is served by the server itself (see [Internal HTTP API](#internal-http-api)); in `build` it is embedded as a `data:` URI (see [Live mode vs offline mode](#live-mode-vs-offline-mode)). A `data:` URI is also accepted directly.
 - **`id`**: string unique within the batch (for example `A01`). It is the key in `decisions.json` and appears in the pill and in notices.
@@ -397,13 +397,13 @@ Inside the skill, Claude Code replaces `${CLAUDE_SKILL_DIR}` with the skill's fo
 
 | Command | Options | Output | Exit code |
 |---|---|---|---|
-| `check DIR` | none | `ok: N itens, lote <id>, rodada <R>` | 0; `1` with the list of errors if `batch.json` is invalid |
-| `serve DIR` | `--port N` (default 0 = random free port), `--open`, `--exit-on-finish` | `AR-BOARD URL: ...` and `AR-BOARD DECISOES: <path>` | 0 on shutdown |
-| `wait DIR` | `--timeout S` (0 = wait indefinitely) | Markdown summary when concluded; `TIMEOUT: o usuario ainda nao concluiu o lote.` on timeout | 0 concluded; **2** timeout |
-| `summary DIR` | `--json` | Markdown or JSON summary | 0 |
-| `build DIR` | none | `AR-BOARD ARQUIVO: <path>/board.html` | 0 |
+| `check DIR` | `--lang en\|pt-BR` | `ok: N items, batch <id>, round <R>` (pt-BR `ok: N itens, lote <id>, rodada <R>`) | 0; `1` with the list of errors if `batch.json` is invalid |
+| `serve DIR` | `--port N` (default 0 = random free port), `--open`, `--exit-on-finish`, `--lang en\|pt-BR` | `AR-BOARD URL: ...` and `AR-BOARD DECISOES: <path>` | 0 on shutdown |
+| `wait DIR` | `--timeout S` (0 = wait indefinitely), `--lang en\|pt-BR` | Markdown summary when concluded; `TIMEOUT: the user has not finished the batch yet.` (pt-BR `TIMEOUT: o usuario ainda nao concluiu o lote.`) on timeout | 0 concluded; **2** timeout |
+| `summary DIR` | `--json`, `--lang en\|pt-BR` | Markdown or JSON summary | 0 |
+| `build DIR` | `--lang en\|pt-BR` | `AR-BOARD ARQUIVO: <path>/board.html` | 0 |
 
-All commands load and validate `batch.json` first. A missing file exits with `nao encontrei <path>`; an invalid batch exits with status 1 and the error list (see [batch.json validation](#batchjson-validation)). These messages go to stderr.
+All commands load and validate `batch.json` first, and print in the language of the run: `--lang`, then the batch's `lang`, then `CAPYBARA_LANG`, then English. A missing file exits with `could not find <path>` (pt-BR `nao encontrei <path>`); an invalid batch exits with status 1 and the error list (see [batch.json validation](#batchjson-validation)). These messages go to stderr.
 
 ### `serve`
 
@@ -504,6 +504,7 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 | The root must be an object | `a raiz do batch.json deve ser um objeto` |
 | `batch_id` and `title`: non-empty strings | `campo '<k>' e obrigatorio (string)` |
 | `round` (if present): integer >= 1, not a boolean | `campo 'round' deve ser inteiro >= 1` |
+| `lang` (if present, `null` counts as omitted): `en` or `pt-BR`, nothing else | `campo 'lang' deve ser en ou pt-BR` (English run: `field 'lang' must be en or pt-BR`) |
 | `items`: non-empty list | `'items' deve ser uma lista nao vazia` |
 | Each item is an object | `item <i>: deve ser objeto` |
 | `id`: non-empty string, unique | `item <i>: 'id' obrigatorio` / `item <i>: id duplicado '<id>'` |
@@ -639,7 +640,7 @@ Principles:
 - **Accessibility present:** text fields have `<label for>`, help text and `placeholder`; visible focus on text fields; Tab navigation in natural order and Enter/Space activation of buttons; a text label on every button; state information is never conveyed by color alone (the badge and counters carry text).
 - **Contrast:** the test suite checks every text/background pair of both palettes against WCAG AA (4.5:1) in `tests/test_page.py`.
 - **Not covered yet:** `aria-live` regions for notices (the advance notice and the completion banner are not announced by screen readers) and a full WCAG audit beyond the palette check.
-- UI messages and labels are in Portuguese without accents, by project convention (the page is served and saved as UTF-8); card content accepts any Unicode (accented and CJK text was checked by hand during the 1.0.x manual test runs).
+- **Language:** the panel's own text is English by default and pt-BR on demand: `lang` in `batch.json`, `--lang` on `serve` and `build`, or the EN/PT toggle in the header, which is remembered for that panel address (`localStorage` key `ar-board:lang`, kept per browser address: a live panel keeps it across reloads but not across the next `serve`, which picks a new random port; offline `build` pages share it) and wins over the other two. Both tables ship inside the page (`I18N` in the script), so the offline page switches too; nothing about the language is stored in `decisions.json`. The pt-BR wording is written with accents. Card content accepts any Unicode (accented and CJK text was checked by hand during the 1.0.x manual test runs).
 
 ## Known limits
 

@@ -20,7 +20,7 @@ class ServePortInUseTest(unittest.TestCase):
                 busy.listen()
                 port = busy.getsockname()[1]
                 with self.assertRaises(SystemExit):
-                    ab.cmd_serve(Namespace(dir=str(d), port=port, open=False, exit_on_finish=False))
+                    ab.cmd_serve(Namespace(dir=str(d), port=port, open=False, exit_on_finish=False, lang=None))
             self.assertEqual(sorted(p.name for p in d.iterdir()), ["batch.json", "decisions.json"])
             self.assertEqual(json.loads((d / "decisions.json").read_text(encoding="utf-8"))["round"], 1)
 
@@ -29,4 +29,4 @@ class HelpTest(unittest.TestCase):
     def test_help_has_a_description(self):
         r = subprocess.run([sys.executable, "-I", str(SCRIPT), "--help"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("painel local de aprovar/rejeitar", r.stdout)
+        self.assertIn("a local approve/reject panel", r.stdout)

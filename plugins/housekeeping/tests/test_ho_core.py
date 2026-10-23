@@ -142,7 +142,7 @@ class GitEnvironmentTest(RepoCase):
                 ho.collect(self.repo)
         finally:
             os.environ["PATH"] = old
-        self.assertIn("git nao encontrado", str(ctx.exception))
+        self.assertIn("git not found", str(ctx.exception))
 
     def test_inherited_repository_location_variables_do_not_change_the_repository_judged(self):
         other = init_repo(self.tmp / "other")

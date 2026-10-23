@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# header-footer 0.3.0 - a header line at the top of every Claude reply and a configurable status-line footer
+# header-footer 0.4.0 - a header line at the top of every Claude reply and a configurable status-line footer
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 """header-footer: the reply header (a line such as "🕐 14:57 · main" at the top of Claude's first
@@ -29,7 +29,11 @@ Usage:
   python3 -I header_footer.py header-icon "⏱"
   python3 -I header_footer.py footer-fields gsd,tokens,limits,clock
   python3 -I header_footer.py separator header|footer " · "
+  python3 -I header_footer.py lang en|pt-BR|auto     # the language of the messages and of the weekday (auto: CAPYBARA_LANG, then en)
   python3 -I header_footer.py preview | fields
+
+Every command except the hooks takes --lang en|pt-BR (default: the config's lang, then CAPYBARA_LANG, then en).
+The footer and the instruction to Claude are the same in both languages.
 
 Exit codes: 0 ok, 1 `status` found problems, 2 usage or config error.
 """
@@ -46,28 +50,154 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
-HEADER_FIELDS = {
-    "time": "hora (header-format)",
-    "date": "data (header-format --date)",
-    "weekday": "dia da semana: seg..dom",
-    "dir": "pasta atual",
-    "repo": "nome do repositorio git",
-    "branch": "branch git atual",
+LANGS = ("en", "pt-BR")  # languages of the messages and of the header's weekday; the first is the default
+DEFAULT_LANG = "en"
+ENV_LANG = "CAPYBARA_LANG"  # one shell-wide default for every Capybara Toolbox script
+CLI_LANG = DEFAULT_LANG  # the language of this run's messages, set by main() only
+
+# The help of each field (printed by `fields`), per language. The names are the config's: the same in both.
+FIELD_HELP = {
+    "en": {
+        "header": {
+            "time": "time (header-format)",
+            "date": "date (header-format --date)",
+            "weekday": "weekday: Mon..Sun",
+            "dir": "current folder",
+            "repo": "name of the git repository",
+            "branch": "current git branch",
+        },
+        "footer": {
+            "state": "running Nm while Claude works, waiting while it waits for you, idle when it stops",
+            "gsd": "the GSD block (model | task | folder | context), when GSD is installed",
+            "model": "model",
+            "dir": "current folder",
+            "branch": "current git branch",
+            "context": "ctx N% used",
+            "tokens": "session tokens so far (input and output)",
+            "limits": "the plan's 5h/7d windows and the time until they reset",
+            "cost": "estimated session cost in US$",
+            "clock": "clock HH:MM",
+        },
+    },
+    "pt-BR": {
+        "header": {
+            "time": "hora (header-format)",
+            "date": "data (header-format --date)",
+            "weekday": "dia da semana: seg..dom",
+            "dir": "pasta atual",
+            "repo": "nome do repositorio git",
+            "branch": "branch git atual",
+        },
+        "footer": {
+            "state": "running Nm enquanto o Claude trabalha, waiting quando espera voce, idle quando termina",
+            "gsd": "bloco do GSD (modelo | tarefa | pasta | contexto), se o GSD estiver instalado",
+            "model": "modelo",
+            "dir": "pasta atual",
+            "branch": "branch git atual",
+            "context": "ctx N% usado",
+            "tokens": "tokens acumulados da sessao (entrada e saida)",
+            "limits": "janelas 5h/7d do plano e o tempo ate zerar",
+            "cost": "custo estimado da sessao em US$",
+            "clock": "relogio HH:MM",
+        },
+    },
 }
-FOOTER_FIELDS = {
-    "state": "running Nm enquanto o Claude trabalha, waiting quando espera voce, idle quando termina",
-    "gsd": "bloco do GSD (modelo | tarefa | pasta | contexto), se o GSD estiver instalado",
-    "model": "modelo",
-    "dir": "pasta atual",
-    "branch": "branch git atual",
-    "context": "ctx N% usado",
-    "tokens": "tokens acumulados da sessao (entrada e saida)",
-    "limits": "janelas 5h/7d do plano e o tempo ate zerar",
-    "cost": "custo estimado da sessao em US$",
-    "clock": "relogio HH:MM",
+HEADER_FIELDS = FIELD_HELP["en"]["header"]  # the names a header may show
+FOOTER_FIELDS = FIELD_HELP["en"]["footer"]  # the names a footer may show
+
+# Every message of the command line (and every `status` problem), in both languages. Same keys and {placeholders}
+# in both (a test enforces it); both plain ASCII, so the pt-BR side is the accent-free Portuguese of 0.3.0. The
+# footer is not here: it must stay byte-identical to the Node status line it ports, in either language.
+MSG = {
+    "en": {
+        "cfg_json": "{path} is not valid JSON: {exc}", "cfg_obj": "{path} must be a JSON object",
+        "cfg_type": "{path}: {key} must be {kind}", "t_bool": "true/false", "t_str": "text", "t_list": "a list of strings",
+        "cfg_lang": "{path}: lang must be en or pt-BR",
+        "bad_event": "invalid state event: {event} (use {events})",
+        "p_legacy": "an older header hook in settings.json ({names}): with the plugin installed the header comes out twice; remove that entry from settings.json",
+        "p_field": "unknown {section} field: {field}",
+        "p_no_hook": "header on, but no hook runs it: the plugin is not enabled in the user's settings.json and there is no `wire-hooks` (a project settings.json, which status does not read, may still enable the plugin)",
+        "p_footer": "footer on in the config, but statusLine does not point to this script: run `on footer`",
+        "p_stale": "the copy in {path} is at version {copy}, the plugin at {version}: run `on footer` (or `wire-hooks`) again",
+        "absent": "missing",
+        "p_python": "the python written into settings.json no longer exists ({interp}): run `on footer` (or `wire-hooks`) again",
+        "p_gsd": "the gsd field is configured, but GSD (or node) is not installed: the field comes out empty",
+        "p_env": "CAPYBARA_LANG={value} is not en or pt-BR: it is ignored",
+        "empty": "(empty)", "on": "on", "off": "off",
+        "s_header": "HEADER (the line at the top of the reply)", "s_config": "  config:   {state}  fields={fields}",
+        "s_hook": "  hook:     {hook}", "s_plugin_hook": "the plugin's hooks.json (when installed from the marketplace)",
+        "s_footer": "FOOTER (status line)", "s_wiring": "  wiring:   {wiring}", "s_wired": "statusLine points to this script",
+        "s_diagnosis": "DIAGNOSIS", "s_all_good": "all good", "s_lang": "LANGUAGE: {lang} ({source})",
+        "src_flag": "--lang", "src_config": "header-footer.json", "src_env": "CAPYBARA_LANG", "src_default": "default",
+        "no_field": "give at least one {section} field",
+        "bad_fields": "unknown {section} field(s): {bad}. Available: {known}",
+        "header_toggled": "header: {state} (takes effect on the next prompt)",
+        "foreign_line": "another statusLine already exists ({command}); use `on footer --replace` to replace it (settings.json gets a backup)",
+        "not_ours": "the current statusLine is not this script's; I will not remove it (edit settings.json by hand)",
+        "footer_toggled": "footer: {state} (settings.json backed up; restart Claude Code if it does not change)",
+        "hooks_wired": "hooks registered in settings.json (backed up): {events}",
+        "hooks_unwired": "hooks removed from settings.json (backed up): {events}",
+        "format_usage": 'usage: header-format "%H:%M" [--date]',
+        "format_bad": "the format {fmt} does not work on this platform (on Windows, %-H does not exist)",
+        "lang_usage": "usage: lang en|pt-BR|auto", "lang_set": "lang: {lang}", "lang_auto": "lang: auto (CAPYBARA_LANG, then en)",
+        "bad_flag": "--lang must be en or pt-BR", "bad_command": "invalid command: {command} (use --help)", "error": "error: {e}",
+    },
+    "pt-BR": {
+        "cfg_json": "{path} nao e JSON valido: {exc}", "cfg_obj": "{path} precisa ser um objeto JSON",
+        "cfg_type": "{path}: {key} precisa ser {kind}", "t_bool": "true/false", "t_str": "texto", "t_list": "lista de textos",
+        "cfg_lang": "{path}: lang precisa ser en ou pt-BR",
+        "bad_event": "evento de estado invalido: {event} (use {events})",
+        "p_legacy": "hook de header antigo no settings.json ({names}): com o plugin instalado o header sai duplicado; remova essa entrada do settings.json",
+        "p_field": "campo de {section} desconhecido: {field}",
+        "p_no_hook": "header ligado, mas nenhum hook o executa: o plugin nao esta habilitado no settings.json do usuario e nao ha `wire-hooks` (um settings.json de projeto, que o status nao le, ainda pode habilitar o plugin)",
+        "p_footer": "footer ligado na config, mas a statusLine nao aponta para este script: rode `on footer`",
+        "p_stale": "a copia em {path} esta na versao {copy}, o plugin na {version}: rode `on footer` (ou `wire-hooks`) de novo",
+        "absent": "ausente",
+        "p_python": "o python gravado no settings.json nao existe mais ({interp}): rode `on footer` (ou `wire-hooks`) de novo",
+        "p_gsd": "campo gsd configurado, mas o GSD (ou o node) nao esta instalado: o campo sai vazio",
+        "p_env": "CAPYBARA_LANG={value} nao e en nem pt-BR: fica ignorado",
+        "empty": "(vazio)", "on": "ligado", "off": "desligado",
+        "s_header": "HEADER (linha no topo da resposta)", "s_config": "  config:   {state}  campos={fields}",
+        "s_hook": "  hook:     {hook}", "s_plugin_hook": "hooks.json do plugin (quando instalado pelo marketplace)",
+        "s_footer": "FOOTER (status line)", "s_wiring": "  wiring:   {wiring}", "s_wired": "statusLine aponta para este script",
+        "s_diagnosis": "DIAGNOSTICO", "s_all_good": "tudo certo", "s_lang": "IDIOMA: {lang} ({source})",
+        "src_flag": "--lang", "src_config": "header-footer.json", "src_env": "CAPYBARA_LANG", "src_default": "padrao",
+        "no_field": "informe ao menos um campo de {section}",
+        "bad_fields": "campo(s) de {section} desconhecido(s): {bad}. Disponiveis: {known}",
+        "header_toggled": "header: {state} (vale no proximo prompt)",
+        "foreign_line": "ja existe outra statusLine ({command}); use `on footer --replace` para troca-la (o settings.json ganha backup)",
+        "not_ours": "a statusLine atual nao e deste script; nao vou remove-la (edite o settings.json a mao)",
+        "footer_toggled": "footer: {state} (settings.json com backup; reinicie o Claude Code se nao mudar)",
+        "hooks_wired": "hooks registrados no settings.json (com backup): {events}",
+        "hooks_unwired": "hooks removidos no settings.json (com backup): {events}",
+        "format_usage": 'uso: header-format "%H:%M" [--date]',
+        "format_bad": "formato {fmt} nao funciona nesta plataforma (no Windows, %-H nao existe)",
+        "lang_usage": "uso: lang en|pt-BR|auto", "lang_set": "lang: {lang}", "lang_auto": "lang: auto (CAPYBARA_LANG, depois en)",
+        "bad_flag": "--lang precisa ser en ou pt-BR", "bad_command": "comando invalido: {command} (use --help)", "error": "erro: {e}",
+    },
 }
+
+
+def env_lang():
+    """CAPYBARA_LANG when it is exactly one of LANGS, else None. A bad value never breaks a hook or a command;
+    `status` lists it as a problem."""
+    value = os.environ.get(ENV_LANG)
+    return value if value in LANGS else None
+
+
+def pick_lang(*candidates):
+    """The first candidate that is one of LANGS (--lang, then the config's lang), then CAPYBARA_LANG, then en."""
+    for cand in candidates:
+        if isinstance(cand, str) and cand in LANGS:
+            return cand
+    return env_lang() or DEFAULT_LANG
+
+
+def say(msg_id, /, **values):
+    """One message in the language of this run. The template is ours, the values are data."""
+    return MSG[CLI_LANG][msg_id].format(**values)
 DEFAULTS = {
     "header": {
         "enabled": True,
@@ -83,7 +213,8 @@ DEFAULTS = {
         "separator": " │ ",
     },
 }
-WEEKDAYS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+WEEKDAYS = {"en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], "pt-BR": ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]}
+# The instruction is addressed to the model, not to the user: it is English whatever the language.
 INSTRUCTION = (
     "Start your first reply of this turn with the text inside <reply-header>, verbatim, on a line "
     "of its own. Do not estimate, complete or reformat it."
@@ -147,9 +278,10 @@ def gsd_script():
     return claude_dir() / "hooks" / "gsd-statusline.js"
 
 
-def load_config(path=None, strict=False):
+def load_config(path=None, strict=False, check_lang=True):
     """The config merged over DEFAULTS. A broken file is an error only when `strict` (the CLI); the
-    hooks fall back to the defaults so a typo never blanks the header or the footer."""
+    hooks fall back to the defaults so a typo never blanks the header or the footer. `check_lang=False`
+    skips only the `lang` validation (the `lang` command uses it, so it can repair that very key)."""
     path = Path(path or config_path())
     cfg = copy.deepcopy(DEFAULTS)
     try:
@@ -158,11 +290,11 @@ def load_config(path=None, strict=False):
         return cfg
     except (OSError, ValueError) as exc:
         if strict:
-            raise UsageError(f"{path} nao e JSON valido: {exc}")
+            raise UsageError(say("cfg_json", path=path, exc=exc))
         return cfg
     if not isinstance(raw, dict):
         if strict:
-            raise UsageError(f"{path} precisa ser um objeto JSON")
+            raise UsageError(say("cfg_obj", path=path))
         return cfg
     for section in DEFAULTS:
         if not isinstance(raw.get(section), dict):
@@ -170,9 +302,14 @@ def load_config(path=None, strict=False):
         for key, value in raw[section].items():
             if key in DEFAULTS[section] and not same_type(value, DEFAULTS[section][key]):
                 if strict:
-                    raise UsageError(f"{path}: {section}.{key} precisa ser {type_name(DEFAULTS[section][key])}")
+                    raise UsageError(say("cfg_type", path=path, key=f"{section}.{key}", kind=type_name(DEFAULTS[section][key])))
                 continue
             cfg[section][key] = value
+    lang = raw.get("lang")  # top level, optional: the language of the header's weekday and of the messages
+    if lang in LANGS:
+        cfg["lang"] = lang
+    elif lang is not None and strict and check_lang:
+        raise UsageError(say("cfg_lang", path=path))
     return cfg
 
 
@@ -184,7 +321,7 @@ def same_type(value, default):
 
 
 def type_name(default):
-    return {bool: "true/false", str: "texto", list: "lista de textos"}[type(default)]
+    return say({bool: "t_bool", str: "t_str", list: "t_list"}[type(default)])
 
 
 REPLACE_ATTEMPTS = 3
@@ -248,12 +385,12 @@ def format_time(now, header, key):
         return now.strftime(DEFAULTS["header"][key])
 
 
-def render_header(header, cwd, now):
-    """The header line, or "" when every field came out empty."""
+def render_header(header, cwd, now, lang=DEFAULT_LANG):
+    """The header line, or "" when every field came out empty. Only the weekday depends on `lang`."""
     values = {
         "time": lambda: format_time(now, header, "time_format"),
         "date": lambda: format_time(now, header, "date_format"),
-        "weekday": lambda: WEEKDAYS[now.weekday()],
+        "weekday": lambda: WEEKDAYS[lang if lang in LANGS else DEFAULT_LANG][now.weekday()],
         "dir": lambda: os.path.basename(str(cwd).rstrip("/")) if cwd else "",
         "repo": lambda: os.path.basename(git(cwd, "rev-parse", "--show-toplevel")),
         "branch": lambda: git(cwd, "branch", "--show-current"),
@@ -307,7 +444,8 @@ def first_run(payload, now_ts):
 
 
 def header_hook(stdin_text, now=None):
-    header = load_config()["header"]
+    cfg = load_config()
+    header = cfg["header"]
     if not header.get("enabled", True):
         return ""
     try:
@@ -317,7 +455,7 @@ def header_hook(stdin_text, now=None):
     if not isinstance(payload, dict):
         payload = {}
     now = now or datetime.now()
-    line = render_header(header, payload.get("cwd") or os.getcwd(), now)
+    line = render_header(header, payload.get("cwd") or os.getcwd(), now, pick_lang(cfg.get("lang")))
     if not line or not first_run(payload, time.time()):
         return ""
     return f"<reply-header>{line}</reply-header>\n{INSTRUCTION}\n"
@@ -363,7 +501,7 @@ def state_hook(event, stdin_text, now_ts=None):
     """Record the session's state. `turn` starts the turn's clock; a permission prompt (`waiting`) and
     the tool call after it (`running`) keep it; `idle` restarts it as "idle since"."""
     if event not in STATE_EVENTS:
-        raise UsageError(f"evento de estado invalido: {event} (use {', '.join(STATE_EVENTS)})")
+        raise UsageError(say("bad_event", event=event, events=", ".join(STATE_EVENTS)))
     try:
         payload = json.loads(stdin_text or "{}")
     except ValueError:
@@ -669,9 +807,9 @@ def load_settings():
     except FileNotFoundError:
         return {}
     except ValueError as exc:
-        raise UsageError(f"{path} nao e JSON valido: {exc}")
+        raise UsageError(say("cfg_json", path=path, exc=exc))
     if not isinstance(data, dict):
-        raise UsageError(f"{path} precisa ser um objeto JSON")
+        raise UsageError(say("cfg_obj", path=path))
     return data
 
 
@@ -790,30 +928,32 @@ def collect_status(cfg, settings):
     copy_version = script_version(stable_script())
     problems = []
     if legacy:
-        problems.append("hook de header antigo no settings.json (" + ", ".join(sorted({n for n in LEGACY_HEADER_HOOKS if any(n in c for c in legacy)}))
-                        + "): com o plugin instalado o header sai duplicado; remova essa entrada do settings.json")
+        problems.append(say("p_legacy", names=", ".join(sorted({n for n in LEGACY_HEADER_HOOKS if any(n in c for c in legacy)}))))
     for section, known in (("header", HEADER_FIELDS), ("footer", FOOTER_FIELDS)):
         for f in cfg[section]["fields"]:
             if f not in known:
-                problems.append(f"campo de {section} desconhecido: {f}")
+                problems.append(say("p_field", section=section, field=f))
     plugin_on = any(v is True and k.startswith("header-footer@") for k, v in (settings.get("enabledPlugins") or {}).items())
     header_wired = any(is_ours(c) and c.endswith(" header-hook") for c in commands)
     if cfg["header"]["enabled"] and not (plugin_on or header_wired):
-        problems.append("header ligado, mas nenhum hook o executa: o plugin nao esta habilitado no settings.json do usuario e "
-                        "nao ha `wire-hooks` (um settings.json de projeto, que o status nao le, ainda pode habilitar o plugin)")
+        problems.append(say("p_no_hook"))
     if cfg["footer"]["enabled"] and not footer_wired(settings):
-        problems.append("footer ligado na config, mas a statusLine nao aponta para este script: rode `on footer`")
+        problems.append(say("p_footer"))
     uses_copy = footer_wired(settings) or any(is_ours(c) for c in commands)
     if uses_copy and copy_version != VERSION:
-        problems.append(f"a copia em {stable_script()} esta na versao {copy_version or 'ausente'}, o plugin na {VERSION}: rode `on footer` (ou `wire-hooks`) de novo")
+        problems.append(say("p_stale", path=stable_script(), copy=copy_version or say("absent"), version=VERSION))
     gone = sorted({i for i in map(command_interpreter, our_commands(settings)) if i and not os.path.exists(i)})
     for interp in gone:
-        problems.append(f"o python gravado no settings.json nao existe mais ({interp}): rode `on footer` (ou `wire-hooks`) de novo")
+        problems.append(say("p_python", interp=interp))
     if "gsd" in cfg["footer"]["fields"] and not (gsd_script().exists() and shutil.which("node")):
-        problems.append("campo gsd configurado, mas o GSD (ou o node) nao esta instalado: o campo sai vazio")
+        problems.append(say("p_gsd"))
+    raw_env = os.environ.get(ENV_LANG)
+    if raw_env is not None and raw_env not in LANGS:  # ignored everywhere; this is where the person learns why
+        problems.append(say("p_env", value=raw_env))
     return {
         "version": VERSION,
         "config": str(config_path()),
+        "lang": CLI_LANG,
         "header": {
             "enabled": cfg["header"]["enabled"],
             "fields": cfg["header"]["fields"],
@@ -843,25 +983,27 @@ def sample_footer_payload():
 
 
 def preview_header(cfg):
-    return render_header(cfg["header"], os.getcwd(), datetime.now()) or "(vazio)"
+    """The header as the hook renders it now: its weekday follows the config's lang, then CAPYBARA_LANG."""
+    return render_header(cfg["header"], os.getcwd(), datetime.now(), pick_lang(cfg.get("lang"))) or say("empty")
 
 
 def preview_footer(cfg):
-    return render_footer(sample_footer_payload(), footer=cfg["footer"]) or "(vazio)"
+    return render_footer(sample_footer_payload(), footer=cfg["footer"]) or say("empty")
 
 
-def print_status(st, cfg):
+def print_status(st, cfg, source="src_default"):
     h, f = st["header"], st["footer"]
-    print("HEADER (linha no topo da resposta)")
-    print(f"  config:   {'ligado' if h['enabled'] else 'desligado'}  campos={','.join(h['fields'])}")
-    print(f"  hook:     {'settings.json' if h['settings_hook'] else 'hooks.json do plugin (quando instalado pelo marketplace)'}")
+    print(say("s_header"))
+    print(say("s_config", state=say("on" if h["enabled"] else "off"), fields=",".join(h["fields"])))
+    print(say("s_hook", hook="settings.json" if h["settings_hook"] else say("s_plugin_hook")))
     print(f"  preview:  {preview_header(cfg)}")
-    print("FOOTER (status line)")
-    print(f"  config:   {'ligado' if f['enabled'] else 'desligado'}  campos={','.join(f['fields'])}")
-    print(f"  wiring:   {'statusLine aponta para este script' if f['wired'] else 'statusLine = ' + json.dumps(f['status_line'])}")
+    print(say("s_footer"))
+    print(say("s_config", state=say("on" if f["enabled"] else "off"), fields=",".join(f["fields"])))
+    print(say("s_wiring", wiring=say("s_wired") if f["wired"] else "statusLine = " + json.dumps(f["status_line"])))
     print(f"  preview:  {preview_footer(cfg)}")
-    print("DIAGNOSTICO")
-    for p in st["problems"] or ["tudo certo"]:
+    print(say("s_lang", lang=st["lang"], source=say(source)))
+    print(say("s_diagnosis"))
+    for p in st["problems"] or [say("s_all_good")]:
         print(f"  {'! ' if st['problems'] else 'ok '}{p}")
 
 
@@ -870,10 +1012,10 @@ def print_status(st, cfg):
 def parse_fields(raw, known, section):
     fields = [f.strip() for f in raw.split(",") if f.strip()]
     if not fields:
-        raise UsageError(f"informe ao menos um campo de {section}")
+        raise UsageError(say("no_field", section=section))
     bad = [f for f in fields if f not in known]
     if bad:
-        raise UsageError(f"campo(s) de {section} desconhecido(s): {', '.join(bad)}. Disponiveis: {', '.join(known)}")
+        raise UsageError(say("bad_fields", section=section, bad=", ".join(bad), known=", ".join(known)))
     return fields
 
 
@@ -887,32 +1029,61 @@ def toggle(cfg, piece, on, replace=False):
     if piece == "header":
         cfg["header"]["enabled"] = on
         save_config(cfg)
-        print(f"header: {'ligado' if on else 'desligado'} (vale no proximo prompt)")
+        print(say("header_toggled", state=say("on" if on else "off")))
         return
     settings = load_settings()
     foreign = bool(settings.get("statusLine")) and not footer_wired(settings)
     if on and foreign and not replace:
-        raise UsageError("ja existe outra statusLine (" + json.dumps(settings["statusLine"].get("command"))
-                         + "); use `on footer --replace` para troca-la (o settings.json ganha backup)")
+        raise UsageError(say("foreign_line", command=json.dumps(settings["statusLine"].get("command"))))
     if on:
         install_stable_copy()
         settings["statusLine"] = {"type": "command", "command": command_for("footer"), "refreshInterval": FOOTER_REFRESH}
     elif footer_wired(settings):
         del settings["statusLine"]
     elif foreign:
-        raise UsageError("a statusLine atual nao e deste script; nao vou remove-la (edite o settings.json a mao)")
+        raise UsageError(say("not_ours"))
     save_settings(settings)
     cfg["footer"]["enabled"] = on
     save_config(cfg)
-    print(f"footer: {'ligado' if on else 'desligado'} (settings.json com backup; reinicie o Claude Code se nao mudar)")
+    print(say("footer_toggled", state=say("on" if on else "off")))
+
+
+def split_lang(args):
+    """(the value of --lang or None, the other arguments). `--lang X` and `--lang=X` may stand anywhere."""
+    flag, rest, i = None, [], 0
+    while i < len(args):
+        if args[i] == "--lang":
+            flag = args[i + 1] if i + 1 < len(args) else ""
+            i += 2
+            continue
+        if args[i].startswith("--lang="):
+            flag = args[i][len("--lang="):]
+        else:
+            rest.append(args[i])
+        i += 1
+    return flag, rest
 
 
 def main(argv, stdin=None):
+    """Run one command. The language of its messages is set here: --lang, then the config's lang, then
+    CAPYBARA_LANG, then en (the hooks take no flags: the config, then CAPYBARA_LANG). It is put back afterwards,
+    so an in-process caller (the tests) never inherits another run's language."""
+    global CLI_LANG
     stdin = stdin if stdin is not None else sys.stdin
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__)
         return 0
-    cmd, args = argv[0], argv[1:]
+    before = CLI_LANG
+    try:
+        return run_command(argv, stdin)
+    finally:
+        CLI_LANG = before
+
+
+def run_command(argv, stdin):
+    global CLI_LANG
+    cmd, (flag, args) = argv[0], split_lang(argv[1:])
+    CLI_LANG = pick_lang(load_config().get("lang"))  # what a broken config or a bad flag is reported in
     try:
         if cmd == "header-hook":
             sys.stdout.write(header_hook(stdin.read()))
@@ -923,13 +1094,18 @@ def main(argv, stdin=None):
         if cmd == "state-hook" and len(args) == 1:
             state_hook(args[0], stdin.read())
             return 0
-        cfg = load_config(strict=True)
+        if flag is not None and flag not in LANGS:
+            raise UsageError(say("bad_flag"))
+        CLI_LANG = pick_lang(flag)  # a broken config is reported in --lang, else CAPYBARA_LANG, else en
+        cfg = load_config(strict=True, check_lang=cmd != "lang")  # `lang` may repair a bad lang; all else stays strict
+        CLI_LANG = pick_lang(flag, cfg.get("lang"))
+        source = "src_flag" if flag else "src_config" if cfg.get("lang") else "src_env" if env_lang() else "src_default"
         if cmd == "status":
             st = collect_status(cfg, load_settings())
             if "--json" in args:
                 print(dump_json(st), end="")
             else:
-                print_status(st, cfg)
+                print_status(st, cfg, source)
             return 1 if st["problems"] else 0
         if cmd in ("on", "off") and args[:1] in (["header"], ["footer"]) and set(args[1:]) <= {"--replace"}:
             toggle(cfg, args[0], cmd == "on", replace="--replace" in args)
@@ -939,7 +1115,7 @@ def main(argv, stdin=None):
                 install_stable_copy()
             wire_hooks(settings, cmd == "wire-hooks")
             save_settings(settings)
-            print(f"hooks {'registrados' if cmd == 'wire-hooks' else 'removidos'} no settings.json (com backup): {', '.join(PLUGIN_HOOKS)}")
+            print(say("hooks_wired" if cmd == "wire-hooks" else "hooks_unwired", events=", ".join(PLUGIN_HOOKS)))
         elif cmd == "header-fields" and len(args) == 1:
             set_and_show(cfg, "header", "fields", parse_fields(args[0], HEADER_FIELDS, "header"))
         elif cmd == "footer-fields" and len(args) == 1:
@@ -948,28 +1124,38 @@ def main(argv, stdin=None):
             key = "date_format" if "--date" in args else "time_format"
             fmt = [a for a in args if a != "--date"]
             if len(fmt) != 1 or "%" not in fmt[0]:
-                raise UsageError('uso: header-format "%H:%M" [--date]')
+                raise UsageError(say("format_usage"))
             try:
                 datetime.now().strftime(fmt[0])
             except ValueError:
-                raise UsageError(f"formato {fmt[0]} nao funciona nesta plataforma (no Windows, %-H nao existe)")
+                raise UsageError(say("format_bad", fmt=fmt[0]))
             set_and_show(cfg, "header", key, fmt[0])
         elif cmd == "header-icon" and len(args) == 1:
             set_and_show(cfg, "header", "icon", args[0])
         elif cmd == "separator" and len(args) == 2 and args[0] in ("header", "footer"):
             set_and_show(cfg, args[0], "separator", args[1])
+        elif cmd == "lang" and len(args) == 1 and args[0] in LANGS + ("auto",):
+            if args[0] == "auto":
+                cfg.pop("lang", None)
+            else:
+                cfg["lang"] = args[0]
+            save_config(cfg)
+            CLI_LANG = pick_lang(flag, cfg.get("lang"))
+            print(say("lang_auto") if args[0] == "auto" else say("lang_set", lang=args[0]))
+        elif cmd == "lang":
+            raise UsageError(say("lang_usage"))
         elif cmd == "preview" and not args:
             print(f"header: {preview_header(cfg)}")
             print(f"footer: {preview_footer(cfg)}")
         elif cmd == "fields" and not args:
-            for section, known in (("HEADER", HEADER_FIELDS), ("FOOTER", FOOTER_FIELDS)):
-                print(section)
-                for k, v in known.items():
+            for section in ("header", "footer"):
+                print(section.upper())
+                for k, v in FIELD_HELP[CLI_LANG][section].items():
                     print(f"  {k:8} {v}")
         else:
-            raise UsageError(f"comando invalido: {' '.join(argv)} (use --help)")
+            raise UsageError(say("bad_command", command=" ".join(argv)))
     except UsageError as exc:
-        print(f"erro: {exc}", file=sys.stderr)
+        print(say("error", e=exc), file=sys.stderr)
         return 2
     return 0
 

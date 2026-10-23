@@ -1,9 +1,9 @@
 # tidy-board
 
-Clean up stale git **branches, worktrees and stashes** from a local board. Every candidate is a card that shows how sure the tool is that it is finished; you decide **Apagar** (delete), **Manter** (keep) or **Depois** (later) with the keyboard; a separate `apply` step re-checks each approved item at the moment it deletes it. Nothing is deleted without your approval, and anything that exists in one place only is backed up first.
+Clean up stale git **branches, worktrees and stashes** from a local board. Every candidate is a card that shows how sure the tool is that it is finished; you decide **Delete**, **Keep** or **Later** (pt-BR **Apagar**, **Manter**, **Depois**) with the keyboard; a separate `apply` step re-checks each approved item at the moment it deletes it. Nothing is deleted without your approval, and anything that exists in one place only is backed up first.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only) and `git`; `gh` is optional (it proves merged pull requests). `scan` and `apply` never use the network except through `gh`, read-only and only when it is installed (`scan` to prove merged pull requests, `apply` to re-check the P2 items); `restore` uses none.
-- **Languages:** the skill is in English; the panel, the card text and the CLI messages are in Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
+- **Languages:** the skill is in English; the panel, the cards and the CLI messages are in English by default or in pt-BR (`scan --lang pt-BR`, `--lang` on every command, or `CAPYBARA_LANG`); the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
 - **Scope:** one repository per board, local refs only. `origin` is never touched.
 
 ## Install
@@ -18,7 +18,7 @@ Or copy the skill without the plugin system: `./install.sh tidy-board` from a cl
 ## How it works
 
 1. **`scan`** reads the repository (no fetch, no network, read-only) and writes an [ar-board](../ar-board) batch plus a `scan.json` sidecar into `.tidy-board/<batch>/`.
-2. **The panel** (a generated copy of the ar-board engine, `capy_board.py`) shows one card per item. `A` = Apagar, `R` = Manter, `M` = Depois. Items that are not provably merged need a **second `A`** to confirm.
+2. **The panel** (a generated copy of the ar-board engine, `capy_board.py`) shows one card per item. `A` = Delete, `R` = Keep, `M` = Later (pt-BR Apagar, Manter, Depois). Items that are not provably merged need a **second `A`** to confirm.
 3. **`apply`** refuses to run unless the board was concluded, then re-verifies every approved item right before deleting it and writes `applied.json`.
 4. **`restore`** brings back what was deleted by mistake.
 
@@ -47,7 +47,7 @@ The base is `--base`, else the branch `origin/HEAD` points to, else the first of
 
 ## The group card
 
-The first card (`G`) says "delete the N items proved as merged" and lists them. It applies to every P1/P2 item **without a decision of its own**: a Manter or Depois on an item always beats the group, and P3, P4 and stashes ignore it entirely. An item with no decision is kept.
+The first card (`G`) says "delete the N items proved as merged" and lists them. It applies to every P1/P2 item **without a decision of its own**: a Keep or Later (pt-BR Manter, Depois) on an item always beats the group, and P3, P4 and stashes ignore it entirely. An item with no decision is kept.
 
 ## What is never offered
 
@@ -85,7 +85,7 @@ Add `.tidy-board/` to your `.gitignore`: the files name your branches and paths 
 
 - tidy-board runs `git` inside your repository. It ignores the repository's hooks, filesystem monitor and external diff programs, but like any git command it still trusts the rest of the repository's local config: do not run it on a repository you do not trust.
 - Squash detection is a heuristic: a rebased or conflict-resolved squash usually lands in P4 (protected, just more tedious).
-- The panel's counters count the group card as one item, and items the group covers show as "sem decisao" there. `apply --dry-run` lists exactly what would be deleted; the skill always shows it first.
+- The panel's counters count the group card as one item, and items the group covers show as "undecided" there (pt-BR "sem decisão"). `apply --dry-run` lists exactly what would be deleted; the skill always shows it first.
 - A branch whose PR was force-pushed after the merge no longer matches the PR's head and falls to P3 or P4.
 - Remote branches, tags, several repositories per board and scheduled cleanup are out of scope.
 - The panel's JavaScript is not covered by the unit tests; it was checked by hand in a browser (light theme).

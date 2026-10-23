@@ -3,7 +3,7 @@
 Uma **linha de header no topo de cada resposta do Claude** (hora, data, dia da semana, pasta, repositório, branch) e um **footer configurável na status line** (se o Claude está trabalhando, esperando ou parado, tokens da sessão, limites do plano, relógio, branch, modelo, contexto, custo), os dois guiados por um arquivo de configuração e alterados com um comando.
 
 - **Versão:** veja o [CHANGELOG](CHANGELOG.md) · **Requer:** `python3` (só biblioteca padrão); `git` para os campos de branch e repositório; `node` só para o campo opcional `gsd`.
-- **Idiomas:** a skill é em inglês; as mensagens da CLI são em português; a documentação é em inglês ([README.md](README.md)) e este é o equivalente em português.
+- **Idiomas:** a skill é em inglês; as mensagens da CLI e o dia da semana do header saem em inglês por padrão e em pt-BR quando pedido (`lang` na config, `--lang` ou `CAPYBARA_LANG`); o footer é o mesmo nos dois; a documentação é em inglês ([README.md](README.md)) e este é o equivalente em português.
 
 ## Por quê
 
@@ -37,7 +37,7 @@ python3 -I $S fields                          # todos os campos
 | Campo do header | Mostra |
 | --- | --- |
 | `time`, `date` | hora e data, nos formatos `strftime` configurados |
-| `weekday` | `seg` … `dom` |
+| `weekday` | `seg` … `dom` em pt-BR, `Mon` … `Sun` em inglês |
 | `dir`, `repo`, `branch` | pasta atual, nome do repositório git, branch git |
 
 | Campo do footer | Mostra |

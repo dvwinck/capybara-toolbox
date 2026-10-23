@@ -3,7 +3,7 @@
 A **header line at the top of every Claude reply** (time, date, weekday, folder, repository, branch) and a **configurable status-line footer** (whether Claude is running, waiting or idle, session tokens, plan limits, clock, branch, model, context, cost), both driven by one config file and changed with one command.
 
 - **Version:** see [CHANGELOG](CHANGELOG.md) · **Requires:** `python3` (standard library only); `git` for the branch and repository fields; `node` only for the optional `gsd` field.
-- **Languages:** the skill is in English; the CLI messages are Portuguese; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
+- **Languages:** the skill is in English; the CLI messages and the header's weekday are English by default and pt-BR on request (`lang` in the config, `--lang`, or `CAPYBARA_LANG`); the footer is the same in both; the documentation is in English ([README.pt-BR.md](README.pt-BR.md) is the Portuguese counterpart).
 
 ## Why
 
@@ -37,7 +37,7 @@ python3 -I $S fields                          # every field
 | Header field | Shows |
 | --- | --- |
 | `time`, `date` | time and date, in the configured `strftime` formats |
-| `weekday` | `seg` … `dom` |
+| `weekday` | `Mon` … `Sun` (pt-BR `seg` … `dom`) |
 | `dir`, `repo`, `branch` | current folder, git repository name, git branch |
 
 | Footer field | Shows |
