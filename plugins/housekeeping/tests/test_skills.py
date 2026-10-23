@@ -49,7 +49,8 @@ class SkillFilesTest(unittest.TestCase):
         scan = json.loads((examples / "scan.example.json").read_text(encoding="utf-8"))
         self.assertEqual(engine.validate(batch), [])
         self.assertEqual(ts.scan_problems(batch, scan), [])
-        self.assertEqual(batch["labels"], ts.LABELS)
+        self.assertEqual(batch["labels"], ts.LABELS[batch["lang"]])
+        self.assertEqual(scan["lang"], batch["lang"])
 
     def test_the_handoff_example_note_has_a_valid_data_block_and_its_own_citations(self):
         from helpers import load_handoff

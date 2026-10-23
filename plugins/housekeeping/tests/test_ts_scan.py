@@ -39,7 +39,7 @@ class SweepCase(unittest.TestCase):
         return commit(self.repo, "c", files, date=when(days_ago))
 
     def args(self, **kw):
-        base = dict(repo=str(self.repo), limit=20, max_blame=300, out=None)
+        base = dict(repo=str(self.repo), limit=20, max_blame=300, out=None, lang="en")
         base.update(kw)
         return argparse.Namespace(**base)
 
@@ -101,7 +101,7 @@ class AgeTest(SweepCase):
         (self.repo / "a.py").write_text("x = 1\n# TODO: fresh\n", encoding="utf-8")
         hit, = self.ages()
         self.assertIsNone(hit["age"])
-        self.assertEqual(hit["age_reason"], "linha nao commitada")
+        self.assertEqual(hit["age_reason"], "uncommitted")
 
     def test_a_staged_but_uncommitted_new_file_has_no_age(self):
         self.commit({"keep.py": "x\n"}, days_ago=5)
@@ -109,7 +109,7 @@ class AgeTest(SweepCase):
         git(self.repo, "add", "new.py")
         hit, = self.ages()
         self.assertIsNone(hit["age"])
-        self.assertEqual(hit["age_reason"], "linha nao commitada")
+        self.assertEqual(hit["age_reason"], "uncommitted")
 
     def test_when_blame_itself_fails_the_hit_says_so(self):
         self.commit({"a.py": "# TODO: x\n"}, days_ago=5)
@@ -117,13 +117,13 @@ class AgeTest(SweepCase):
         with mock.patch.object(ts, "git", lambda root, *args: (128, "") if args[0] == "blame" else real(root, *args)):
             hit, = self.ages()
         self.assertIsNone(hit["age"])
-        self.assertIn("sem historico", hit["age_reason"])
+        self.assertEqual(hit["age_reason"], "no_history")
 
     def test_the_cap_limits_how_many_are_measured_in_listing_order(self):
         self.commit({"a.py": "# TODO: a\n", "b.py": "# TODO: b\n", "c.py": "# TODO: c\n"}, days_ago=30)
         hits = self.ages(cap=2)
         self.assertEqual([bool(h["age"]) for h in hits], [True, True, False])
-        self.assertEqual(hits[2]["age_reason"], "alem do limite de --max-blame")
+        self.assertEqual(hits[2]["age_reason"], "max_blame")
 
     def test_a_shallow_clone_boundary_has_no_age(self):
         self.commit({"a.py": "# TODO: ancient\n"}, days_ago=900)
@@ -134,7 +134,7 @@ class AgeTest(SweepCase):
         ts.blame_ages(clone, hits, 300)
         self.assertTrue(ts.is_shallow(clone))
         self.assertFalse(ts.is_shallow(self.repo))
-        self.assertTrue(all(h["age"] is None and "clone raso" in h["age_reason"] for h in hits), hits)
+        self.assertTrue(all(h["age"] is None and h["age_reason"] == "shallow" for h in hits), hits)
 
     def test_the_first_commit_of_a_full_repository_still_has_an_age(self):
         self.commit({"a.py": "# TODO: from the very first commit\n"}, days_ago=77)
@@ -199,21 +199,22 @@ class ScanCommandTest(SweepCase):
         self.assertEqual((rc, engine.validate(batch)), (0, []))
         self.assertEqual([i["id"] for i in batch["items"]], ["T01", "T02", "T03"])
         self.assertEqual([i["title"] for i in batch["items"]],
-                         ["TODO em src/a.py:1: oldest", "FIXME em src/b.py:2: middle", "TODO em src/c.py:1: youngest"])
-        self.assertEqual(batch["labels"]["approve"], {"text": "Resolver", "tone": "safe"})
-        self.assertEqual(batch["labels"]["reject"], {"text": "Descartar", "tone": "danger"})
-        self.assertEqual(batch["labels"]["maybe"], {"text": "Manter", "tone": "caution"})
-        self.assertEqual(batch["batch_id"], out.name)
+                         ["TODO in src/a.py:1: oldest", "FIXME in src/b.py:2: middle", "TODO in src/c.py:1: youngest"])
+        self.assertEqual(batch["labels"]["approve"], {"text": "Resolve", "tone": "safe"})
+        self.assertEqual(batch["labels"]["reject"], {"text": "Discard", "tone": "danger"})
+        self.assertEqual(batch["labels"]["maybe"], {"text": "Keep", "tone": "caution"})
+        self.assertEqual((batch["batch_id"], batch["lang"]), (out.name, "en"))
         card = {f["label"]: f["text"] for f in batch["items"][0]["fields"]}
-        self.assertEqual(card["Onde"], "`src/a.py:1`")
-        self.assertTrue(card["Idade"].startswith("300 dias"), card["Idade"])
-        self.assertIn("   1  # TODO: oldest", card["Trecho"])
+        self.assertEqual(card["Where"], "`src/a.py:1`")
+        self.assertTrue(card["Age"].startswith("300 days"), card["Age"])
+        self.assertIn("   1  # TODO: oldest", card["Excerpt"])
+        self.assertEqual(batch["items"][0]["meta"], {"Area": "src", "Age": "300 days"})
 
     def test_the_sidecar_records_what_the_report_needs(self):
         self.seed()
         _rc, out = self.scan()
         scan = json.loads((out / "scan.json").read_text(encoding="utf-8"))
-        self.assertEqual((scan["schema"], scan["tool"], scan["round"], scan["repo"]), (1, "todo-sweep", 1, str(self.repo)))
+        self.assertEqual((scan["schema"], scan["tool"], scan["round"], scan["repo"], scan["lang"]), (1, "todo-sweep", 1, str(self.repo), "en"))
         first = scan["items"][0]
         self.assertEqual((first["id"], first["file"], first["line"], first["marker"], first["text"], first["age_days"]),
                          ("T01", "src/a.py", 1, "TODO", "oldest", 300))
@@ -264,7 +265,7 @@ class ScanCommandTest(SweepCase):
         item = json.loads((out / "batch.json").read_text(encoding="utf-8"))["items"][0]
         self.assertTrue(item["title"].endswith("..."))
         self.assertLess(len(item["title"]), 120)
-        self.assertGreater(len(dict((f["label"], f["text"]) for f in item["fields"])["Texto"]), 150)
+        self.assertGreater(len(dict((f["label"], f["text"]) for f in item["fields"])["Text"]), 150)
 
     def test_many_cards_get_wider_ids(self):
         self.commit({"a.py": "".join(f"# TODO: n{i}\n" for i in range(120))}, days_ago=3)
@@ -537,3 +538,108 @@ class StaleDecisionsTest(SweepCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# ---------------------------------------------------------------- the cards' language (housekeeping 0.4.0)
+
+import re as _re
+
+PLACEHOLDER = _re.compile(r"\{(\w+)\}")
+
+
+class LanguageTableTest(unittest.TestCase):
+    def test_both_tables_have_the_same_keys_and_placeholders(self):
+        self.assertEqual(ts.LANGS, ("en", "pt-BR"))
+        self.assertEqual(ts.DEFAULT_LANG, "en")
+        en, pt = ts.TEXT["en"], ts.TEXT["pt-BR"]
+        self.assertEqual(set(en), set(pt))
+        for key in en:
+            with self.subTest(key=key):
+                self.assertEqual(set(PLACEHOLDER.findall(en[key])), set(PLACEHOLDER.findall(pt[key])))
+        self.assertEqual(set(ts.LABELS), set(ts.LANGS))
+        for code in ts.AGE_REASONS:
+            self.assertIn("reason_" + code, en)
+        for _key, text_key in ts.SECTIONS:
+            self.assertIn(text_key, en)
+
+    def test_the_portuguese_table_has_accents(self):
+        text = " ".join(ts.TEXT["pt-BR"].values())
+        for word in ("última", "histórico", "Sem decisão", "relatório"):
+            self.assertIn(word, text)
+
+    def test_age_text_renders_the_reason_codes_in_both_languages(self):
+        aged = {"age": {"days": 3, "time": 1_800_000_000, "commit": "abc1234"}, "age_reason": ""}
+        self.assertEqual(ts.age_text(aged, "en"), "3 days (the line last changed on 2027-01-15, commit abc1234)")
+        self.assertEqual(ts.age_text(aged, "pt-BR"), "3 dias (a linha mudou pela última vez em 2027-01-15, commit abc1234)")
+        self.assertEqual(ts.age_text({"age": None, "age_reason": "uncommitted"}, "en"), "no age: uncommitted line")
+        self.assertEqual(ts.age_text({"age": None, "age_reason": "shallow"}, "pt-BR"), "sem idade: limite de um clone raso (o histórico anterior não está aqui)")
+        self.assertEqual(ts.age_text({"age": None, "age_reason": "whatever"}, "en"), "no age: whatever")  # an unknown code is shown, not a crash
+
+    def test_an_unknown_language_is_refused(self):
+        with self.assertRaises(ts.SweepError) as ctx:
+            ts.check_lang("xx")
+        self.assertIn("idioma invalido", str(ctx.exception))
+
+
+class LanguageScanTest(SweepCase):
+    def seed(self):
+        self.commit({"src/a.py": "# TODO: oldest\n", "b.py": "x = 1\n"}, days_ago=300)
+        self.commit({"b.py": "x = 1\n# FIXME: middle\n"}, days_ago=100)
+
+    def test_pt_br_cards_are_the_old_ones_with_accents(self):
+        self.seed()
+        rc, out = self.scan(lang="pt-BR")
+        batch = json.loads((out / "batch.json").read_text(encoding="utf-8"))
+        scan = json.loads((out / "scan.json").read_text(encoding="utf-8"))
+        self.assertEqual((rc, engine.validate(batch)), (0, []))
+        self.assertEqual((batch["lang"], scan["lang"]), ("pt-BR", "pt-BR"))
+        self.assertEqual([i["title"] for i in batch["items"]], ["TODO em src/a.py:1: oldest", "FIXME em b.py:2: middle"])
+        self.assertEqual(batch["title"], "TODO e FIXME: 2 de 2")
+        self.assertEqual(batch["labels"], ts.LABELS["pt-BR"])
+        self.assertEqual(batch["labels"]["approve"]["text"], "Resolver")
+        card = {f["label"]: f["text"] for f in batch["items"][0]["fields"]}
+        self.assertEqual(list(card), ["Onde", "Texto", "Idade", "Trecho"])
+        self.assertTrue(card["Idade"].startswith("300 dias (a linha mudou pela última vez em"), card["Idade"])
+        self.assertEqual(batch["items"][0]["meta"], {"Área": "src", "Idade": "300 dias"})
+        self.assertEqual(batch["items"][1]["meta"]["Área"], "(raiz)")
+        self.assertEqual(batch["items"][1]["tag"], "FIXME - (raiz)")
+
+    def test_english_cards_name_the_root_and_the_missing_age_in_english(self):
+        self.commit({"a.py": "x = 1\n"}, days_ago=5)
+        (self.repo / "a.py").write_text("x = 1\n# TODO: fresh\n", encoding="utf-8")
+        _rc, out = self.scan()
+        item = json.loads((out / "batch.json").read_text(encoding="utf-8"))["items"][0]
+        card = {f["label"]: f["text"] for f in item["fields"]}
+        self.assertEqual(item["tag"], "TODO - (root)")
+        self.assertEqual(card["Age"], "no age: uncommitted line")
+        self.assertEqual(item["meta"], {"Area": "(root)", "Age": "no age"})
+        scan = json.loads((out / "scan.json").read_text(encoding="utf-8"))
+        self.assertEqual(scan["items"][0]["age_reason"], "uncommitted")  # the sidecar keeps the code, not the text
+
+    def test_both_languages_write_the_same_scan_apart_from_lang(self):
+        self.seed()
+        _rc, en = self.scan()
+        _rc, pt = self.scan(lang="pt-BR")
+        a = json.loads((en / "scan.json").read_text(encoding="utf-8"))
+        b = json.loads((pt / "scan.json").read_text(encoding="utf-8"))
+        for key in ("created", "batch_id", "lang"):
+            a.pop(key), b.pop(key)
+        self.assertEqual(a, b)
+
+    def test_a_bad_lang_is_refused_before_anything_is_written(self):
+        self.seed()
+        with self.assertRaises(ts.SweepError) as ctx:
+            ts.cmd_scan(self.args(lang="xx"))
+        self.assertIn("idioma invalido", str(ctx.exception))
+        self.assertFalse((self.repo / ".todo-sweep").exists())
+
+    def test_check_accepts_both_languages_and_an_older_scan_without_lang_and_refuses_another_value(self):
+        self.seed()
+        _rc, out = self.scan(lang="pt-BR")
+        self.assertEqual(ts.cmd_check(argparse.Namespace(dir=str(out))), 0)
+        scan = json.loads((out / "scan.json").read_text(encoding="utf-8"))
+        del scan["lang"]
+        (out / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
+        self.assertEqual(ts.cmd_check(argparse.Namespace(dir=str(out))), 0)
+        scan["lang"] = "xx"
+        (out / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
+        self.assertEqual(ts.cmd_check(argparse.Namespace(dir=str(out))), 1)

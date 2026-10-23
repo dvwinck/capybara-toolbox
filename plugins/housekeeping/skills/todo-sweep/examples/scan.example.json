@@ -1,11 +1,12 @@
 {
   "schema": 1,
   "tool": "todo-sweep",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "batch_id": "todo-sweep-2026-10-14",
   "repo": "/path/to/example",
   "created": "2026-10-14T09:05:07-0300",
   "round": 1,
+  "lang": "en",
   "totals": {
     "found": 3,
     "decided_before": 0,

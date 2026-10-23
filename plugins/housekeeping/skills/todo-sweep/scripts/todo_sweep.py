@@ -4,7 +4,7 @@
 # Copyright (c) 2026 Diogo Winck
 #
 # Uso:
-#   todo_sweep.py scan   [REPO] [--limit N] [--max-blame N] [--out DIR]   # acha os TODO/FIXME, mede a idade, escreve batch.json + scan.json
+#   todo_sweep.py scan   [REPO] [--limit N] [--max-blame N] [--out DIR] [--lang en|pt-BR]   # acha os TODO/FIXME, mede a idade, escreve batch.json + scan.json
 #   todo_sweep.py check  DIR                                              # valida batch.json + scan.json
 #   todo_sweep.py report DIR                                              # grava report.md e report.json a partir das decisoes
 # O painel e o capy_board.py desta skill (`serve DIR`). Nenhum arquivo-fonte e editado.
@@ -30,8 +30,46 @@ TRAIL = re.compile(r"^\s*\S.*?\s(?:#+|//+)\s*(TODO|FIXME)\b(.*)$")  # a trailing
 SKIP_SUFFIXES = (".md", ".markdown")  # prose mentions TODO; it is not a code comment
 ZERO_SHA = "0" * 40
 NOW = time.time  # a function: the tests replace it
-LABELS = {"approve": {"text": "Resolver", "tone": "safe"}, "reject": {"text": "Descartar", "tone": "danger"},
-          "maybe": {"text": "Manter", "tone": "caution"}}
+LANGS = ("en", "pt-BR")  # languages of the cards and the report (`scan --lang`); the first is the default
+DEFAULT_LANG = "en"
+AGE_REASONS = ("max_blame", "no_history", "uncommitted", "shallow")  # codes kept in the hits and in scan.json
+
+# Every card and report text, in both languages. Hits and scan.json hold codes (`age_reason`), never text;
+# `t()` renders them. The two tables have the same keys and placeholders (a test enforces it).
+TEXT = {
+    "en": {
+        "f_where": "Where", "f_text": "Text", "f_age": "Age", "f_excerpt": "Excerpt", "m_area": "Area", "m_age": "Age",
+        "title": "{marker} in {place}", "no_text": "(no text)", "root": "(root)",
+        "age": "{days} days (the line last changed on {day}, commit {commit})", "age_days": "{days} days",
+        "no_age": "no age", "no_age_reason": "no age: {reason}",
+        "reason_max_blame": "beyond the --max-blame limit", "reason_no_history": "no history (new file or the blame failed)",
+        "reason_uncommitted": "uncommitted line", "reason_shallow": "limit of a shallow clone (the earlier history is not here)",
+        "batch_title": "TODO and FIXME: {n} of {total}",
+        "subtitle": "oldest first; Resolve, Discard or Keep, and the result is only a report",
+        "report_title": "todo-sweep report - {batch}",
+        "report_intro": "The lines are those of the moment of the scan. No file was edited by this tool.",
+        "s_resolver": "Resolve", "s_descartar": "Discard", "s_manter": "Keep", "s_sem_decisao": "No decision",
+    },
+    "pt-BR": {
+        "f_where": "Onde", "f_text": "Texto", "f_age": "Idade", "f_excerpt": "Trecho", "m_area": "Área", "m_age": "Idade",
+        "title": "{marker} em {place}", "no_text": "(sem texto)", "root": "(raiz)",
+        "age": "{days} dias (a linha mudou pela última vez em {day}, commit {commit})", "age_days": "{days} dias",
+        "no_age": "sem idade", "no_age_reason": "sem idade: {reason}",
+        "reason_max_blame": "além do limite de --max-blame", "reason_no_history": "sem histórico (arquivo novo ou o blame falhou)",
+        "reason_uncommitted": "linha não commitada", "reason_shallow": "limite de um clone raso (o histórico anterior não está aqui)",
+        "batch_title": "TODO e FIXME: {n} de {total}",
+        "subtitle": "do mais antigo ao mais novo; Resolver, Descartar ou Manter, e o resultado é só um relatório",
+        "report_title": "Relatório do todo-sweep - {batch}",
+        "report_intro": "As linhas são as do momento do scan. Nenhum arquivo foi editado por esta ferramenta.",
+        "s_resolver": "Resolver", "s_descartar": "Descartar", "s_manter": "Manter", "s_sem_decisao": "Sem decisão",
+    },
+}
+LABELS = {  # the panel's own wording per language: A resolves, R discards, M keeps
+    "en": {"approve": {"text": "Resolve", "tone": "safe"}, "reject": {"text": "Discard", "tone": "danger"},
+           "maybe": {"text": "Keep", "tone": "caution"}},
+    "pt-BR": {"approve": {"text": "Resolver", "tone": "safe"}, "reject": {"text": "Descartar", "tone": "danger"},
+              "maybe": {"text": "Manter", "tone": "caution"}},
+}
 
 # git never prompts, never runs the repository's hooks or a filesystem monitor, and never uses the network
 GIT_FLAGS = ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull,
@@ -217,7 +255,7 @@ def scan_files(root):
             n = seen.get(body, 0)
             seen[body] = n + 1
             hits.append({"file": rel, "line": line, "marker": marker, "text": body, "context": context,
-                         "todo_id": todo_id(rel, body, n), "age": None, "age_reason": "alem do limite de --max-blame"})
+                         "todo_id": todo_id(rel, body, n), "age": None, "age_reason": "max_blame"})
     return hits
 
 
@@ -268,11 +306,11 @@ def blame_ages(root, hits, cap):
         for h in group:
             e = entries.get(h["line"])
             if e is None:
-                h["age_reason"] = "sem historico (arquivo novo ou o blame falhou)"
+                h["age_reason"] = "no_history"
             elif e["sha"] == ZERO_SHA or e["time"] is None:
-                h["age_reason"] = "linha nao commitada"
+                h["age_reason"] = "uncommitted"
             elif e["boundary"] and shallow:
-                h["age_reason"] = "limite de um clone raso (o historico anterior nao esta aqui)"
+                h["age_reason"] = "shallow"
             else:
                 t = int(e["time"])
                 h["age"] = {"days": max(0, int((now - t) // 86400)), "time": t, "commit": e["sha"][:7]}
@@ -319,13 +357,26 @@ def save_ledger(root, decided):
 
 # ---------------------------------------------------------------- cards and scan
 
+def check_lang(lang):
+    """A language is one of LANGS; anything else (a typo, a value edited into a file) is the person's error."""
+    if lang not in LANGS:
+        raise SweepError(f"idioma invalido: {lang!r} (use en ou pt-BR)")
+    return lang
+
+
+def t(lang, key, **values):
+    """One card or report text in `lang`. The template is ours; the values are data, substituted and never parsed."""
+    return TEXT[lang][key].format(**values)
+
+
 def shown(name):
     """A name as the card shows it: a backtick would be read as the start of a code span."""
     return name.replace("`", "'")
 
 
 def area(file):
-    return file.split("/", 1)[0] if "/" in file else "(raiz)"
+    """The top folder of a file, or '' at the root (the card names the root in its own language)."""
+    return file.split("/", 1)[0] if "/" in file else ""
 
 
 def order_hits(hits):
@@ -334,35 +385,36 @@ def order_hits(hits):
     return aged + [h for h in hits if not h["age"]]
 
 
-def age_text(h):
+def age_text(h, lang):
     if h["age"]:
         day = time.strftime("%Y-%m-%d", time.gmtime(h["age"]["time"]))
-        return f"{h['age']['days']} dias (a linha mudou pela ultima vez em {day}, commit {h['age']['commit']})"
-    return "sem idade: " + h["age_reason"]
+        return t(lang, "age", days=h["age"]["days"], day=day, commit=h["age"]["commit"])
+    reason = t(lang, "reason_" + h["age_reason"]) if h["age_reason"] in AGE_REASONS else h["age_reason"]
+    return t(lang, "no_age_reason", reason=reason)
 
 
-def card_for(item_id, h):
+def card_for(item_id, h, lang):
     short = h["text"] if len(h["text"]) <= 90 else h["text"][:87] + "..."
     place = f"{shown(h['file'])}:{h['line']}"
     context = "\n".join(f"{n:>4}  {shown(text)}" for n, text in h["context"])
-    return {"id": item_id, "tag": f"{h['marker']} - {shown(area(h['file']))}",
-            "title": f"{h['marker']} em {place}" + (f": {shown(short)}" if short else ""),
-            "fields": [{"label": "Onde", "text": f"`{place}`"},
-                       {"label": "Texto", "text": shown(h["text"]) or "(sem texto)"},
-                       {"label": "Idade", "text": age_text(h)},
-                       {"label": "Trecho", "text": context}],
-            "meta": {"Area": shown(area(h["file"])), "Idade": f"{h['age']['days']} dias" if h["age"] else "sem idade"}}
+    where = shown(area(h["file"])) or t(lang, "root")
+    return {"id": item_id, "tag": f"{h['marker']} - {where}",
+            "title": t(lang, "title", marker=h["marker"], place=place) + (f": {shown(short)}" if short else ""),
+            "fields": [{"label": t(lang, "f_where"), "text": f"`{place}`"},
+                       {"label": t(lang, "f_text"), "text": shown(h["text"]) or t(lang, "no_text")},
+                       {"label": t(lang, "f_age"), "text": age_text(h, lang)},
+                       {"label": t(lang, "f_excerpt"), "text": context}],
+            "meta": {t(lang, "m_area"): where, t(lang, "m_age"): t(lang, "age_days", days=h["age"]["days"]) if h["age"] else t(lang, "no_age")}}
 
 
-def build_batch(batch_id, shown_hits, found):
+def build_batch(batch_id, shown_hits, found, lang):
     width = max(2, len(str(len(shown_hits))))
-    items = [card_for(f"T{i + 1:0{width}}", h) for i, h in enumerate(shown_hits)]
-    return {"batch_id": batch_id, "title": f"TODO e FIXME: {len(shown_hits)} de {found}",
-            "subtitle": "do mais antigo ao mais novo; Resolver, Descartar ou Manter, e o resultado e so um relatorio",
-            "round": 1, "labels": LABELS, "items": items}
+    items = [card_for(f"T{i + 1:0{width}}", h, lang) for i, h in enumerate(shown_hits)]
+    return {"batch_id": batch_id, "title": t(lang, "batch_title", n=len(shown_hits), total=found),
+            "subtitle": t(lang, "subtitle"), "round": 1, "lang": lang, "labels": LABELS[lang], "items": items}
 
 
-def build_scan(batch_id, root, shown_hits, totals):
+def build_scan(batch_id, root, shown_hits, totals, lang):
     items = []
     for i, h in enumerate(shown_hits):
         items.append({"id": f"T{i + 1:0{max(2, len(str(len(shown_hits))))}}", "todo_id": h["todo_id"], "file": h["file"],
@@ -370,7 +422,7 @@ def build_scan(batch_id, root, shown_hits, totals):
                       "age_days": h["age"]["days"] if h["age"] else None, "commit": h["age"]["commit"] if h["age"] else None,
                       "age_reason": h["age_reason"]})
     return {"schema": SCHEMA, "tool": "todo-sweep", "version": VERSION, "batch_id": batch_id, "repo": str(root),
-            "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "round": 1, "totals": totals, "items": items}
+            "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "round": 1, "lang": lang, "totals": totals, "items": items}
 
 
 def unique_dir(parent, base):
@@ -414,6 +466,7 @@ def check_counts(a):
 
 def cmd_scan(a):
     check_counts(a)
+    lang = check_lang(a.lang)
     root = repo_root(a.repo)
     if a.out:
         refuse_old_decisions(Path(a.out))
@@ -437,8 +490,8 @@ def cmd_scan(a):
     batch_id = out.name
     made = make_folder(out)
     try:
-        write_all({out / "batch.json": dump_json(build_batch(batch_id, offered, len(fresh))),
-                   out / "scan.json": dump_json(build_scan(batch_id, root, offered, totals))})
+        write_all({out / "batch.json": dump_json(build_batch(batch_id, offered, len(fresh), lang)),
+                   out / "scan.json": dump_json(build_scan(batch_id, root, offered, totals, lang))})
     except SweepError:
         for folder in made:  # a folder this run created is removed again; one that was there is left as it was
             try:
@@ -482,6 +535,8 @@ def scan_problems(batch, scan):
         return ["scan.json sem 'batch_id' (texto) ou 'round' (inteiro), ou batch.json com 'round' invalido"]
     if batch.get("batch_id") != scan.get("batch_id"):
         errs.append("batch.json e scan.json sao de lotes diferentes")
+    if scan.get("lang") is not None and scan["lang"] not in LANGS:  # an older scan has no lang: that is English
+        errs.append("scan.json: 'lang' deve ser en ou pt-BR")
     ids = [i.get("id") for i in batch["items"] if isinstance(i, dict)]
     mine = [i.get("id") for i in scan["items"] if isinstance(i, dict)]
     if ids != mine:
@@ -507,7 +562,7 @@ def cmd_check(a):
 # ---------------------------------------------------------------- the report
 
 DECISIONS = {"approved": "resolver", "rejected": "descartar", "maybe": "manter"}  # the panel's A, R and M
-SECTIONS = (("resolver", "Resolver"), ("descartar", "Descartar"), ("manter", "Manter"), ("sem_decisao", "Sem decisao"))
+SECTIONS = (("resolver", "s_resolver"), ("descartar", "s_descartar"), ("manter", "s_manter"), ("sem_decisao", "s_sem_decisao"))  # JSON key, text key
 
 
 def read_decisions(d, batch):
@@ -528,7 +583,7 @@ def read_decisions(d, batch):
 
 
 def group_items(scan, decisions):
-    groups = {key: [] for key, _title in SECTIONS}
+    groups = {key: [] for key, _text in SECTIONS}
     for it in scan["items"]:
         entry = decisions.get(it["id"])
         entry = entry if isinstance(entry, dict) else {}
@@ -548,14 +603,13 @@ def md_line(text):
     return shown(" ".join(text.split()))
 
 
-def report_markdown(scan, groups):
-    lines = [f"# Relatorio do todo-sweep - {md_line(scan['batch_id'])}", "",
-             "As linhas sao as do momento do scan. Nenhum arquivo foi editado por esta ferramenta.", ""]
-    for key, title in SECTIONS:
-        lines += [f"## {title} ({len(groups[key])})", ""]
+def report_markdown(scan, groups, lang):
+    lines = ["# " + t(lang, "report_title", batch=md_line(scan["batch_id"])), "", t(lang, "report_intro"), ""]
+    for key, text_key in SECTIONS:
+        lines += [f"## {t(lang, text_key)} ({len(groups[key])})", ""]
         for h in groups[key]:
-            age = f"{h['age_days']} dias" if h["age_days"] is not None else "sem idade"
-            lines.append(f"- `{md_line(h['file'])}:{h['line']}` {md_line(h['marker'])} {md_line(h['text']) or '(sem texto)'} ({age})"
+            age = t(lang, "age_days", days=h["age_days"]) if h["age_days"] is not None else t(lang, "no_age")
+            lines.append(f"- `{md_line(h['file'])}:{h['line']}` {md_line(h['marker'])} {md_line(h['text']) or t(lang, 'no_text')} ({age})"
                          + (f" - {md_line(h['comment'])}" if md_line(h["comment"]) else ""))
         lines.append("")
     return "\n".join(lines)
@@ -590,20 +644,21 @@ def cmd_report(a):
     errs = scan_problems(batch, scan)
     if errs:
         raise SweepError("scan.json/batch.json invalidos: " + "; ".join(errs))
+    lang = scan.get("lang") or DEFAULT_LANG  # an older scan has no lang: English; scan_problems refused any other value
     groups = group_items(scan, read_decisions(a.dir, batch))
     root = trusted_repo(scan, a.dir)
     decided = load_ledger(root)  # read first: a bad ledger (or a symlinked folder) stops the run before anything is written
     ledger = ledger_path(root)
     now_text = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    data = {"schema": SCHEMA, "tool": "todo-sweep", "batch_id": scan["batch_id"], "round": batch.get("round", 1),
-            "created": now_text, "counts": {key: len(groups[key]) for key, _t in SECTIONS}, **groups}
+    data = {"schema": SCHEMA, "tool": "todo-sweep", "batch_id": scan["batch_id"], "round": batch.get("round", 1), "lang": lang,
+            "created": now_text, "counts": {key: len(groups[key]) for key, _text in SECTIONS}, **groups}
     for key, word in (("descartar", "discard"), ("manter", "keep")):
         for h in groups[key]:
             decided[h["todo_id"]] = {"decision": word, "at": now_text, "file": h["file"], "text": h["text"]}
     out = Path(a.dir)
     made = make_folder(ledger.parent)
     try:  # the two report files and the ledger go together: all of them, or (rolled back) none
-        write_all({out / "report.json": dump_json(data), out / "report.md": report_markdown(scan, groups),
+        write_all({out / "report.json": dump_json(data), out / "report.md": report_markdown(scan, groups, lang),
                    ledger: dump_json({"schema": SCHEMA, "decided": decided})})
     except SweepError:
         for folder in made:
@@ -653,6 +708,7 @@ def parser():
     s.add_argument("--limit", type=count, default=20, help="cards por lote (padrao 20)")
     s.add_argument("--max-blame", type=count, default=300, help="quantos medir com git blame (padrao 300)")
     s.add_argument("--out", help=f"pasta do lote (padrao: {WORK_DIR}/todo-sweep-AAAA-MM-DD)")
+    s.add_argument("--lang", choices=LANGS, default=DEFAULT_LANG, help="idioma dos cards e do relatorio: en (padrao) ou pt-BR")
     c = sub.add_parser("check", help="valida batch.json + scan.json")
     c.add_argument("dir")
     r = sub.add_parser("report", help="grava report.md e report.json a partir das decisoes")

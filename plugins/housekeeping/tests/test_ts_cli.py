@@ -80,7 +80,7 @@ class ErrorTest(CliCase):
     def test_cmd_scan_itself_refuses_a_negative_cap_instead_of_slicing_wrongly(self):
         import argparse
         for kw in ({"limit": -1}, {"max_blame": -1}, {"limit": 0}):
-            args = argparse.Namespace(**{**dict(repo=str(self.repo), limit=20, max_blame=300, out=None), **kw})
+            args = argparse.Namespace(**{**dict(repo=str(self.repo), limit=20, max_blame=300, out=None, lang="en"), **kw})
             with self.subTest(kw=kw), self.assertRaises(ts.SweepError):
                 ts.cmd_scan(args)
         self.assertFalse((self.repo / ".todo-sweep").exists())
@@ -148,3 +148,33 @@ class ScriptTest(CliCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class LanguageCliTest(CliCase):
+    def test_lang_pt_br_flows_end_to_end_and_the_command_line_stays_portuguese(self):
+        rc, out, _ = run_main(["scan", str(self.repo), "--lang", "pt-BR"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("3 TODO/FIXME achados", out)
+        folder = Path(out.split("lote: ")[1].strip())
+        batch = json.loads((folder / "batch.json").read_text(encoding="utf-8"))
+        self.assertEqual((batch["lang"], batch["labels"]["approve"]["text"]), ("pt-BR", "Resolver"))
+        self.assertEqual(engine.validate(batch), [])
+        store = engine.Store(folder)
+        store.set_item("T01", {"decision": "approved"})
+        store.set_finished(True)
+        rc, out, _ = run_main(["report", str(folder)])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("REPORT: 1 resolver, 0 descartar, 0 manter, 2 sem decisao", out)
+        self.assertIn("## Resolver (1)", (folder / "report.md").read_text(encoding="utf-8"))
+
+    def test_an_unknown_lang_is_an_erro_line_with_exit_two_and_nothing_written(self):
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as ctx:
+            ts.main(["scan", str(self.repo), "--lang", "xx"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("erro: argumento --lang: comando invalido: 'xx'", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+        self.assertFalse((self.repo / ".todo-sweep").exists())
+
+    def test_help_documents_the_flag(self):
+        r = subprocess.run([sys.executable, "-I", str(TODO_SWEEP), "scan", "--help"], capture_output=True, text=True)
+        self.assertIn("--lang {en,pt-BR}", r.stdout)

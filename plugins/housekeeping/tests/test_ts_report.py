@@ -36,7 +36,7 @@ class ReportCase(unittest.TestCase):
         self.scan = json.loads((self.out / "scan.json").read_text(encoding="utf-8"))
 
     def args(self, **kw):
-        base = dict(repo=str(self.repo), limit=20, max_blame=300, out=None)
+        base = dict(repo=str(self.repo), limit=20, max_blame=300, out=None, lang="en")
         base.update(kw)
         return argparse.Namespace(**base)
 
@@ -69,10 +69,11 @@ class ReportTest(ReportCase):
         self.assertEqual(data["resolver"][0]["comment"], "do it soon")
         self.assertEqual([h["text"] for h in data["sem_decisao"]], [self.scan["items"][3]["text"]])
         md = (self.out / "report.md").read_text(encoding="utf-8")
-        for heading in ("## Resolver (1)", "## Descartar (1)", "## Manter (1)", "## Sem decisao (1)"):
+        for heading in ("## Resolve (1)", "## Discard (1)", "## Keep (1)", "## No decision (1)"):
             self.assertIn(heading, md)
         self.assertIn("do it soon", md)
-        self.assertIn("Nenhum arquivo foi editado", md)
+        self.assertIn("No file was edited", md)
+        self.assertEqual(data["lang"], "en")
 
     def test_only_descartar_and_manter_are_remembered_and_the_next_scan_skips_them(self):
         ids = [i["id"] for i in self.scan["items"]]
@@ -304,10 +305,10 @@ class HostileBoardTest(ReportCase):
         self.refused("UTF-8")
 
     def test_a_multiline_comment_cannot_forge_a_heading_in_the_markdown(self):
-        self.decide({self.scan["items"][0]["id"]: ("approved", "ok\n\n## Resolver (99)\n- `x.py:1` fake")})
+        self.decide({self.scan["items"][0]["id"]: ("approved", "ok\n\n## Resolve (99)\n- `x.py:1` fake")})
         self.report()
         md = (self.out / "report.md").read_text(encoding="utf-8")
-        self.assertEqual([l for l in md.split("\n") if l.startswith("#")][1:], ["## Resolver (1)", "## Descartar (0)", "## Manter (0)", "## Sem decisao (3)"])
+        self.assertEqual([l for l in md.split("\n") if l.startswith("#")][1:], ["## Resolve (1)", "## Discard (0)", "## Keep (0)", "## No decision (3)"])
         self.assertEqual(len([l for l in md.split("\n") if l.startswith("- ")]), 4)
 
     def test_a_scan_without_batch_id_or_round_is_refused_not_a_keyerror(self):
@@ -373,3 +374,61 @@ class HostileBoardTest(ReportCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class LanguageReportTest(ReportCase):
+    """The report follows the language recorded by the scan; the ledger and report.json keys never change."""
+
+    def rescan(self, lang):
+        for p in (self.repo / ".todo-sweep").glob("todo-sweep-*"):
+            for f in p.iterdir():
+                f.unlink()
+            p.rmdir()
+        ts.cmd_scan(self.args(lang=lang))
+        self.out = sorted((self.repo / ".todo-sweep").glob("todo-sweep-*"))[-1]
+        self.scan = json.loads((self.out / "scan.json").read_text(encoding="utf-8"))
+
+    def test_a_pt_br_scan_gives_a_portuguese_report_with_the_same_json_keys(self):
+        self.rescan("pt-BR")
+        ids = [i["id"] for i in self.scan["items"]]
+        self.decide({ids[0]: ("approved", "logo"), ids[1]: ("rejected", ""), ids[2]: ("maybe", "")})
+        self.assertEqual(self.report(), 0)
+        data = self.result()
+        self.assertEqual(data["lang"], "pt-BR")
+        self.assertEqual(data["counts"], {"resolver": 1, "descartar": 1, "manter": 1, "sem_decisao": 1})
+        md = (self.out / "report.md").read_text(encoding="utf-8")
+        self.assertTrue(md.startswith("# Relatório do todo-sweep - "), md[:60])
+        for heading in ("## Resolver (1)", "## Descartar (1)", "## Manter (1)", "## Sem decisão (1)"):
+            self.assertIn(heading, md)
+        self.assertIn("Nenhum arquivo foi editado", md)
+        self.assertIn("(90 dias)", md)
+        self.assertEqual(sorted(e["decision"] for e in ts.load_ledger(self.repo).values()), ["discard", "keep"])
+
+    def test_an_older_scan_without_lang_reports_in_english(self):
+        scan = {k: v for k, v in self.scan.items() if k != "lang"}
+        (self.out / "scan.json").write_text(json.dumps(scan), encoding="utf-8")
+        self.decide({self.scan["items"][0]["id"]: ("approved", "")})
+        self.assertEqual(self.report(), 0)
+        self.assertEqual(self.result()["lang"], "en")
+        self.assertIn("## Resolve (1)", (self.out / "report.md").read_text(encoding="utf-8"))
+
+    def test_a_bad_lang_in_scan_json_is_refused_before_anything_is_written(self):
+        for bad in ("xx", "", 1, ["en"]):
+            (self.out / "scan.json").write_text(json.dumps(dict(self.scan, lang=bad)), encoding="utf-8")
+            self.decide({self.scan["items"][0]["id"]: ("rejected", "")})
+            with self.subTest(lang=bad), self.assertRaises(ts.SweepError) as ctx:
+                self.report()
+            self.assertIn("'lang'", str(ctx.exception))
+            self.assertFalse((self.out / "report.json").exists())
+            self.assertEqual(ts.load_ledger(self.repo), {})
+
+    def test_a_ledger_written_by_a_pt_br_report_is_honoured_by_an_english_scan(self):
+        self.rescan("pt-BR")
+        ids = [i["id"] for i in self.scan["items"]]
+        self.decide({ids[0]: ("rejected", ""), ids[1]: ("maybe", "")})
+        self.report()
+        ts.cmd_scan(self.args(lang="en"))
+        newest = sorted((self.repo / ".todo-sweep").glob("todo-sweep-*"))[-1]
+        again = json.loads((newest / "scan.json").read_text(encoding="utf-8"))
+        self.assertEqual(again["lang"], "en")
+        self.assertEqual(sorted(i["text"] for i in again["items"]), sorted(i["text"] for i in self.scan["items"][2:]))
+        self.assertEqual(again["totals"]["decided_before"], 2)
