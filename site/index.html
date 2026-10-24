@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capybara Toolbox: an approve/reject board and more for Claude Code</title>
+<meta name="description" content="Claude Code plugins that keep you in charge: judge an agent's proposals one card at a time, check a repository before it goes public, and clean up git branches only on approval. Nothing to install beyond Python and git.">
+<meta property="og:title" content="Capybara Toolbox">
+<meta property="og:description" content="Claude Code plugins that keep you in charge. Start with ar-board: approve or reject your agent's proposals one card at a time.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://dvwinck.github.io/capybara-toolbox/">
+<meta property="og:image" content="https://dvwinck.github.io/capybara-toolbox/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght,SOFT@9..144,400..800,100&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --bg: #F7F1E6;
+  --bg-2: #EAF4F0;
+  --paper: #FFFDF8;
+  --ink: #3A2A20;
+  --ink-2: #6B5240;
+  --line: #E2D6C3;
+  --water: #CDEBE8;
+  --water-2: #7CC6C4;
+  --approve: #3F6E2F;
+  --approve-bg: #E3EFD9;
+  --reject: #A33A25;
+  --reject-bg: #F6DED6;
+  --maybe: #8A5A0B;
+  --maybe-bg: #F8E8C6;
+  --accent: #C8553D;
+  --code-bg: #2E241D;
+  --code-ink: #F4E9DA;
+  --shadow: 0 1px 0 rgba(58,42,32,.06), 0 12px 32px -12px rgba(58,42,32,.22);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1C1814;
+    --bg-2: #15201F;
+    --paper: #272019;
+    --ink: #F3E8D8;
+    --ink-2: #CDBBA4;
+    --line: #43372B;
+    --water: #1F3B3A;
+    --water-2: #4E9C9A;
+    --approve: #9CCB82;
+    --approve-bg: #26351E;
+    --reject: #F09A84;
+    --reject-bg: #41231B;
+    --maybe: #F2C46B;
+    --maybe-bg: #3D2F14;
+    --accent: #E7836B;
+    --code-bg: #120F0C;
+    --code-ink: #F4E9DA;
+    --shadow: 0 1px 0 rgba(0,0,0,.3), 0 14px 36px -14px rgba(0,0,0,.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1C1814;
+  --bg-2: #15201F;
+  --paper: #272019;
+  --ink: #F3E8D8;
+  --ink-2: #CDBBA4;
+  --line: #43372B;
+  --water: #1F3B3A;
+  --water-2: #4E9C9A;
+  --approve: #9CCB82;
+  --approve-bg: #26351E;
+  --reject: #F09A84;
+  --reject-bg: #41231B;
+  --maybe: #F2C46B;
+  --maybe-bg: #3D2F14;
+  --accent: #E7836B;
+  --code-bg: #120F0C;
+  --code-ink: #F4E9DA;
+  --shadow: 0 1px 0 rgba(0,0,0,.3), 0 14px 36px -14px rgba(0,0,0,.7);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 18px/1.6 "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+a { color: inherit; text-decoration-color: var(--water-2); text-underline-offset: 3px; text-decoration-thickness: 2px; }
+a:hover { text-decoration-color: var(--accent); }
+:focus-visible { outline: 3px solid var(--water-2); outline-offset: 3px; border-radius: 6px; }
+code, kbd, pre { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
+.display { font-family: "Fraunces", Georgia, serif; font-variation-settings: "SOFT" 100; letter-spacing: -.01em; }
+
+/* header */
+.top { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; }
+.brand svg { width: 40px; height: 40px; }
+.top nav { display: flex; gap: 20px; font-size: 16px; }
+.top nav a { text-decoration: none; color: var(--ink-2); }
+.top nav a:hover { color: var(--ink); }
+
+/* hero */
+.hero { position: relative; background: linear-gradient(160deg, var(--bg) 20%, var(--bg-2)); overflow: hidden; }
+.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; padding: 40px 0 140px; }
+.eyebrow { font-size: 15px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+h1 { font-size: clamp(40px, 5.6vw, 66px); line-height: 1.04; margin: 0 0 22px; font-weight: 700; }
+h1 em { font-style: italic; font-weight: 500; color: var(--accent); }
+.lede { font-size: 20px; color: var(--ink-2); margin: 0 0 28px; max-width: 34em; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 999px; font-weight: 700; text-decoration: none; border: 2px solid var(--ink); font-size: 16px; }
+.btn-solid { background: var(--ink); color: var(--bg); }
+.btn-solid:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-ghost:hover { background: var(--paper); }
+.waves { position: absolute; left: 0; right: 0; bottom: -2px; width: 100%; height: 90px; display: block; }
+
+/* demo board */
+.board { background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); padding: 18px; position: relative; }
+.board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; color: var(--ink-2); padding: 2px 4px 12px; }
+.board-head strong { color: var(--ink); font-size: 15px; }
+.tally { display: flex; gap: 10px; font-family: "JetBrains Mono", monospace; font-size: 13px; }
+.tally span { padding: 2px 8px; border-radius: 999px; }
+.t-a { background: var(--approve-bg); color: var(--approve); }
+.t-r { background: var(--reject-bg); color: var(--reject); }
+.t-m { background: var(--maybe-bg); color: var(--maybe); }
+.stack { position: relative; min-height: 262px; }
+.card { position: absolute; inset: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .35s; }
+.card[data-pos="1"] { transform: translateY(10px) scale(.97) rotate(1.2deg); opacity: .7; z-index: 1; }
+.card[data-pos="2"] { transform: translateY(20px) scale(.94) rotate(-1.4deg); opacity: .45; z-index: 0; }
+.card[data-pos="0"] { z-index: 2; }
+.card[data-pos="gone"] { opacity: 0; transform: translateX(var(--fly, 0)) rotate(var(--spin, 0)); pointer-events: none; }
+.card[data-pos="hidden"] { opacity: 0; pointer-events: none; }
+.card .id { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--ink-2); }
+.card h3 { font-family: "Fraunces", Georgia, serif; font-variation-settings: "SOFT" 100; font-size: 22px; line-height: 1.2; margin: 4px 0 10px; }
+.card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 15px; }
+.card dt { font-weight: 700; color: var(--ink-2); }
+.card dd { margin: 0; }
+.risk { display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.risk-low { background: var(--approve-bg); color: var(--approve); }
+.risk-mid { background: var(--maybe-bg); color: var(--maybe); }
+.risk-high { background: var(--reject-bg); color: var(--reject); }
+.keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+.key { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 8px; border-radius: 12px; border: 2px solid currentColor; background: transparent; font: 700 15px/1 "Atkinson Hyperlegible", sans-serif; cursor: pointer; transition: transform .12s, background .12s; }
+.key kbd { font-size: 13px; padding: 2px 7px; border-radius: 6px; background: currentColor; }
+.key kbd span { color: var(--paper); }
+.key:active { transform: translateY(1px); }
+.k-a { color: var(--approve); } .k-a:hover { background: var(--approve-bg); }
+.k-r { color: var(--reject); } .k-r:hover { background: var(--reject-bg); }
+.k-m { color: var(--maybe); } .k-m:hover { background: var(--maybe-bg); }
+.board-foot { font-size: 13px; color: var(--ink-2); margin: 12px 4px 0; }
+.result { display: none; }
+.board.done .stack, .board.done .keys { display: none; }
+.board.done .result { display: block; }
+.result pre { background: var(--code-bg); color: var(--code-ink); border-radius: 14px; padding: 16px 18px; font-size: 13.5px; line-height: 1.6; overflow-x: auto; margin: 0 0 12px; white-space: pre-wrap; }
+.result .again { background: none; border: 0; padding: 0; font: inherit; font-size: 15px; color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+/* sections */
+section { padding: 88px 0; }
+.kicker { font-size: 15px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+h2 { font-size: clamp(30px, 3.6vw, 44px); line-height: 1.1; margin: 0 0 18px; font-weight: 650; }
+.intro { color: var(--ink-2); max-width: 40em; margin: 0 0 40px; }
+.steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; counter-reset: step; }
+.steps li { counter-increment: step; border-top: 2px solid var(--ink); padding-top: 16px; }
+.steps li::before { content: "0" counter(step); display: block; font-family: "Fraunces", Georgia, serif; font-size: 40px; font-weight: 400; color: var(--water-2); line-height: 1; margin-bottom: 10px; }
+.steps h3 { font-size: 19px; margin: 0 0 6px; }
+.steps p { margin: 0; color: var(--ink-2); font-size: 16px; }
+.shot { margin: 56px 0 0; }
+.shot img { display: block; width: 100%; height: auto; border-radius: 18px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+.shot figcaption { color: var(--ink-2); font-size: 15px; margin-top: 12px; }
+
+.plugins { background: var(--bg-2); }
+.grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; }
+.plugin { grid-column: span 2; background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 8px; }
+.plugin.wide { grid-column: span 3; }
+.plugin header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.plugin h3 { margin: 0; font-family: "JetBrains Mono", monospace; font-size: 18px; }
+.ver { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.plugin p { margin: 0; font-size: 16px; color: var(--ink-2); flex: 1; }
+.plugin a.more { font-size: 15px; font-weight: 700; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+.install-box { background: var(--code-bg); color: var(--code-ink); border-radius: 18px; padding: 22px 24px; position: relative; max-width: 760px; }
+.install-box pre { margin: 0; font-size: 15px; line-height: 1.8; overflow-x: auto; }
+.install-box .prompt { color: #9C8A76; user-select: none; }
+.copy { position: absolute; top: 14px; right: 14px; background: rgba(255,255,255,.08); color: var(--code-ink); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 6px 12px; font: 600 13px/1 "Atkinson Hyperlegible", sans-serif; cursor: pointer; }
+.copy:hover { background: rgba(255,255,255,.16); }
+.install-note { color: var(--ink-2); font-size: 16px; margin: 16px 0 0; max-width: 46em; }
+
+.principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+.principles h3 { font-family: "Fraunces", Georgia, serif; font-variation-settings: "SOFT" 100; font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+.principles p { margin: 0; color: var(--ink-2); font-size: 16px; }
+
+footer { border-top: 1px solid var(--line); padding: 32px 0 48px; font-size: 15px; color: var(--ink-2); }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; }
+footer p { margin: 0; }
+
+/* load */
+@media (prefers-reduced-motion: no-preference) {
+  .rise { animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
+  .rise.d1 { animation-delay: .08s; } .rise.d2 { animation-delay: .16s; } .rise.d3 { animation-delay: .24s; } .rise.d4 { animation-delay: .36s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+}
+@media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+
+@media (max-width: 920px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; padding-bottom: 120px; }
+  .steps, .principles { grid-template-columns: 1fr 1fr; }
+  .plugin, .plugin.wide { grid-column: span 3; }
+}
+@media (max-width: 600px) {
+  body { font-size: 17px; }
+  .top nav a:not(.gh) { display: none; }
+  .steps, .principles { grid-template-columns: 1fr; }
+  .plugin, .plugin.wide { grid-column: 1 / -1; }
+  section { padding: 64px 0; }
+  .stack { min-height: 300px; }
+  .key { font-size: 14px; }
+  .copy { position: static; margin-bottom: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="./">
+        <svg viewBox="0 0 256 256" aria-hidden="true"><defs><clipPath id="disc"><circle cx="128" cy="128" r="124"/></clipPath></defs><circle cx="128" cy="128" r="124" fill="#CDEBE8"/><path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#disc)"/><ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/><rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/><ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/><ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/><ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/><circle cx="146" cy="115" r="6.5" fill="#2B1D14"/><circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/><ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/><path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/><circle cx="112" cy="70" r="19" fill="#F2A93B"/><circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/><path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/><rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/><path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/><rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/><rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/><circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/><circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/></svg>
+        <span>Capybara Toolbox</span>
+      </a>
+      <nav aria-label="Main">
+        <a href="#how">How it works</a>
+        <a href="#plugins">Plugins</a>
+        <a href="#install">Install</a>
+        <a class="gh" href="https://github.com/dvwinck/capybara-toolbox">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow rise">Plugins for Claude Code</p>
+        <h1 class="display rise d1">Judge your agent’s proposals <em>one card at a time.</em></h1>
+        <p class="lede rise d2">ar-board turns your agent’s list of proposals into cards on a local page. Approve, reject, or mark “maybe” with a single key, and say why. The agent gets back an exact list of what you approved and reads your reasons before it proposes anything next time.</p>
+        <div class="cta rise d3">
+          <a class="btn btn-solid" href="#install">Install in two commands</a>
+          <a class="btn btn-ghost" href="https://github.com/dvwinck/capybara-toolbox">View on GitHub</a>
+        </div>
+      </div>
+
+      <div class="board rise d4" id="board" aria-labelledby="board-title">
+        <div class="board-head">
+          <span><strong id="board-title">Try it</strong> · press <kbd>A</kbd>, <kbd>R</kbd>, or <kbd>M</kbd></span>
+          <span class="tally" aria-hidden="true"><span class="t-a" id="ta">0</span><span class="t-r" id="tr">0</span><span class="t-m" id="tm">0</span></span>
+        </div>
+        <div class="stack" id="stack"></div>
+        <div class="keys">
+          <button class="key k-a" type="button" data-d="approved"><kbd><span>A</span></kbd> Approve</button>
+          <button class="key k-r" type="button" data-d="rejected"><kbd><span>R</span></kbd> Reject</button>
+          <button class="key k-m" type="button" data-d="maybe"><kbd><span>M</span></kbd> Maybe</button>
+        </div>
+        <div class="result" id="result">
+          <pre id="summary"></pre>
+          <button class="again" type="button" id="again">Start over</button>
+        </div>
+        <p class="board-foot">A sketch of the flow that runs only on this page. The real panel, shown below, runs locally on your machine and has a comment box on every card.</p>
+        <p class="sr-status" id="status" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></p>
+      </div>
+    </div>
+  </div>
+  <svg class="waves" viewBox="0 0 1280 90" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 38c80-18 160 18 240 0s160 18 240 0 160 18 240 0 160 18 240 0 160 18 240 0 80-8 80-8V90H0z" fill="var(--water)" opacity=".8"/>
+    <path d="M0 62c80-14 160 14 240 0s160 14 240 0 160 14 240 0 160 14 240 0 160 14 240 0 80-6 80-6V90H0z" fill="var(--water-2)" opacity=".5"/>
+  </svg>
+</div>
+
+<main>
+  <section id="how">
+    <div class="wrap">
+      <p class="kicker">How a round works</p>
+      <h2 class="display">No more “do 1 and 3, skip 2.”</h2>
+      <p class="intro">Ask in plain language, for example: “Give me 10 architecture improvements as an AR board.” Your decisions travel back to the agent as a file on disk, not as a sentence it has to interpret.</p>
+      <ol class="steps">
+        <li><h3>It checks your preferences</h3><p>The agent opens <code>.ar-board/preferences.md</code> first, so it knows which patterns you have already rejected.</p></li>
+        <li><h3>It opens the board</h3><p>The agent serves a panel at <code>127.0.0.1</code>, with one card per proposal: what changes, why, and the risk.</p></li>
+        <li><h3>You decide</h3><p><kbd>A</kbd>, <kbd>R</kbd>, or <kbd>M</kbd> per card, plus a comment saying why. Press the same key again to undo.</p></li>
+        <li><h3>It acts on what you approved</h3><p>The agent reads the decisions with <code>summary</code>, is told by its skill to work only on the approved cards, and asks you to confirm the rules it inferred from your comments.</p></li>
+      </ol>
+      <figure class="shot">
+        <img src="panel.png" width="1280" height="836" loading="lazy" alt="The real ar-board panel: a card showing what, why, and risk; the approve, reject, and maybe buttons; a comment box; and the round's tally. It opens in English; the EN/PT toggle in its header switches it to Portuguese.">
+        <figcaption>The real panel on <code>127.0.0.1</code>, with a comment on the current card. It opens in English, and the EN/PT toggle in its header switches it to Portuguese.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="plugins" id="plugins">
+    <div class="wrap">
+      <p class="kicker">The toolbox</p>
+      <h2 class="display">Five plugins, one marketplace</h2>
+      <p class="intro">Each plugin installs on its own, is tested in CI, and is documented in English and Portuguese. Panels, cards, and messages are in English by default, with pt-BR on request.</p>
+      <div class="grid">
+        <article class="plugin wide">
+          <header><h3><span class="dot" style="background:#527D40"></span>ar-board</h3><span class="ver">v1.4.0</span></header>
+          <p>The approve/reject board above, plus custom labels, a confirm step for risky cards, an offline mode for remote sessions, and question-board for answering several questions on one screen.</p>
+          <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/ar-board">Read about ar-board</a>
+        </article>
+        <article class="plugin wide">
+          <header><h3><span class="dot" style="background:#E8A33D"></span>publish-check</h3><span class="ver">v0.1.1</span></header>
+          <p>A read-only scan of a repository’s files and full history, before it goes public, for Claude session links, home paths, email addresses, and your internal names. Not a secret scanner: pair it with one.</p>
+          <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/publish-check">Read about publish-check</a>
+        </article>
+        <article class="plugin">
+          <header><h3><span class="dot" style="background:#B5452F"></span>tidy-board</h3><span class="ver">v0.2.0</span></header>
+          <p>Stale branches, worktrees, and stashes as cards that show how sure the tool is that each is merged. Only what you approve is deleted, after a fresh check, and work that exists nowhere else is backed up first.</p>
+          <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/tidy-board">Read about tidy-board</a>
+        </article>
+        <article class="plugin">
+          <header><h3><span class="dot" style="background:#7CC6C4"></span>housekeeping</h3><span class="ver">v0.4.0</span></header>
+          <p>doc-truth checks that your docs cite files and links that exist, handoff writes a verified end-of-session note, and todo-sweep triages TODO and FIXME comments on a board, each with its age from <code>git blame</code>.</p>
+          <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/housekeeping">Read about housekeeping</a>
+        </article>
+        <article class="plugin">
+          <header><h3><span class="dot" style="background:#6B5240"></span>header-footer</h3><span class="ver">v0.4.0</span></header>
+          <p>A hook-computed header line with the time and branch, which Claude copies to the top of each reply, plus an optional status line showing token usage and plan limits.</p>
+          <a class="more" href="https://github.com/dvwinck/capybara-toolbox/tree/base/plugins/header-footer">Read about header-footer</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <p class="kicker">Install</p>
+      <h2 class="display">Two commands inside Claude Code</h2>
+      <div class="install-box">
+        <button class="copy" type="button" id="copy">Copy</button>
+<pre id="cmds"><span class="prompt">&gt; </span>/plugin marketplace add dvwinck/capybara-toolbox
+<span class="prompt">&gt; </span>/plugin install ar-board@capybara-toolbox</pre>
+      </div>
+      <p class="install-note">Swap <code>ar-board</code> for any plugin above, then restart Claude Code. You need Python 3.9 or later; publish-check, tidy-board, and housekeeping also need <code>git</code>. For header-footer, the status line needs one more step: ask Claude to turn the footer on. Everything the tools show you is in English by default; pass <code>--lang pt-BR</code> or set <code>CAPYBARA_LANG=pt-BR</code> for Portuguese (publish-check is English only). CI covers Ubuntu and macOS; Windows is not tested yet.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="kicker">Principles</p>
+      <h2 class="display">Built to stay out of your way</h2>
+      <div class="principles">
+        <div><h3>The tools stay local</h3><p>Panels bind to <code>127.0.0.1</code> with a fresh token per run. No telemetry; the only network call is tidy-board asking <code>gh</code> about merged pull requests.</p></div>
+        <div><h3>No packages to install</h3><p>Python standard library and <code>git</code>. No <code>pip</code> and no build step; <code>gh</code> (for tidy-board) and Node (for header-footer) are optional.</p></div>
+        <div><h3>Tested</h3><p>CI runs 1,031 tests on Ubuntu and macOS with Python 3.9, 3.11, 3.13, and 3.14.</p></div>
+        <div><h3>You decide</h3><p>Nothing is deleted without your approval, and no tool edits your source files. Only header-footer touches your Claude settings, and only when you turn it on.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>MIT licensed · Made by <a href="https://github.com/dvwinck">Diogo Winck</a> · <a href="https://github.com/dvwinck/capybara-toolbox/blob/base/README.pt-BR.md">Leia em português</a></p>
+    <p>Not affiliated with Anthropic.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var CARDS = [
+    { id: "A01", title: "Store run state as validated JSON", what: "Replace the free-form status file with a state.json that has named stages.", why: "Resuming a session currently means parsing free-form prose.", risk: ["mid", "Medium: migrate the history first"] },
+    { id: "A02", title: "Add a request ID to every log line", what: "Generate an ID per request and include it in each log entry.", why: "Tracing one failing request across services is guesswork today.", risk: ["low", "Low: logging only"] },
+    { id: "A03", title: "Delete feature flags older than 90 days", what: "Remove stale flags and the code paths behind them.", why: "Dead code paths make the codebase harder to follow.", risk: ["high", "High: a flag may still be on in production"] },
+    { id: "A04", title: "Fail CI when a changelog entry is missing", what: "A check that every version bump has a CHANGELOG.md entry.", why: "Release notes keep falling behind.", risk: ["low", "Low: CI only"] }
+  ];
+  var LABEL = { approved: "Approved", rejected: "Rejected", maybe: "Maybe" };
+  var board = document.getElementById("board");
+  var stack = document.getElementById("stack");
+  var status = document.getElementById("status");
+  var decisions = {};
+  var current = 0;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function build() {
+    stack.textContent = "";
+    CARDS.forEach(function (c, i) {
+      var card = el("article", "card");
+      card.dataset.i = i;
+      card.appendChild(el("div", "id", c.id));
+      card.appendChild(el("h3", null, c.title));
+      var dl = el("dl");
+      dl.appendChild(el("dt", null, "What")); dl.appendChild(el("dd", null, c.what));
+      dl.appendChild(el("dt", null, "Why")); dl.appendChild(el("dd", null, c.why));
+      card.appendChild(dl);
+      card.appendChild(el("span", "risk risk-" + c.risk[0], c.risk[1]));
+      stack.appendChild(card);
+    });
+    layout();
+  }
+
+  function layout() {
+    Array.prototype.forEach.call(stack.children, function (card) {
+      var i = +card.dataset.i;
+      if (i < current) { card.dataset.pos = "gone"; card.setAttribute("aria-hidden", "true"); }
+      else if (i - current <= 2) { card.dataset.pos = String(i - current); card.setAttribute("aria-hidden", i === current ? "false" : "true"); }
+      else { card.dataset.pos = "hidden"; card.setAttribute("aria-hidden", "true"); }
+    });
+    var t = { approved: 0, rejected: 0, maybe: 0 };
+    Object.keys(decisions).forEach(function (k) { t[decisions[k]]++; });
+    document.getElementById("ta").textContent = t.approved;
+    document.getElementById("tr").textContent = t.rejected;
+    document.getElementById("tm").textContent = t.maybe;
+  }
+
+  function decide(d) {
+    if (current >= CARDS.length) return;
+    var c = CARDS[current];
+    var card = stack.children[current];
+    card.style.setProperty("--fly", d === "approved" ? "120%" : d === "rejected" ? "-120%" : "0");
+    card.style.setProperty("--spin", d === "approved" ? "8deg" : d === "rejected" ? "-8deg" : "0deg");
+    if (d === "maybe") card.style.setProperty("--fly", "0"), card.style.transform = "translateY(-40px)";
+    decisions[c.id] = d;
+    status.textContent = c.id + ": " + LABEL[d];
+    current++;
+    layout();
+    if (current >= CARDS.length) setTimeout(finish, 380);
+  }
+
+  function finish() {
+    var lines = ["What the agent gets back (simplified):", ""];
+    ["approved", "rejected", "maybe"].forEach(function (d) {
+      var ids = CARDS.filter(function (c) { return decisions[c.id] === d; });
+      lines.push(LABEL[d] + " (" + ids.length + ")");
+      ids.forEach(function (c) { lines.push("  " + c.id + "  " + c.title); });
+    });
+    var n = CARDS.filter(function (c) { return decisions[c.id] === "approved"; }).length;
+    lines.push("", n ? "The agent is told to work only on " + (n === 1 ? "this card." : "these " + n + " cards.") : "Nothing approved, so the agent is told to change nothing.");
+    document.getElementById("summary").textContent = lines.join("\n");
+    board.classList.add("done");
+    status.textContent = "Round finished. " + n + " approved.";
+  }
+
+  function reset() {
+    decisions = {}; current = 0;
+    board.classList.remove("done");
+    build();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".key"), function (b) {
+    b.addEventListener("click", function () { decide(b.dataset.d); });
+  });
+  document.getElementById("again").addEventListener("click", reset);
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea") return;
+    var r = board.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) return;
+    var map = { a: "approved", r: "rejected", m: "maybe" };
+    var d = map[e.key.toLowerCase()];
+    if (d) { e.preventDefault(); decide(d); }
+  });
+
+  var copy = document.getElementById("copy");
+  copy.addEventListener("click", function () {
+    var text = "/plugin marketplace add dvwinck/capybara-toolbox\n/plugin install ar-board@capybara-toolbox";
+    var done = function () { copy.textContent = "Copied"; setTimeout(function () { copy.textContent = "Copy"; }, 1600); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+  });
+
+  build();
+})();
+</script>
+</body>
+</html>
