@@ -6,6 +6,15 @@ All notable changes to the **ar-board** plugin are documented here. The format f
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-03
+
+### Added
+- Optional per-item **`glossary`**: a list of `{term, explanation, url}` that explains, inside the card, every name the card cites (issue keys, epics, PRs, documents, internal names, acronyms). `url` is the page the term comes from and must start with `http://` or `https://`; the panel shows the glossary open, below the fields (above the options on a question), with the link opening in a new tab. `check` rejects a malformed glossary (an entry without `term` or `explanation`, a bad `url`, a repeated term).
+- `check` **warns** (stderr, never blocks) about every card that cites an identifier with no glossary entry: an all-caps word (`ETL`), an issue key (`MLK-4608`, `PPR-B`) or a number such as `#123`. Text between backticks and a short list of common abbreviations (`API`, `JSON`, `PR`, `UTF-8`...) are ignored; a term covers an identifier when the identifier is a whole word of the term.
+
+### Changed
+- Both skills (`ar-board`, `question-board`) now require that the agent writes each card for a person who did not follow the session (plain words, no loose jargon) and fills the glossary for every named thing the card cites, before it writes `batch.json`.
+
 ## [1.4.0] - 2026-10-22
 
 ### Added

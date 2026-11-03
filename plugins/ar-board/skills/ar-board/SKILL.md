@@ -49,7 +49,9 @@ Create `.ar-board/<batch_id>/batch.json`. Use `batch_id` = `<theme>-YYYY-MM-DD`.
 - Field `What` (in the user's language, for example `O que`): concrete (a file, a command, a format).
 - Field `Why` (for example `Por quê`): anchored in real evidence from the project (a number, a file, an observed pain). Never generic.
 - `risk`: honest. Give `level` and what can go wrong. Use `low`, `medium` or `high` (or `baixo`, `médio`, `alto`) as the level: the panel colours only these words and shows any other level in the medium colour.
-- If the item uses jargon the user may not know, add a field `Concept` (for example `Conceito`) that explains the term in one sentence.
+- **Write for a person, not for another agent.** The user decides on this screen, without having followed your session. Prefer everyday words, even when the text gets longer. Avoid jargon, loose abbreviations and shorthand ("X blocks Y"): say what each thing is and why it matters to this decision.
+- **Glossary is mandatory.** Whenever a card cites something the user would have to look up (an issue key, an epic, a block of tasks, a PR, a document, an internal name, an acronym), add `glossary`: a list of `{term, explanation, url}`. Give every term a short explanation in plain words and, whenever one exists, `url`, the page it comes from (the issue, the PR, the document). The glossary is shown open on the card, so the user decides without leaving the screen. Each card stands alone: repeat a term in every card that cites it. Instead of "MLK-4608 blocks PPR-B", write what MLK-4608 is (with its link), what PPR-B is, and why one blocks the other. `check` warns about all-caps words, issue keys and `#123` numbers that have no glossary entry (text between backticks is ignored): fix every warning before starting the panel, either by adding the term or by writing it out in plain words.
+- A general concept that is not a named thing (for example "idempotent") goes in a field `Concept` (for example `Conceito`), explained in one sentence.
 - No filler items: 7 good ones are better than 10 with 3 weak ones. Vary the approaches. Order from most impactful to least.
 - `meta` (optional) shows area, current scale, effort. `image` (optional) is a relative path to a png/jpg/webp/svg inside the batch folder.
 
@@ -128,7 +130,10 @@ python3 -I "${CLAUDE_SKILL_DIR}/scripts/ar_board.py" summary .ar-board/<batch_id
       "title": "Estado da produção como JSON validável",
       "fields": [
         {"label": "O que", "text": "Trocar `X-STATUS.md` por `state.json` com etapas nomeadas."},
-        {"label": "Por quê", "text": "Hoje a continuidade depende de prosa livre."}
+        {"label": "Por quê", "text": "Hoje a continuidade depende de prosa livre. A MLK-4608 registrou 3 vídeos refeitos por isso."}
+      ],
+      "glossary": [
+        {"term": "MLK-4608", "explanation": "Tarefa que registrou três vídeos refeitos porque o estado da produção só existia em texto livre.", "url": "https://example.atlassian.net/browse/MLK-4608"}
       ],
       "risk": {"level": "médio", "text": "migrar 16 arquivos sem perder histórico"},
       "meta": {"Área": "productions/", "Escala atual": "37 pastas"},
@@ -146,6 +151,7 @@ Required fields: `batch_id`, `title`, `items[].id` (unique), `items[].title`. Ty
 - `tag` and `image` are text.
 - `meta` is an object.
 - `risk` is an object whose `level` and `text` are text.
+- `glossary` is a list of `{term, explanation, url}`: `term` and `explanation` are non-empty text, `url` is optional text starting with `http://` or `https://`, and a term cannot appear twice in one card. Beyond these errors, `check` only warns about cited identifiers with no entry; it never blocks.
 - `fields[].label` and `fields[].text` are text. Numbers are not valid: write `"42"`.
 - `null` in `tag`, `image`, `meta`, `risk` and `fields` is the same as omitting it.
 

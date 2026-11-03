@@ -136,14 +136,16 @@ Cada item do `batch.json` vira um card com esta ordem de renderização:
 2. **Título** (`title`), em destaque.
 3. **Imagem** (`image`), se existir (ver abaixo).
 4. **Caixa de campos**: cada entrada de `fields` vira uma linha `RÓTULO | texto`, na ordem em que foi escrita.
-5. **Linha `RISCO`**, sempre por último dentro da caixa, se `risk` existir.
-6. **Metadados** (`meta`) no topo do painel lateral, como pares chave/valor.
+5. **Linha `RISCO`**, se `risk` existir.
+6. **Linha `GLOSSÁRIO`**, sempre por último dentro da caixa, se `glossary` existir: cada termo em negrito com sua explicação e, quando houver `url`, um link para a página de origem. Fica aberta, sem precisar de clique.
+7. **Metadados** (`meta`) no topo do painel lateral, como pares chave/valor.
 
 Detalhes de cada elemento:
 
 - **`fields`**: lista livre de `{label, text}`. Convenção recomendada: `O que`, `Por quê`, e `Conceito` quando houver jargão. O rótulo é exibido em maiúsculas pequenas. Um item sem `fields` é válido (mostra só título e risco).
 - **Texto**: tudo é escapado antes de ir para o HTML. Só duas coisas são interpretadas: `` `código` `` vira `<code>` e quebra de linha (`\n`) vira `<br>`. Não há negrito, links nem outras marcações; HTML digitado aparece como texto literal (conferido à mão nas baterias manuais das versões 1.0.x; a suíte automatizada verifica o escape do título e dos dados embutidos, mas não executa o JavaScript que monta o card).
 - **`risk`**: `{level, text}`. O nível é normalizado (minúsculas, sem acento) e escolhe a cor: `baixo` ou `low` verde, `médio`/`medio` ou `medium` âmbar, `alto` ou `high` vermelho. Qualquer outro valor usa o estilo âmbar, mas o texto exibido é o original. A pílula mostra `nível — texto`.
+- **`glossary`**: lista de `{term, explanation, url}` que explica, no próprio card, cada nome que o card cita (chaves de issue, épicos, PRs, documentos, nomes internos, siglas), para o usuário decidir sem sair da tela. `term` e `explanation` são texto (`` `código` `` e quebra de linha funcionam como em `fields`); `url` é opcional, deve começar com `http://` ou `https://` e é a página de onde o termo vem. O link abre em nova aba (`rel="noopener noreferrer"`). Cada card traz o próprio glossário: um termo citado por vários cards se repete em cada um. Também vale em card de pergunta, onde aparece acima das opções.
 - **`meta`**: objeto simples; cada par vira uma linha no painel lateral (ex.: `Área`, `Escala atual`, `Esforço`). Valores não-string são convertidos para texto.
 - **`image`**: caminho **relativo à pasta do lote**, com extensão `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` ou `.svg`. No modo ao vivo é servida pelo próprio servidor (ver §14); no `build` é embutida como `data:` URI (ver §11). Também aceita um `data:` URI diretamente.
 - **`id`**: string única por lote (ex.: `A01`). É a chave em `decisions.json` e aparece na pílula e nos avisos.
@@ -428,6 +430,7 @@ Detalhes:
 | `id`: string não vazia e única | `item <i>: 'id' obrigatorio` / `item <i>: id duplicado '<id>'` |
 | `title` do item: string não vazia | `item <i>: 'title' obrigatorio` |
 | `fields` (se presente): lista de `{label, text}` com texto | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
+| `glossary` (se presente; `null` conta como omitido): lista de `{term, explanation, url}`; `term` e `explanation` em texto não vazio, `url` (opcional) em texto começando com `http://` ou `https://`, sem termo repetido (maiúsculas ignoradas) | `item <i>: 'glossary' deve ser lista de {term, explanation, url}` / `item <i>: a entrada <j> do glossario precisa de 'term' e 'explanation' em texto nao vazio` / `item <i>: entrada <j> do glossario: 'url' deve ser texto comecando com http:// ou https://` / `item <i>: o termo '<term>' do glossario esta listado duas vezes` |
 | `round` (se presente): inteiro >= 1 | `campo 'round' deve ser inteiro >= 1` |
 | `lang` (se presente; `null` conta como ausente): `en` ou `pt-BR`, nada mais | `campo 'lang' deve ser en ou pt-BR` (em inglês: `field 'lang' must be en or pt-BR`) |
 | `tag` / `image` (se presentes): string | `item <i>: '<k>' deve ser string` |
@@ -435,6 +438,8 @@ Detalhes:
 | `risk` (se presente): objeto; `level` e `text`, quando presentes, em texto | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
 
 JSON malformado → `batch.json nao e JSON valido: <detalhe>`; arquivo ausente → `nao encontrei <caminho>`. `round` é opcional (padrão 1) e deve ser inteiro >= 1 (texto como `"2"` é rejeitado). `null` em `tag`, `image`, `meta`, `risk` e `fields` conta como campo omitido (não é erro; `"fields": null` equivale a não ter campos). Outros valores que não são lista em `fields` (`{}`, `""`, `0`) são rejeitados, assim como números dentro de `fields` (escreva `"42"`). Em `risk`, os tipos só são conferidos para as chaves presentes: `{"risk": {}}` passa. Campos extras são ignorados.
+
+**Aviso de glossário (nunca é erro).** Para cada item, o `check` procura no título, nos campos, no texto do risco, nos rótulos e efeitos das opções, em `why` e nos valores de `meta` (não no próprio glossário, nem no texto entre crases) por identificadores: palavra toda em maiúsculas com duas letras ou mais (`ETL`), chave de issue (`MLK-4608`, `PPR-B`) ou número como `#123`. Cada um que nenhum `term` do glossário cobre (o identificador precisa ser uma palavra inteira do termo, sem diferenciar maiúsculas) sai no stderr como `aviso: o item <id> cita termos sem entrada no glossario: <lista> (...)`, e o código de saída continua 0. Uma lista curta de abreviações comuns (`API`, `JSON`, `HTML`, `URL`, `CLI`, `PR`, `OK`, `SQL`, `PDF`, `UTF-8`, `SHA-256`...) nunca é apontada. A detecção é uma heurística: palavra em maiúsculas usada para dar ênfase também é apontada, e a correção é escrevê-la em minúsculas ou pôr no glossário.
 
 ## 16. Segurança
 
@@ -471,7 +476,9 @@ O `SKILL.md` define o comportamento do agente em seis passos.
 - cada item independente e julgável em menos de 30 segundos;
 - `title` afirma a proposta, não o tema;
 - `O que` concreto (arquivo, comando, formato); `Por quê` ancorado em evidência real do projeto (número, arquivo, dor observada), nunca genérico; `risk` honesto com nível e o que pode dar errado;
-- campo `Conceito` quando houver jargão que o usuário possa não dominar;
+- escrito para quem não acompanhou a sessão: palavras do dia a dia, mesmo que o texto fique mais longo; sem jargão, abreviação solta nem frase telegráfica;
+- `glossary` obrigatório sempre que o card citar algo que o usuário teria de procurar (chave de issue, épico, PR, documento, nome interno, sigla): explicação curta em linguagem comum e, quando existir, o link da página de origem;
+- campo `Conceito` para um conceito geral que não é uma coisa nomeada;
 - sem itens de enchimento (melhor 7 bons que 10 com 3 fracos); abordagens variadas; do mais impactante ao menos;
 - `meta` e `image` quando ajudarem a decidir.
 
