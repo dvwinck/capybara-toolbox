@@ -108,14 +108,16 @@ Each item in `batch.json` becomes a card, rendered in this order:
 2. **Title** (`title`), prominent.
 3. **Image** (`image`), if present.
 4. **Fields box**: each `fields` entry becomes a `LABEL | text` row, in the order written.
-5. **`Risco` row**, always last inside the box, if `risk` exists.
-6. **Metadata** (`meta`) at the top of the side panel, as key/value pairs.
+5. **`Risco` row**, if `risk` exists.
+6. **`Glossary` row**, always last inside the box, if `glossary` exists: every term in bold with its explanation and, when it has a `url`, a link to the source page. It is open, with no click needed.
+7. **Metadata** (`meta`) at the top of the side panel, as key/value pairs.
 
 Element details:
 
 - **`fields`**: free list of `{label, text}`. Recommended convention: `O que`, `Por quê`, and `Conceito` when there is jargon. The label is displayed in small uppercase. An item without `fields` is valid (it shows only title and risk).
 - **Text**: everything is escaped before reaching the HTML. Only two things are interpreted: `` `code` `` becomes `<code>` and a newline (`\n`) becomes `<br>`. There is no bold, no links, no other markup; typed HTML appears as literal text. Field labels, titles, tags and meta values are escaped without any interpretation.
 - **`risk`**: `{level, text}`. The level is normalized (lowercase, accents removed) and selects the color: `baixo` or `low` green, `medio` or `medium` amber, `alto` or `high` red. Any other value uses the amber style, but the displayed text is the original. The pill reads `level — text` (the `— text` part appears only when `text` is non-empty).
+- **`glossary`**: list of `{term, explanation, url}` that explains, on the card itself, every name the card cites (issue keys, epics, PRs, documents, internal names, acronyms), so the user decides without leaving the screen. `term` and `explanation` are text (`` `code` `` and newlines work as in `fields`); `url` is optional, must start with `http://` or `https://`, and is the page the term comes from. The link opens in a new tab (`rel="noopener noreferrer"`). Each card carries its own glossary: a term cited by several cards is repeated in each. It also works on question cards, where it sits above the options.
 - **`meta`**: a plain object; each pair becomes a row in the side panel (for example `Area`, `Escala atual`, `Esforco`). Values are converted to text for display.
 - **`image`**: path **relative to the batch folder**, with extension `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` or `.svg`. In live mode it is served by the server itself (see [Internal HTTP API](#internal-http-api)); in `build` it is embedded as a `data:` URI (see [Live mode vs offline mode](#live-mode-vs-offline-mode)). A `data:` URI is also accepted directly.
 - **`id`**: string unique within the batch (for example `A01`). It is the key in `decisions.json` and appears in the pill and in notices.
@@ -513,6 +515,7 @@ For `GET`, the token is accepted either as `?t=` or as the `X-AR-Token` header. 
 | `meta` (if present): object | `item <i>: 'meta' deve ser objeto` |
 | `risk` (if present): object whose `level`/`text`, when present, are strings | `item <i>: 'risk' deve ser objeto com 'level' e 'text' em texto` |
 | `fields` (if present): list of `{label, text}` with string label and text | `item <i>: 'fields' deve ser lista de {label, text} (texto)` |
+| `glossary` (if present, `null` counts as omitted): list of `{term, explanation, url}`; `term` and `explanation` non-empty strings, `url` (optional) a string starting with `http://` or `https://`, no repeated term (case ignored) | `item <i>: 'glossary' deve ser lista de {term, explanation, url}` / `item <i>: a entrada <j> do glossario precisa de 'term' e 'explanation' em texto nao vazio` / `item <i>: entrada <j> do glossario: 'url' deve ser texto comecando com http:// ou https://` / `item <i>: o termo '<term>' do glossario esta listado duas vezes` |
 | `labels` (if present): object whose keys are `approve`, `reject`, `maybe`; each value is an object with a `text` of 1-24 characters and an optional `tone` (`safe`, `danger`, `caution`) | `campo 'labels' deve ser objeto` / `labels: chave desconhecida '<k>' (use approve, reject ou maybe)` / `labels.<k>: 'text' obrigatorio (1 a 24 caracteres)` / `labels.<k>: 'tone' deve ser safe, danger ou caution` |
 | `confirm` (if present): non-empty string, not allowed on question cards | `item <i>: 'confirm' deve ser texto nao vazio` / `item <i>: 'confirm' nao vale em card de pergunta` |
 
@@ -522,6 +525,7 @@ Notes:
 - `round` is optional (default 1). It must be an integer >= 1: the string `"2"` is rejected, and so is `true`.
 - `null` for `tag`, `image`, `meta`, `risk` or `fields` counts as omitted (`"fields": null` is the same as no fields). Other non-list values for `fields` (`{}`, `""`, `0`) are rejected, and so are numbers inside `fields` (write `"42"`).
 - `risk` types are checked only for the keys present: `{"risk": {}}` and `{"risk": {"level": "alto"}}` pass.
+- **Glossary warning (never an error).** For each item, `check` looks in the title, the fields, the risk text, the option labels and effects, `why` and the `meta` values (not in the glossary itself, and not in text between backticks) for identifiers: an all-caps word of two letters or more (`ETL`), an issue key (`MLK-4608`, `PPR-B`) or a `#123` number. Each one that no glossary `term` covers (the identifier must be a whole word of the term, case ignored) is listed on stderr as `aviso: o item <id> cita termos sem entrada no glossario: <lista> (...)`, with the exit code still 0. A short list of common abbreviations (`API`, `JSON`, `HTML`, `URL`, `CLI`, `PR`, `OK`, `SQL`, `PDF`, `UTF-8`, `SHA-256`...) is never reported. The detection is a heuristic: an all-caps word used for emphasis is reported too, and the fix is to write it in lowercase or add it to the glossary.
 - `title` and `batch_id` are rejected if empty or whitespace only.
 - If `items` is missing, empty or not a list, per-item checks are skipped.
 - Extra fields are ignored (for example an optional `subtitle`).
@@ -588,7 +592,9 @@ The skill ships inside the plugin, at `skills/ar-board/`. Its `SKILL.md` defines
 - each item is independent and judgeable in under 30 seconds;
 - `title` states the proposal, not the topic;
 - `O que` is concrete (file, command, format); `Por quê` is anchored in real project evidence (a number, a file, an observed pain), never generic; `risk` is honest, with a level (`baixo|medio|alto`) and what could go wrong;
-- a `Conceito` field when there is jargon the user may not know;
+- written for a person who did not follow the session: everyday words, even when the text gets longer; no loose jargon, abbreviation or shorthand;
+- a mandatory `glossary` whenever the card cites something the user would have to look up (issue key, epic, PR, document, internal name, acronym): a short explanation in plain words and, when it exists, the link of the source page;
+- a `Conceito` field for a general concept that is not a named thing;
 - no filler items (better 7 good than 10 with 3 weak); varied approaches; ordered from most to least impactful;
 - `meta` and `image` when they help the decision.
 

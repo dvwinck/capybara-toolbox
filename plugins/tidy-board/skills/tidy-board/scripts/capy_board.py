@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ar-board 1.4.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
+# ar-board 1.5.0 - painel local de aprovar/rejeitar e formulario de perguntas (somente stdlib, sem rede externa)
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Diogo Winck
 #
@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 DECISIONS = {"approved", "rejected", "maybe"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_BODY = 1_000_000
@@ -39,6 +39,16 @@ TONES = ("safe", "danger", "caution")  # colour meaning of a label: green, red, 
 MAX_LABEL = 24
 LANGS = ("en", "pt-BR")  # panel languages accepted by `lang`, --lang and the header toggle
 DEFAULT_LANG = "en"
+
+# Glossary check (a warning, never an error): what reads as an identifier the person may not know. An all-caps word
+# (ETL, SLA), an issue key (MLK-4608, PPR-B, FASE-2) or a PR/issue number (#123). Text in `code` is left alone.
+IDENT = re.compile(r"(?<![\w-])[A-ZÀ-Ý]{2,}[A-ZÀ-Ý0-9]*(?:-[A-ZÀ-Ý0-9]+)*(?![\w-])|(?<![\w&#])#\d+(?!\w)")
+# Common abbreviations everybody knows, and prefixes that are standards (UTF-8, SHA-256), never issue keys.
+IDENT_COMMON = frozenset((
+    "API JSON HTML CSS JS URL URI HTTP HTTPS CLI UI UX ID OK PR AR EN PT SQL CSV PDF XML YAML TODO FIXME README "
+    "CPU RAM IP DNS TLS SSL SSH OS AI IA CI CD FAQ ASAP UTF SHA MD ISO RFC AES RSA UTC GMT PNG JPG SVG GIT "
+    "NA"
+).split())
 
 # Capybara Toolbox mascot: inline in the page header and as the favicon (CSP allows img-src data:).
 MASCOT_BODY = '<defs><clipPath id="cbx-disc"><circle cx="128" cy="128" r="124"/></clipPath></defs> <circle cx="128" cy="128" r="124" fill="#CDEBE8"/> <path d="M26 206c22-9 38 9 62 0s38 9 62 0 38 9 62 0 22 5 28 2" stroke="#7CC6C4" stroke-width="7" fill="none" stroke-linecap="round" opacity=".75" clip-path="url(#cbx-disc)"/> <ellipse cx="116" cy="132" rx="72" ry="58" fill="#B98B5B"/> <rect x="140" y="116" width="86" height="64" rx="28" fill="#A97A4C"/> <ellipse cx="84" cy="86" rx="15" ry="13" fill="#8F6740"/> <ellipse cx="84" cy="87" rx="8" ry="7" fill="#D3AE82"/> <ellipse cx="156" cy="142" rx="10" ry="6.5" fill="#D98E6A" opacity=".55"/> <circle cx="146" cy="115" r="6.5" fill="#2B1D14"/> <circle cx="148.2" cy="112.8" r="2.2" fill="#fff"/> <ellipse cx="216" cy="131" rx="10.5" ry="8.5" fill="#3A2A20"/> <path d="M166 156q15 9 30 0" stroke="#3A2A20" stroke-width="3.6" fill="none" stroke-linecap="round"/> <circle cx="112" cy="70" r="19" fill="#F2A93B"/> <circle cx="105" cy="64" r="5" fill="#F8C766" opacity=".8"/> <path d="M112 52c2-8 10-13 19-11-2 8-10 13-19 11z" fill="#5F8F3F"/> <rect x="44" y="170" width="168" height="66" rx="12" fill="#C8553D"/> <path d="M44 182a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H44z" fill="#9E3F2C"/> <rect x="112" y="184" width="32" height="20" rx="5" fill="#E9C46A"/> <rect x="124" y="190" width="8" height="8" rx="2" fill="#9E3F2C"/> <circle cx="62" cy="222" r="3.2" fill="#E7B8A8"/> <circle cx="194" cy="222" r="3.2" fill="#E7B8A8"/>'
@@ -105,6 +115,11 @@ MSG = {
         "item_fields": "item {i}: 'fields' must be a list of {{label, text}} (text)",
         "item_confirm": "item {i}: 'confirm' must be non-empty text",
         "item_confirm_q": "item {i}: 'confirm' does not apply to a question card",
+        "glossary_list": "item {i}: 'glossary' must be a list of {{term, explanation, url}}",
+        "glossary_entry": "item {i}: glossary entry {j} needs 'term' and 'explanation' as non-empty text",
+        "glossary_url": "item {i}: glossary entry {j}: 'url' must be text starting with http:// or https://",
+        "glossary_dup": "item {i}: glossary term '{term}' is listed twice",
+        "glossary_missing": "warning: item {iid} cites terms with no glossary entry: {terms} (add them to 'glossary', or write them out in plain words)",
         "no_batch": "could not find {path}", "bad_json": "batch.json is not valid JSON: {e}", "invalid": "invalid batch.json:",
         "port": "could not open port {port}: {e}", "timeout": "TIMEOUT: the user has not finished the batch yet.",
         "many_questions": "warning: {n} questions in the round; the ideal is up to {max} (the dependent ones wait for the next round)",
@@ -148,6 +163,11 @@ MSG = {
         "item_fields": "item {i}: 'fields' deve ser lista de {{label, text}} (texto)",
         "item_confirm": "item {i}: 'confirm' deve ser texto nao vazio",
         "item_confirm_q": "item {i}: 'confirm' nao vale em card de pergunta",
+        "glossary_list": "item {i}: 'glossary' deve ser lista de {{term, explanation, url}}",
+        "glossary_entry": "item {i}: a entrada {j} do glossario precisa de 'term' e 'explanation' em texto nao vazio",
+        "glossary_url": "item {i}: entrada {j} do glossario: 'url' deve ser texto comecando com http:// ou https://",
+        "glossary_dup": "item {i}: o termo '{term}' do glossario esta listado duas vezes",
+        "glossary_missing": "aviso: o item {iid} cita termos sem entrada no glossario: {terms} (ponha em 'glossary', ou escreva em palavras comuns)",
         "no_batch": "nao encontrei {path}", "bad_json": "batch.json nao e JSON valido: {e}", "invalid": "batch.json invalido:",
         "port": "nao consegui abrir a porta {port}: {e}", "timeout": "TIMEOUT: o usuario ainda nao concluiu o lote.",
         "many_questions": "aviso: {n} perguntas na rodada; o ideal e ate {max} (as dependentes ficam para a proxima rodada)",
@@ -255,6 +275,72 @@ def validate_question(i, it, errs, lang=DEFAULT_LANG):
         errs.append(say(lang, "q_context", i=i))
 
 
+def validate_glossary(i, it, errs, lang=DEFAULT_LANG):
+    """Optional `glossary`: a list of {term, explanation, url?} that explains, inside the card, every name the card
+    cites. `url` (optional) is the page the term comes from."""
+    g = it.get("glossary")
+    if g is None:  # null counts as omitted, like every optional key
+        return
+    if not isinstance(g, list):
+        errs.append(say(lang, "glossary_list", i=i))
+        return
+    seen = set()
+    for j, e in enumerate(g):
+        term = e.get("term") if isinstance(e, dict) else None
+        if not (isinstance(e, dict) and isinstance(term, str) and term.strip()
+                and isinstance(e.get("explanation"), str) and e["explanation"].strip()):
+            errs.append(say(lang, "glossary_entry", i=i, j=j))
+            continue
+        url = e.get("url")
+        if url is not None and not (isinstance(url, str) and re.fullmatch(r"https?://\S+", url)):
+            errs.append(say(lang, "glossary_url", i=i, j=j))
+        if term.strip().lower() in seen:
+            errs.append(say(lang, "glossary_dup", i=i, term=term.strip()))
+        seen.add(term.strip().lower())
+
+
+def _card_text(it):
+    """Every piece of text the person reads on a card, except the glossary itself, with `code` spans removed."""
+    parts = [it.get("title")]
+    parts += [f.get("text") for f in it.get("fields") or [] if isinstance(f, dict)]
+    risk = it.get("risk")
+    if isinstance(risk, dict):
+        parts.append(risk.get("text"))
+    for c in it.get("choices") or []:
+        if isinstance(c, dict):
+            parts += [c.get("label"), c.get("effect")]
+    parts.append(it.get("why"))
+    if isinstance(it.get("meta"), dict):
+        parts += list(it["meta"].values())
+    return re.sub(r"`[^`]*`", " ", "\n".join(p for p in parts if isinstance(p, str)))
+
+
+def glossary_gaps(it):
+    """Identifiers (all-caps words, issue keys, #numbers) the card cites that no glossary term covers, in the order
+    of appearance. A term covers an identifier when the identifier is a whole word of the term."""
+    terms = [e["term"] for e in it.get("glossary") or [] if isinstance(e, dict) and isinstance(e.get("term"), str)]
+    gaps = []
+    for m in IDENT.finditer(_card_text(it)):
+        ident = m.group(0)
+        if ident in gaps or ident.split("-")[0] in IDENT_COMMON:
+            continue
+        pat = re.compile(r"(?<![\w-])" + re.escape(ident) + r"(?![\w-])", re.IGNORECASE)
+        if not any(pat.search(t) for t in terms):
+            gaps.append(ident)
+    return gaps
+
+
+def glossary_warnings(b, lang=DEFAULT_LANG):
+    """One warning per item that cites an identifier without a glossary entry (empty when none does)."""
+    out = []
+    for it in b.get("items") or []:
+        if isinstance(it, dict):
+            gaps = glossary_gaps(it)
+            if gaps:
+                out.append(say(lang, "glossary_missing", iid=it.get("id", "?"), terms=", ".join(gaps)))
+    return out
+
+
 def validate_labels(b, errs, lang=DEFAULT_LANG):
     """Optional batch-level `labels`: {"approve": {"text": "Apagar", "tone": "danger"}, ...}."""
     lb = b.get("labels")
@@ -324,6 +410,7 @@ def validate(b, lang=DEFAULT_LANG):
             for x in f
         ):
             errs.append(say(lang, "item_fields", i=i))
+        validate_glossary(i, it, errs, lang)
         cf = it.get("confirm")  # null counts as omitted
         if cf is not None:
             if not isinstance(cf, str) or not cf.strip():
@@ -703,6 +790,7 @@ I18N = {
         "count_approved": "approved", "count_rejected": "rejected", "count_maybe": "maybe", "count_pending": "undecided",
         "count_answered": "answered", "count_unsure": "need context", "count_unanswered": "unanswered",
         "subtitle": "Batch: {id} · items: {n} · round {round}", "risk": "Risk",
+        "glossary": "Glossary", "gloss_open": "open the source page",
         "decided_hint": "{label}: {id} — use ← to go back and comment",
         "result": "Result", "note_label": "General note on the batch (batch_note)",
         "note_placeholder": "General remark about this whole batch...",
@@ -745,6 +833,7 @@ I18N = {
         "count_approved": "aprovados", "count_rejected": "rejeitados", "count_maybe": "talvez", "count_pending": "sem decisão",
         "count_answered": "respondidas", "count_unsure": "precisam de contexto", "count_unanswered": "sem resposta",
         "subtitle": "Lote: {id} · itens: {n} · rodada {round}", "risk": "Risco",
+        "glossary": "Glossário", "gloss_open": "abrir a página de origem",
         "decided_hint": "{label}: {id} — use ← para voltar e comentar",
         "result": "Resultado", "note_label": "Nota geral do lote (batch_note)",
         "note_placeholder": "Observação geral sobre este lote inteiro...",
@@ -822,6 +911,8 @@ kbd{font:600 11px ui-monospace,Menlo,monospace;background:var(--panel2);border:1
 code{font:13px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px}
 .risk{display:inline-block;border-radius:99px;padding:2px 12px;font-size:13px;border:1px solid}
 .risk.baixo{color:var(--ok);background:var(--ok-bg);border-color:var(--ok)}.risk.medio{color:var(--mb);background:var(--mb-bg);border-color:var(--mb)}.risk.alto{color:var(--no);background:var(--no-bg);border-color:var(--no)}
+.gloss dl{margin:0;display:grid;gap:8px}.gloss dt{font-weight:600}.gloss dd{margin:0}
+.gloss a{color:var(--acc);white-space:nowrap}
 .card img{max-width:100%;border-radius:10px;border:1px solid var(--line);margin:0 0 14px;display:block}
 .meta{margin:0 0 12px;font-size:13px}.meta div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--line)}.meta span{color:var(--mut)}.meta b{text-align:right;font-weight:600}
 .side label{display:block;font-size:12px;color:var(--mut);margin:6px 0}
@@ -1126,6 +1217,14 @@ function exportObj(){
 }
 function imgSrc(p){return /^data:/.test(p) ? p : '/files/' + p.split('/').map(encodeURIComponent).join('/') + '?t=' + encodeURIComponent(BOOT.token);}
 
+function glossHtml(it){
+  const g = (it.glossary || []).filter(x => x && x.term);
+  if(!g.length) return '';
+  return '<div class="row gloss"><b>' + T('glossary') + '</b><dl>' + g.map(x => '<dt>' + esc(x.term) + '</dt><dd>' + rich(x.explanation || '') +
+    (/^https?:\/\//i.test(x.url || '') ? ' <a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + T('gloss_open') + ' &#8599;</a>' : '') +
+    '</dd>').join('') + '</dl></div>';
+}
+
 function render(){
   const it = items[idx], e = S.items[it.id] || {}, q = isQ(it), st = status(it);
   $('#ttl').textContent = B.title;
@@ -1141,6 +1240,7 @@ function render(){
     const lvl = RISK[norm(it.risk.level)] || 'medio';
     h += '<div class="row"><b>' + T('risk') + '</b><div><span class="risk ' + lvl + '">' + esc(it.risk.level || '') + (it.risk.text ? ' — ' + esc(it.risk.text) : '') + '</span></div></div>';
   }
+  h += glossHtml(it);
   h += '</div>';
   if(armed === it.id) h += '<div class="armed" role="alert">' + rich(it.confirm) + '<b>' + T('armed_hint') + '</b></div>';
   if(q) h += questionHtml(it, e);
@@ -1471,6 +1571,8 @@ def cmd_check(a):
     nq = sum(1 for it in b["items"] if is_question(it))
     if nq > MAX_QUESTIONS:
         print(say(lang, "many_questions", n=nq, max=MAX_QUESTIONS), file=sys.stderr)
+    for warning in glossary_warnings(b, lang):
+        print(warning, file=sys.stderr)
     print(say(lang, "ok", n=len(b["items"]), id=b["batch_id"], round=b.get("round", 1)))
     return 0
 

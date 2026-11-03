@@ -11,8 +11,11 @@
       "title": "Production state as validatable JSON",
       "fields": [
         {"label": "What", "text": "Replace `X-STATUS.md` with `state.json` that has named stages."},
-        {"label": "Why", "text": "Today, continuity between sessions depends on free-form prose."},
+        {"label": "Why", "text": "Today, continuity between sessions depends on free-form prose. Issue MLK-4608 counted 3 videos redone because of it."},
         {"label": "Concept", "text": "Validatable JSON: a structured file that a script can check."}
+      ],
+      "glossary": [
+        {"term": "MLK-4608", "explanation": "The ticket that recorded three videos being redone because the production state only existed as free-form text.", "url": "https://example.atlassian.net/browse/MLK-4608"}
       ],
       "risk": {"level": "médio", "text": "migrating 16 files without losing history"},
       "meta": {"Area": "productions/", "Current scale": "37 folders"}
